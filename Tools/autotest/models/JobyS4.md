@@ -10,14 +10,16 @@ flight-dynamics model and not certification data.
 - a full-aircraft gross-mass target of 2400 kg;
 - fixed-wing lift/drag plus propulsive VTOL forces;
 - approximately 90 degrees of propulsion-axis travel between hover and cruise;
-- ArduPlane Hexa/X motor mixing with vectored-yaw tiltrotor control.
+- ArduPlane Hexa/X motor mixing with continuous collective tiltrotor control.
 
 The production aircraft can control propulsion-station tilt, rotor speed and
-blade pitch independently.  Current ArduPlane tiltrotor support exposes grouped
-left/right vectored tilt outputs, so this first SITL implementation groups the
-six physical stations by side.  That limitation is deliberate and documented;
-it provides a stable baseline for later independent-tilt control-allocation
-work.
+blade pitch independently.  This first SITL implementation deliberately maps
+all six physical tilt stations to ArduPlane's single logical
+`TiltMotorsFront` output (continuous tilt, `Q_TILT_TYPE=0`).  Hover yaw is
+therefore produced by the standard Hexa/X differential motor torque rather than
+differential nacelle tilt.  This gives a conservative baseline for later
+independent-tilt control-allocation work without relying on vectored-yaw
+transition behavior.
 
 ## Public data and modelling assumptions
 

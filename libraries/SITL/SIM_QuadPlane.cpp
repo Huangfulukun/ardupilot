@@ -31,7 +31,14 @@ QuadPlane::QuadPlane(const char *frame_str) :
 
     ground_behavior = GROUND_BEHAVIOR_NO_MOVEMENT;
 
-    if (strstr(frame_str, "-octa-quad-cor")) {
+    if (strstr(frame_str, "jobys4")) {
+        // Six tilting propulsion stations.  The model JSON provides the
+        // full-scale mass, inertia, wing aerodynamics and motor positions.
+        frame_type = "jobys4";
+        // Joby uses the tilt-propellers for both VTOL and cruise; there is
+        // no separate conventional forward-throttle motor in this model.
+        thrust_scale = 0;
+    } else if (strstr(frame_str, "-octa-quad-cor")) {
         frame_type = "octa-quad-cor";
     } else if (strstr(frame_str, "-octa-quad-cw-cor")) {
         frame_type = "octa-quad-cw-cor";
@@ -106,8 +113,14 @@ QuadPlane::QuadPlane(const char *frame_str) :
                   frame->get_model_batt_resistance_ohm(),
                   frame->get_model_batt_max_voltage());
 
-    // increase mass for plane components
-    mass = frame->get_mass() * 1.5;
+    // Most legacy quadplane frame JSON files describe only the multicopter
+    // portion and add 50% for the fixed-wing structure.  JobyS4.json stores
+    // the complete aircraft gross mass, so do not apply that legacy factor.
+    if (strstr(frame_str, "jobys4")) {
+        mass = frame->get_mass();
+    } else {
+        mass = frame->get_mass() * 1.5f;
+    }
     frame->set_mass(mass);
 
     lock_step_scheduled = true;

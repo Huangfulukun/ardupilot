@@ -9,9 +9,8 @@ Q_FRAME_CLASS    2
 Q_FRAME_TYPE     1
 
 Q_TILT_ENABLE    1
-Q_TILT_TYPE      2
+Q_TILT_TYPE      0
 Q_TILT_MASK      63
-Q_TILT_YAW_ANGLE 5
 Q_TILT_RATE_UP   25
 Q_TILT_RATE_DN   25
 Q_TILT_MAX       60
@@ -20,14 +19,11 @@ Q_TILT_MAX       60
 SERVO3_FUNCTION  0
 
 # QuadPlane motor outputs occupy SERVO5..SERVO10.
-# SITL groups the real aircraft's six independent tilt stations into
-# left/right tilt commands because that is the native ArduPlane interface.
-SERVO12_FUNCTION 76
-SERVO13_FUNCTION 75
+# All six propulsion stations share ArduPlane's continuous collective tilt
+# output in this baseline model.
+SERVO12_FUNCTION 41
 SERVO12_MIN      1000
 SERVO12_MAX      2000
-SERVO13_MIN      1000
-SERVO13_MAX      2000
 
 # Full-scale concept electrical model.
 SIM_BATT_VOLTAGE 850

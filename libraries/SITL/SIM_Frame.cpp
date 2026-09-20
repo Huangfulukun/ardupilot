@@ -165,6 +165,26 @@ static Motor hexax_motors[] =
     Motor(AP_MOTORS_MOT_6,-150, AP_MOTORS_MATRIX_YAW_FACTOR_CW,  4)
 };
 
+// Joby S4 concept frame for SITL.
+//
+// The real aircraft uses six independently tilting propulsion stations
+// (four on the wing and two on the V-tail).  ArduPlane's current
+// tiltrotor implementation exposes left/right vectoring groups, so the
+// six physical tilt actuators are represented here by two grouped tilt
+// outputs.  Per-motor positions and the aerodynamic/propulsion model are
+// supplied by Tools/autotest/models/JobyS4.json.
+static Motor jobys4_motors[] =
+{
+    // right-side propulsion stations use SERVO12 (TiltMotorFrontRight)
+    Motor(AP_MOTORS_MOT_1,   90, AP_MOTORS_MATRIX_YAW_FACTOR_CW,  2, -1, 0, 0, 7, 10, -90),
+    // left-side propulsion stations use SERVO13 (TiltMotorFrontLeft)
+    Motor(AP_MOTORS_MOT_2,  -90, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 5, -1, 0, 0, 8, 10, -90),
+    Motor(AP_MOTORS_MOT_3,  -30, AP_MOTORS_MATRIX_YAW_FACTOR_CW,  6, -1, 0, 0, 8, 10, -90),
+    Motor(AP_MOTORS_MOT_4,  150, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 3, -1, 0, 0, 7, 10, -90),
+    Motor(AP_MOTORS_MOT_5,   30, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 1, -1, 0, 0, 7, 10, -90),
+    Motor(AP_MOTORS_MOT_6, -150, AP_MOTORS_MATRIX_YAW_FACTOR_CW,  4, -1, 0, 0, 8, 10, -90),
+};
+
 static Motor hexa_dji_x_motors[] =
 {
     Motor(AP_MOTORS_MOT_1,   30, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 1),
@@ -424,6 +444,7 @@ static const FrameTemplate supported_frame_templates[] =
     {"tilthvec",  4, tiltquad_h_vectored_motors},
     {"hexadeca-octa", 16, hexadeca_octa_motors},
     {"hexadeca-octa-cwx", 16, hexadeca_octa_cw_x_motors},
+    {"jobys4",    6, jobys4_motors},
     {"hexax",     6, hexax_motors},
     {"hexa-cwx",  6, hexa_cw_x_motors},
     {"hexa-dji",  6, hexa_dji_x_motors},

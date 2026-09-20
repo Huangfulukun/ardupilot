@@ -331,6 +331,12 @@ class VehicleInfo(object):
                 "default_params_filename": ["default_params/quadplane.parm",
                                             "default_params/quadplane-tilt.parm"],
             },
+            "jobys4": {
+                "model": "quadplane-jobys4:@ROMFS/models/JobyS4.json",
+                "waf_target": "bin/arduplane",
+                "default_params_filename": ["default_params/quadplane.parm",
+                                            "models/JobyS4.param"],
+            },
             "firefly": {
                 "waf_target": "bin/arduplane",
                 "default_params_filename": ["default_params/quadplane.parm",

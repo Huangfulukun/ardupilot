@@ -1,0 +1,99 @@
+name: Joby S4 SITL smoke test
+
+on:
+  push:
+    branches:
+      - feature/joby-s4-sitl
+    paths:
+      - '.github/workflows/joby_s4_sitl.yml'
+      - 'Tools/autotest/models/JobyS4.json'
+      - 'Tools/autotest/models/JobyS4.param'
+      - 'Tools/autotest/pysim/vehicleinfo.py'
+      - 'libraries/SITL/SIM_Frame.cpp'
+      - 'libraries/SITL/SIM_QuadPlane.cpp'
+  workflow_dispatch:
+
+concurrency:
+  group: joby-s4-sitl-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-22.04
+    container:
+      image: ardupilot/ardupilot-dev-base:v0.1.3
+      options: --privileged --cap-add=SYS_PTRACE --security-opt apparmor=unconfined --security-opt seccomp=unconfined
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Build ArduPlane SITL
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          PATH="/github/home/.local/bin:$PATH"
+          ./waf configure --board sitl --debug
+          ./waf build --target bin/arduplane
+
+      - name: Validate jobys4 registration and model
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import json
+          import sys
+          sys.path.insert(0, 'Tools/autotest')
+          from pysim.vehicleinfo import VehicleInfo
+
+          info = VehicleInfo()
+          frame = info.options['ArduPlane']['frames']['jobys4']
+          assert frame['model'] == 'quadplane-jobys4:@ROMFS/models/JobyS4.json'
+          assert 'models/JobyS4.param' in frame['default_params_filename']
+
+          with open('Tools/autotest/models/JobyS4.json', encoding='utf-8') as f:
+              model = json.load(f)
+          assert model['mass'] == 2400.0
+          assert int(model['num_motors']) == 6
+          for i in range(1, 7):
+              assert len(model[f'motor{i}_position']) == 3
+              assert len(model[f'motor{i}_vector']) == 3
+          print('jobys4 registry/model validation: PASS')
+          PY
+
+      - name: Boot Joby S4 SITL
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -f jobys4-sitl.log
+          set +e
+          timeout --signal=TERM 20s build/sitl/bin/arduplane \
+            -w \
+            --model "quadplane-jobys4:@ROMFS/models/JobyS4.json" \
+            --speedup 1 \
+            --defaults "Tools/autotest/default_params/quadplane.parm,Tools/autotest/models/JobyS4.param" \
+            >jobys4-sitl.log 2>&1
+          rc=$?
+          set -e
+
+          cat jobys4-sitl.log
+
+          # timeout(124) means SITL stayed alive for the full smoke-test window.
+          if [ "$rc" -ne 124 ]; then
+            echo "SITL exited before the 20 s smoke-test window (rc=$rc)"
+            exit "$rc"
+          fi
+
+          grep -q "Loaded model params from" jobys4-sitl.log
+          grep -q "Loaded plane aero coefficients from" jobys4-sitl.log
+          echo "Joby S4 SITL boot smoke test: PASS"
+
+      - name: Upload SITL log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jobys4-sitl-log
+          path: jobys4-sitl.log
+          retention-days: 7

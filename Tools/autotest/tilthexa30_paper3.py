@@ -481,7 +481,9 @@ class TiltHexaExperiment:
             self.state["vy"] = float(msg.vy)
             self.state["vz"] = float(msg.vz)
         elif typ == "HIGHRES_IMU":
-            self.state["boot_s"] = max(self.state["boot_s"], msg.time_usec * 1.0e-6)
+            # HIGHRES_IMU.time_usec may be boot-relative or epoch-relative
+            # depending on the producer.  Keep ATTITUDE/LOCAL_POSITION_NED as
+            # the single experiment clock and use HIGHRES_IMU for kinematics only.
             self.state["xacc"] = float(msg.xacc)
             self.state["yacc"] = float(msg.yacc)
             self.state["zacc"] = float(msg.zacc)

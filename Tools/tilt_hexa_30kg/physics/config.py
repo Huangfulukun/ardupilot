@@ -70,6 +70,7 @@ REQUIRED_KEYS = [
 
 
 def _get_nested(d: dict, key_path: str):
+    """Get nested dict value by dot-separated key path."""
     parts = key_path.split(".")
     cur = d
     for p in parts:
@@ -80,10 +81,12 @@ def _get_nested(d: dict, key_path: str):
 
 
 def _validate(cfg_dict: dict):
+    """Raise ValueError if required keys are missing or invalid."""
     for key_path in REQUIRED_KEYS:
         val = _get_nested(cfg_dict, key_path)
         if val is None:
             raise ValueError(f"Missing required key: {key_path}")
+    # cross-validate
     if cfg_dict["propulsion"]["max_static_thrust_N"] <= 0:
         raise ValueError("max_static_thrust_N must be positive")
     if cfg_dict["mass"]["m_kg"] <= 0:
@@ -95,6 +98,7 @@ def _validate(cfg_dict: dict):
 
 
 def load_config(yaml_path: str) -> AttrDict:
+    """Load and validate the seed YAML, return an AttrDict."""
     if yaml is None:
         raise ImportError("PyYAML is required. Install with: pip install pyyaml")
     with open(yaml_path, "r") as f:
@@ -102,6 +106,7 @@ def load_config(yaml_path: str) -> AttrDict:
     _validate(raw)
     cfg = AttrDict(raw)
 
+    # Convert deg to rad for commonly-used values on load
     cfg.tilt.min_rad = math.radians(cfg.tilt.min_deg)
     cfg.tilt.max_rad = math.radians(cfg.tilt.max_deg)
     cfg.tilt.max_rate_rad_s = math.radians(cfg.tilt.max_rate_deg_s)
@@ -112,8 +117,10 @@ def load_config(yaml_path: str) -> AttrDict:
 
     cfg.aero.alpha_stall_rad = math.radians(cfg.aero.alpha_stall_deg)
 
+    # Pre-compute AR (aspect ratio)
     cfg.aero.AR = cfg.geometry.wing_span_m**2 / cfg.geometry.wing_area_m2
 
+    # S and b and c for brevity
     cfg.aero.S = cfg.geometry.wing_area_m2
     cfg.aero.b = cfg.geometry.wing_span_m
     cfg.aero.c = cfg.geometry.mean_aero_chord_m

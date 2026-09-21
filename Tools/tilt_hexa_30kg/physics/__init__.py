@@ -1,1 +1,1 @@
-# physics package for the 30-kg tilt-hexa nonlinear plant
+# physics package for tilt_hexa_30kg nonlinear plant

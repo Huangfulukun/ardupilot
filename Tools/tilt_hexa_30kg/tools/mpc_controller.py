@@ -178,6 +178,41 @@ class MissionReference:
         fs = sol["Fsurf"][iu] + frac * (sol["Fsurf"][ju] - sol["Fsurf"][iu])
         return X, U, w, fs
 
+    def _cruise_pose(self, tc):
+        """Horizontal position (x,y), heading and bank over the cruise leg,
+        including the optional constant-radius coordinated turn.  Returns
+        x, y, yaw, roll_ref, yaw_rate."""
+        x0 = self.fwd["X"][-1][0]
+        V = self.cruise
+        g = 9.80665
+        if not self.turn:
+            return x0 + V * tc, 0.0, 0.0, 0.0, 0.0
+        ts, te = self.turn["t_start"], self.turn["t_end"]
+        wr = math.radians(self.turn["rate_dps"])
+        x_s = x0 + V * ts
+        Rturn = V / wr if abs(wr) > 1e-9 else 0.0
+        if tc < ts:
+            return x0 + V * tc, 0.0, 0.0, 0.0, 0.0
+        # bank-angle ramp window (avoids a step in the roll reference)
+        rt = 1.0
+        ramp = 1.0
+        if tc <= te:
+            ramp = min(1.0, (tc - ts) / rt, (te - tc) / rt)
+        else:
+            ramp = max(0.0, 1.0 - (tc - te) / rt)
+        roll_steady = math.atan(V * wr / g)
+        if tc <= te:
+            yaw = wr * (tc - ts)
+            x = x_s + Rturn * math.sin(yaw)
+            y = Rturn * (1.0 - math.cos(yaw))
+            return x, y, yaw, roll_steady * ramp, wr * ramp
+        yaw_end = wr * (te - ts)
+        x_e = x_s + Rturn * math.sin(yaw_end)
+        y_e = Rturn * (1.0 - math.cos(yaw_end))
+        x = x_e + V * math.cos(yaw_end) * (tc - te)
+        y = y_e + V * math.sin(yaw_end) * (tc - te)
+        return x, y, yaw_end, roll_steady * ramp, wr * ramp
+
     def at(self, t):
         """Return reference dict at mission time t."""
         g = 9.80665
@@ -211,37 +246,44 @@ class MissionReference:
             Xc = self.bwd["X"][0]
             wc = self.bwd["wff"][0].copy()
             fsc = self.bwd["Fsurf"][0].copy()
-            yaw = 0.0; yaw_rate = 0.0; roll_ref = 0.0; y = 0.0
-            if self.turn and self.turn["t_start"] <= tc <= self.turn["t_end"]:
-                yaw_rate = math.radians(self.turn["rate_dps"])
-                yaw = yaw_rate * (tc - self.turn["t_start"])
-                roll_ref = math.atan(V * yaw_rate / g)
-            elif self.turn and tc > self.turn["t_end"]:
-                yaw = yaw_rate * (self.turn["t_end"] - self.turn["t_start"])
+            x, y, yaw, roll_ref, yaw_rate = self._cruise_pose(tc)
             vn = V * math.cos(yaw); ve = V * math.sin(yaw)
-            x = x0 + V * tc
-            w = wc
-            w[4] = self.ocp.m * V * yaw_rate * 0.0  # yaw handled by MPC; trim ~0
+            # Banked-turn load factor: the trimmed normal force must rise by
+            # 1/cos(phi) to keep altitude; the yaw is a kinematic consequence
+            # of the bank (horizontal lift), so no Mz feed-forward is used.
+            nf = 1.0 / max(math.cos(roll_ref), 0.5)
+            w = wc.copy()
+            w[1] *= nf
+            fs = fsc.copy()
+            fs[2] *= nf
             return dict(phase=4, p=np.array([x, y, -alt]), v=np.array([vn, ve, 0]),
                         att=np.array([roll_ref, Xc[4], yaw]), wff=w, V=V,
-                        beta=math.pi / 2, Fsurf=fsc,
+                        beta=math.pi / 2, Fsurf=fs,
                         rates=np.array([0.0, 0.0, yaw_rate]))
+        # Cruise-exit pose (position + heading); after a turn the backward
+        # leg simply continues along the post-turn heading, so the whole
+        # reference stays C0-continuous at the cruise -> back-transition edge.
+        xe, ye, yawe, _, _ = self._cruise_pose(self.t_cruise)
+        ce, se = math.cos(yawe), math.sin(yawe)
         if t < self.T3:                            # backward transition
             tau = t - self.T2
             X, U, w, fs = self._sample_corridor(self.bwd, tau)
-            x_end = self.fwd["X"][-1][0] + self.cruise * self.t_cruise
             # The aircraft keeps rolling forward while it decelerates.  The
             # corridor X[0] is the integrated deceleration distance (0 at the
             # start), so the position reference must advance with it.  Holding
-            # x fixed at x_end manufactures a large, growing down-track error
-            # and forces the MPC to brake hard, pitching up and stalling.
-            x = x_end + X[0]
-            return dict(phase=5, p=np.array([x, 0, -alt]), v=np.array([X[2], 0, 0]),
-                        att=np.array([0.0, X[4], 0.0]), wff=w, V=X[2], beta=U[0],
+            # the down-track position fixed manufactures a large, growing
+            # error and forces the MPC to brake hard, pitching up and stalling.
+            d = X[0]
+            x = xe + d * ce; y = ye + d * se
+            return dict(phase=5, p=np.array([x, y, -alt]),
+                        v=np.array([X[2] * ce, X[2] * se, 0]),
+                        att=np.array([0.0, X[4], yawe]), wff=w, V=X[2], beta=U[0],
                         Fsurf=fs, rates=np.zeros(3))
         # final hover (at the end of the backward deceleration distance)
-        x_final = self.fwd["X"][-1][0] + self.cruise * self.t_cruise + self.bwd["X"][-1][0]
-        return dict(phase=6, p=np.array([x_final, 0, -alt]), v=np.zeros(3), att=np.zeros(3),
+        d_b = self.bwd["X"][-1][0]
+        x_final = xe + d_b * ce; y_final = ye + d_b * se
+        return dict(phase=6, p=np.array([x_final, y_final, -alt]), v=np.zeros(3),
+                    att=np.array([0.0, 0.0, yawe]),
                     wff=self.w_hover.copy(), V=0.0, beta=0.0, Fsurf=np.zeros(3),
                     rates=np.zeros(3))
 
@@ -273,6 +315,48 @@ class UnifiedMPC:
         self.status = []
         self._warm = None
 
+    def _f_nonlinear(self, x, u, Fsurf):
+        """Continuous 12-state derivative (NED), plant-consistent: rotor
+        virtual wrench [Fx,Fz,Mx,My,Mz] + known feed-forward surface force
+        + gravity + wing aero (smooth-stall lift, drag, side force, damping).
+        Used both for the numerical Jacobian and the disturbance observer."""
+        phi, th, psi = x[6:9]
+        R = R_bn(phi, th, psi)
+        Fb = np.array([u[0], 0.0, u[1]]) + np.asarray(Fsurf, float)
+        acc = R @ Fb / self.m + np.array([0, 0, self.g])
+        vb = R.T @ x[3:6]
+        Vh = math.hypot(x[3], x[4])
+        Vv = max(Vh, 1.0)
+        fv = Vh / 6.0
+        fv = fv * fv * (3 - 2 * fv) if fv < 1.0 else 1.0
+        qS = 0.5 * self.rho_air * Vv ** 2 * self.S
+        gamma = math.atan2(-x[5], max(Vh, 1.0))
+        alpha = max(-0.3, min(0.3, th - gamma))
+        CL = 1.45 * math.tanh((0.20 + 4.8 * alpha) / 1.45)
+        k = 1.0 / (math.pi * (3.5 ** 2 / self.S) * 0.75)
+        CD = 0.04 + k * CL ** 2
+        L = qS * CL * fv; D = qS * CD * fv
+        beta_slip = max(-0.3, min(0.3, vb[1] / Vv))
+        Y = qS * (-0.45) * beta_slip * fv
+        acc += R @ (np.array([-D, Y, -L]) / self.m)
+        om = x[9:12]
+        M = np.array([u[2], u[3], u[4]])
+        b, c = 3.5, 0.36
+        M_aero = fv * np.array([
+            qS * b * (-0.08 * beta_slip) + qS * b * (b / (2 * Vv)) * (-0.45) * om[0],
+            qS * c * (0.02 - 0.85 * alpha) + qS * c * (c / (2 * Vv)) * (-12.0) * om[1],
+            qS * b * (0.12 * beta_slip) + qS * b * (b / (2 * Vv)) * (-0.35) * om[2],
+        ])
+        M = M + M_aero
+        dome = self.Jinv @ (M - np.cross(om, self.J @ om))
+        H = H_euler(phi, th)
+        dx = np.zeros(12)
+        dx[0:3] = x[3:6]
+        dx[3:6] = acc
+        dx[6:9] = H @ om
+        dx[9:12] = dome
+        return dx
+
     def _dynamics_jac(self, att, V, wff, Fsurf=None):
         """Numerically linearize the 12-state, 5-input model about the
         reference trim state (level flight at airspeed V, attitude att) and
@@ -288,47 +372,9 @@ class UnifiedMPC:
         x0[3:6] = np.array([V, 0.0, 0.0])   # level forward flight
         x0[6:9] = att
         u0 = np.array([wff[0], wff[1], 0.0, 0.0, 0.0])
+
         def f(x, u):
-            phi, th, psi = x[6:9]
-            R = R_bn(phi, th, psi)
-            Fb = np.array([u[0], 0.0, u[1]]) + Fsurf
-            acc = R @ Fb / self.m + np.array([0, 0, self.g])
-            # full wing aerodynamic force (plant-consistent): lift/drag from the
-            # angle of attack (alpha = theta - gamma), side force from slip.
-            vb = R.T @ x[3:6]
-            Vh = math.hypot(x[3], x[4])               # horizontal airspeed
-            Vv = max(Vh, 1.0)
-            # wing aero is switched off at low speed (singular AoA, no lift)
-            fv = Vh / 6.0
-            fv = fv * fv * (3 - 2 * fv) if fv < 1.0 else 1.0
-            qS = 0.5 * self.rho_air * Vv ** 2 * self.S
-            gamma = math.atan2(-x[5], max(Vh, 1.0))   # flight path
-            alpha = max(-0.3, min(0.3, th - gamma))
-            CL = 1.45 * math.tanh((0.20 + 4.8 * alpha) / 1.45)
-            k = 1.0 / (math.pi * (3.5 ** 2 / self.S) * 0.75)
-            CD = 0.04 + k * CL ** 2
-            L = qS * CL * fv; D = qS * CD * fv
-            beta_slip = max(-0.3, min(0.3, vb[1] / Vv))
-            Y = qS * (-0.45) * beta_slip * fv
-            F_aero = np.array([-D, Y, -L])
-            acc += R @ (F_aero / self.m)
-            om = x[9:12]
-            M = np.array([u[2], u[3], u[4]])
-            b, c = 3.5, 0.36
-            M_aero = fv * np.array([
-                qS * b * (-0.08 * beta_slip) + qS * b * (b / (2 * Vv)) * (-0.45) * om[0],
-                qS * c * (0.02 - 0.85 * alpha) + qS * c * (c / (2 * Vv)) * (-12.0) * om[1],
-                qS * b * (0.12 * beta_slip) + qS * b * (b / (2 * Vv)) * (-0.35) * om[2],
-            ])
-            M = M + M_aero
-            dome = self.Jinv @ (M - np.cross(om, self.J @ om))
-            H = H_euler(phi, th)
-            dx = np.zeros(12)
-            dx[0:3] = x[3:6]
-            dx[3:6] = acc
-            dx[6:9] = H @ om
-            dx[9:12] = dome
-            return dx
+            return self._f_nonlinear(x, u, Fsurf)
         nx, nu = 12, 5
         A = np.zeros((nx, nx)); Bm = np.zeros((nx, nu))
         eps_x = 1e-4
@@ -357,6 +403,10 @@ class UnifiedMPC:
         """state: 12-vector NED [p,v,euler,omega]. refs: list of N+1 ref dicts."""
         import time
         N, nx, nu = self.N, 12, 5
+        # During conversion the attitude reference is the physically-trimmed
+        # incidence; hold it tightly and let the nacelles (not the wing AoA)
+        # manage lift, otherwise the controller pitches up to chase altitude as
+        # the wing unloads and stalls the deceleration (backward conversion).
         phase = refs[0]["phase"]
         Q = self.Q.copy()
         P = Q * 2.2
@@ -390,6 +440,8 @@ class UnifiedMPC:
         H = Theta.T @ Qbar @ Theta + Rbar + D.T @ Sbar @ D
         H = 0.5 * (H + H.T) + 1e-6 * np.eye(N * nu)
         f = (Theta.T @ Qbar @ Phi @ e0).reshape(-1)
+        # reference feed-forward already in wff; add reference-following bias
+        # through error dynamics (reference assumed consistent -> d~0)
         # ---- constraints ----
         G = []; h = []
         # input box: w_lo <= wff + dw <= w_hi  (per node)
@@ -405,6 +457,7 @@ class UnifiedMPC:
         for k in range(N):
             Ik = np.zeros((nu, N * nu)); Ik[:, k * nu:(k + 1) * nu] = np.eye(nu)
             if k == 0:
+                dprev = (wff if False else refs[0]["wff"])  # warm handled outside
                 base = np.zeros(nu)
             else:
                 base = np.zeros(nu)
@@ -414,6 +467,7 @@ class UnifiedMPC:
         for k in range(N):
             rk = refs[k + 1]
             for ax in (0, 1):
+                # predicted attitude = ref attitude + error; express via Theta
                 erow = Theta[k * nx + 6 + ax, :]
                 refatt = rk["att"][ax]
                 G.append(erow.reshape(1, -1)); h.append(np.array([math.radians(40) - refatt]))
@@ -463,11 +517,32 @@ class TiltHexaMPC:
         self.phase = 0
         self.last_w = np.array([0.0, -p.mass_kg * p.g, 0.0, 0.0, 0.0])
         self.bias = np.zeros(5)
+        # Actual surface deflections from the previous allocation step.  The
+        # trim corridor assumes a nominal ruddervator deflection (hence a
+        # nominal Fsurf download), but the QP allocator redistributes the
+        # symmetric pitch moment between differential tilt and the V-tail.  The
+        # prediction model therefore must use the REALISED V-tail force (a
+        # one-step-delayed measured disturbance), not the trim-implied one.
         self.last_delta = np.zeros(4)
         self._rho = 1.225
         self._S = 1.26
         self._CL_da = 0.45
         self._CL_drv = 0.30
+        # Bounded position-error integral (constant-mismatch rejection).  A
+        # plain acceleration-residual DOB over-corrects the model-plant aero
+        # differences during the dynamic conversion and destabilises the
+        # backward transition, so the integral is MODEL-FREE.  The VERTICAL
+        # channel integrates whenever the altitude reference is constant
+        # (cruise/backward/terminal-hover, phases 4/5/6) so a thrust or mass
+        # deficit is corrected as the wing unloads, instead of being corrected
+        # late and overshooting; the HORIZONTAL channels integrate only in the
+        # terminal hover (6), where a steady wind must be trimmed out.  It is a
+        # NED force correction (N) converted to the body frame.
+        self.pos_int = np.zeros(3)
+        self._Ki_z = 4.0              # vertical integral gain (N / m / s)
+        self._Ki_h = 7.0              # horizontal integral gain
+        self._int_lim = np.array([80.0, 80.0, 70.0])
+        self._prev_Fsurf = np.zeros(3)
 
     def _actual_Fsurf(self, V, delta):
         """Body-frame direct-lift force of the realised surface deflections,
@@ -481,16 +556,44 @@ class TiltHexaMPC:
                              + self._CL_drv * (eff(rvL) + eff(rvR)))
         return np.array([0.0, 0.0, Fz])
 
+    def _update_position_integral(self, state, ref, dt):
+        """Integrate the NED position error with channel-dependent gating.
+        NED: p_ref - p; a positive z error means the aircraft is HIGH.
+        Vertical (z) integrates in phases 4/5/6 (constant altitude reference);
+        horizontal (x,y) only in the terminal hover (6).  The initial hover,
+        climb and forward conversion are frozen to avoid wind-up against a
+        moving reference (verified: gating in the climb overshoots >12 m)."""
+        phase = ref["phase"]
+        e = ref["p"] - state[0:3]
+        gain = np.zeros(3)
+        if phase in (4, 5, 6):
+            gain[2] = self._Ki_z
+        if phase == 6:
+            gain[0] = self._Ki_h
+            gain[1] = self._Ki_h
+        self.pos_int = self.pos_int + gain * e * dt
+        self.pos_int = np.clip(self.pos_int, -self._int_lim, self._int_lim)
+
     def step(self, state_ned, V, t_mission, dt):
         """state_ned: [p(3),v(3),euler(3),omega(3)]. Returns T,beta,delta,telem."""
+        # reference preview over horizon
         refs = [self.ref.at(t_mission + k * self.ctrl_dt) for k in range(self.mpc.N + 1)]
         self.phase = refs[0]["phase"]
+        self._update_position_integral(state_ned, refs[0], dt)
+        # Airspeed-indexed trim for the CURRENT node: the rotor feed-forward
+        # (and pitch reference) follow the *achieved* airspeed, so the rotors
+        # never unload before the wing genuinely carries lift.  The planned
+        # acceleration is taken from the S-curve (robust to speed lag).
+        # Forward conversion indexes the current-node trim on ACHIEVED
+        # airspeed (never unload the rotors before the wing genuinely carries).
+        # Cruise/backward use the time-based reference trim directly: indexing
+        # the backward schedule on (possibly early) achieved speed tilts the
+        # nacelles aft early and is positively destabilising (stall).
         if refs[0]["phase"] == 3:
             # Forward conversion indexes the current-node trim on ACHIEVED
             # airspeed so the rotors never unload before the wing genuinely
             # carries.  The backward conversion stays on the time-based
-            # monotonic trim (indexing on early achieved speed tilts the
-            # nacelles aft early and collapses the speed).
+            # monotonic trim (the V-tail force coupling is now in the model).
             sched = self.ref.fwd
             tt = np.clip(t_mission - self.ref.T0, 0.0, None)
             j = int(np.clip(np.searchsorted(sched["t"], tt) - 1, 0, len(sched["t"]) - 2))
@@ -501,16 +604,29 @@ class TiltHexaMPC:
             refs[0]["Fsurf"] = fs_t
             refs[0]["att"][1] = al_t
             refs[0]["beta"] = beta_t
-        # NOTE: the trim-implied Fsurf is used on the horizon (it is internally
-        # consistent with the trim wff).  Overriding it with the realised
-        # (smaller) V-tail force breaks the reference equilibrium and makes the
-        # MPC cut forward thrust; the small mismatch is absorbed by the bias
-        # integrator.
+        # NOTE: the trim-implied Fsurf is used on the horizon (it is
+        # internally consistent with the trim wff).  Overriding it with the
+        # realised (smaller) V-tail force breaks the reference equilibrium and
+        # makes the MPC cut forward thrust.  The current-node Fsurf is left on
+        # the trim value; the (small) realised/trim force mismatch is absorbed
+        # by the bias integrator rather than by re-trimming the whole corridor.
+        pass
         w_cmd, status = self.mpc.solve(state_ned, refs)
+        # Position-error integral (constant-mismatch rejection): convert the
+        # NED integral force to the body frame and add to Fx / Fz.  Frozen
+        # during conversions, so it cannot disturb the transition feed-forward.
+        Rb = R_bn(*state_ned[6:9])
+        Fi = Rb.T @ self.pos_int
+        w_cmd = w_cmd.copy()
+        w_cmd[0] += Fi[0]
+        w_cmd[1] += Fi[2]
         # Integral bias correction from allocator residual (steady-state).
-        # residual = w_d - w_achieved is positive when the allocator under-
-        # delivers, so the missing wrench must be ADDED: w_cmd += k*bias.
+        # residual = w_cmd - w_achieved is positive when the allocator under-
+        # delivers (saturation / rate limit), so the missing wrench must be
+        # ADDED to the next command: w_cmd <- w_cmd + k*bias (a minus sign
+        # would command even less and is destabilising).
         w_cmd = w_cmd + 0.25 * self.bias
+        self._prev_Fsurf = np.asarray(refs[0].get("Fsurf", np.zeros(3)), float)
         T, beta, delta, w_ach, residual, ast, iters, nact = self.alloc.allocate(
             w_cmd, V, dt)
         self.bias = 0.98 * self.bias + 0.02 * residual

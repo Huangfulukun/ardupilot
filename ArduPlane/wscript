@@ -18,6 +18,7 @@ def build(bld):
             'AC_AttitudeControl',
             'AP_Motors',
             'AP_Landing',
+            'AP_TiltHexa',
             'PID',
             'AP_Soaring',
             'AP_LTM_Telem',

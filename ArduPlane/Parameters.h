@@ -371,6 +371,8 @@ public:
         k_param_mode_autoland,
         k_param__gcs,
 
+        k_param_tilt_hexa = 274,  // AP_TiltHexa research module
+
     };
 
     AP_Int16 format_version;
@@ -594,6 +596,10 @@ public:
 
 #if AP_PLANE_SYSTEMID_ENABLED
     AP_SystemID systemid;
+#endif
+
+#if AP_TILTHEXA_ENABLED
+    AP_TiltHexa tilt_hexa;
 #endif
 };
 

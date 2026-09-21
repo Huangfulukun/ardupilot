@@ -1,0 +1,17 @@
+test,allocator,expected,measured,pass,solver_status,iterations,solve_us
+beta=-10,PI,residual_finite,residual=282.92,PASS,0,1,7
+beta=-10,QP,residual_finite,residual=294.30,PASS,0,1,36
+beta=0,PI,residual_finite,residual=282.76,PASS,0,1,5
+beta=0,QP,residual_finite,residual=97.06,PASS,0,1,30
+beta=89.9,PI,residual_finite,residual=86.61,PASS,0,1,5
+beta=89.9,QP,residual_finite,residual=502.49,PASS,0,1,30
+beta=90,PI,residual_finite,residual=73.72,PASS,0,1,5
+beta=90,QP,residual_finite,residual=500.00,PASS,0,1,30
+T->0,PI,residual_finite,residual=0.00,PASS,0,1,5
+T->0,QP,residual_finite,residual=0.00,PASS,0,1,29
+tilt_rate_limit,PI,residual_finite,residual=668.99,PASS,0,1,5
+tilt_rate_limit,QP,residual_finite,residual=502.49,PASS,0,1,29
+w_d_outside,PI,residual_finite,residual=22108.95,PASS,0,1,6
+w_d_outside,QP,residual_finite,residual=22360.68,PASS,0,1,29
+pure_yaw,PI,residual_finite,residual=279.75,PASS,0,1,5
+pure_yaw,QP,residual_finite,residual=298.52,PASS,0,1,29

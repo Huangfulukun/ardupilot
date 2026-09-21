@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+# wscript for AP_TiltHexa library
+def build(bld):
+    bld.ap_library(
+        name='AP_TiltHexa'
+    )

@@ -1,0 +1,6 @@
+# Build artefacts of the standalone core (make in this directory)
+core/build/
+core/build_double/
+*.o
+*.so
+*.bak

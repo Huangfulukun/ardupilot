@@ -145,6 +145,7 @@ const struct MultiplierStructure log_Multipliers[] = {
 #include <AP_ESC_Telem/LogStructure.h>
 #include <AP_AIS/LogStructure.h>
 #include <AP_HAL_ChibiOS/LogStructure.h>
+#include <AP_TiltHexa/LogStructure.h>
 #include <AP_RPM/LogStructure.h>
 #include <AC_Fence/LogStructure.h>
 #include <AP_Landing/LogStructure.h>
@@ -1296,6 +1297,7 @@ LOG_STRUCTURE_FROM_VISUALODOM \
     { LOG_FILE_MSG, sizeof(log_File), \
       "FILE",   "NIBZ",       "FileName,Offset,Length,Data", "----", "----" }, \
 LOG_STRUCTURE_FROM_AIS \
+    LOG_STRUCTURE_FROM_TILTHEXA \
     { LOG_SCRIPTING_MSG, sizeof(log_Scripting), \
       "SCR",   "QNIii", "TimeUS,Name,Runtime,Total_mem,Run_mem", "s#sbb", "F-F--", true }, \
     { LOG_VER_MSG, sizeof(log_VER), \
@@ -1384,6 +1386,7 @@ enum LogMessages : uint8_t {
     LOG_IDS_FROM_AC_ATTITUDECONTROL,
     LOG_IDS_FROM_PRECLAND,
     LOG_IDS_FROM_AIS,
+    LOG_IDS_FROM_TILTHEXA,
     LOG_STAK_MSG,
     LOG_FILE_MSG,
     LOG_SCRIPTING_MSG,

@@ -1,0 +1,21 @@
+{
+  "n_cases": 500,
+  "ok_and_match": 500,
+  "ok_fraction": 1.0,
+  "worst_rel_obj_gap_vs_quadprog": 2.9156953751839515e-07,
+  "worst_scaled_violation": 3.446013309533245e-08,
+  "iteration_match_with_reference_fraction": 0.998,
+  "iters_mean": 16.866,
+  "iters_p95": 32.0,
+  "iters_max": 45,
+  "mean_solve_us": 251.032923348248,
+  "warm_walk": {
+    "steps": 300,
+    "ok_fraction": 1.0,
+    "iters_mean": 3.0033333333333334,
+    "iters_p95": 7.0,
+    "iters_max": 17,
+    "mean_solve_us": 92.53199367473523
+  },
+  "solver": "/home/huangluya/code/github/apm47_INDI/libraries/AP_TiltHexa/core/build/libthx_core.so"
+}

@@ -219,6 +219,12 @@ public:
         k_actuator4             = 187,
         k_actuator5             = 188,
         k_actuator6             = 189,
+        k_tiltHexa1             = 190,          ///< tilt-hexa rotor 1 tilt servo
+        k_tiltHexa2             = 191,          ///< tilt-hexa rotor 2 tilt servo
+        k_tiltHexa3             = 192,          ///< tilt-hexa rotor 3 tilt servo
+        k_tiltHexa4             = 193,          ///< tilt-hexa rotor 4 tilt servo
+        k_tiltHexa5             = 194,          ///< tilt-hexa rotor 5 tilt servo
+        k_tiltHexa6             = 195,          ///< tilt-hexa rotor 6 tilt servo
         k_nr_aux_servo_functions         ///< This must be the last enum value (only add new values _before_ this one)
     } Function;
 

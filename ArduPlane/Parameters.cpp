@@ -1279,6 +1279,12 @@ const AP_Param::GroupInfo ParametersG2::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("GUIDED_TIMEOUT", 40, ParametersG2, guided_timeout, 3.0f),
 
+#if AP_TILTHEXA_ENABLED
+    // @Group: THX_
+    // @Path: ../libraries/AP_TiltHexa/AP_TiltHexa.cpp
+    AP_SUBGROUPINFO(tilt_hexa, "THX_", 41, ParametersG2, AP_TiltHexa),
+#endif
+
     AP_GROUPEND
 };
 

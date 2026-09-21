@@ -1052,6 +1052,11 @@ void Plane::servos_output(void)
         SRV_Channels::copy_radio_in_out_mask(uint32_t(g2.manual_rc_mask.get()));
     }
 
+#if AP_TILTHEXA_ENABLED
+    // TiltHexa research module output override
+    tilt_hexa.output();
+#endif
+
     SRV_Channels::calc_pwm();
 
     SRV_Channels::output_ch_all();

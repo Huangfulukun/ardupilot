@@ -1,0 +1,173 @@
+# tilt_hexa_30kg_seed.yaml -- single source of truth for the 30-kg tilt-hexa eVTOL
+#
+# ALL values herein are SEED values for initial SITL development only.
+# metadata.status = REFERENCE_SEED_NOT_MEASURED applies to every numeric
+# parameter in this file.  Replace by CAD / bench / flight-identification
+# before any publication.
+
+metadata:
+  status: REFERENCE_SEED_NOT_MEASURED
+  note: "Only for initial SITL development. Replace by CAD/bench/flight identification before publication."
+
+mass:
+  m_kg: 30.0
+
+inertia:
+  # J in kg*m^2, body FRD axes, about CG
+  Jxx: 4.267
+  Jyy: 6.635
+  Jzz: 9.577
+  Jxy: 0.0
+  Jxz: 0.0
+  Jyz: 0.0
+
+geometry:
+  wing_span_m: 3.50          # b
+  wing_area_m2: 1.26         # S
+  mean_aero_chord_m: 0.36    # c_bar (MAC)
+  arm_radius_m: 0.80         # L_r
+  rotor_z_m: -0.15           # z_r (body z, negative = above CG)
+  # Tail / V-tail geometry (used by the plant aero model; the controller
+  # does NOT read these directly -- it uses the reduced surface derivatives):
+  tail_arm_m: 1.20           # distance from CG to V-tail aerodynamic centre
+  vtail_dihedral_deg: 35.0   # dihedral angle of each V-tail panel
+  vtail_area_m2: 0.18        # total V-tail reference area (both panels)
+
+propulsion:
+  prop_diameter_m: 0.70
+  max_static_thrust_N: 95.0          # T_max per motor (seed)
+  hover_thrust_per_motor_N: 49.05    # m*g / 6 at beta=0
+  kappa_Q: 0.034                     # torque-to-thrust ratio, Q = kappa_Q * T
+  thrust_curve_expo: 0.65            # e in T = T_max * ((1-e)*thr + e*thr^2)
+  motor_time_constant_s: 0.08        # tau_T
+
+tilt:
+  min_deg: -10.0
+  max_deg: 90.0
+  max_rate_deg_s: 60.0
+  time_constant_s: 0.15              # tau_beta
+  low_thrust_off_N: 5.0
+  low_thrust_on_N: 8.0
+
+surfaces:
+  # Position limits
+  aileron_left_max_deg: 20.0
+  aileron_right_max_deg: 20.0
+  ruddervator_left_max_deg: 25.0
+  ruddervator_right_max_deg: 25.0
+  max_rate_deg_s: 120.0
+  time_constant_s: 0.05              # tau_surface
+
+flight:
+  nominal_cruise_m_s: 25.0
+  initial_transition_test_m_s: 20.0
+  rho_kg_m3: 1.225
+
+aero:
+  # Neutral aerodynamic coefficients (plant model)
+  CL0: 0.20
+  CL_alpha_per_rad: 4.8
+  CL_max: 1.45
+  alpha_stall_deg: 15.0
+  CD0: 0.040
+  oswald_e: 0.75
+  Cm0: 0.02
+  Cm_alpha_per_rad: -0.85
+  CY_beta_per_rad: -0.45
+  Cl_beta_per_rad: -0.08
+  Cn_beta_per_rad: 0.12
+  # Rate-damping derivatives (seed; plant uses these, controller may use
+  # simplified versions)
+  Clp_per_rad: -0.45    # roll damping
+  Cmq_per_rad: -12.0    # pitch damping
+  Cnr_per_rad: -0.35    # yaw damping
+
+  # Aerodynamic surface derivatives for the PLANT model.
+  # These SAME named derivatives and SIGN CONVENTIONS are used by the
+  # controller's reduced B_A (Section 0.2), but the plant adds nonlinear
+  # effects (stall interaction, dynamic-pressure scaling, slipstream,
+  # effectiveness loss with deflection ~cos(delta)) that the controller
+  # does not model -- guaranteeing "controller model != plant model".
+  #
+  # Convention: all deflections positive TRAILING-EDGE-DOWN.
+  #   left  = body -y side (port)
+  #   right = body +y side (starboard)
+  # Reference: S (wing area), b (span), c_bar (MAC), q = 0.5 * rho * V^2
+  #
+  # Columns:            d_aL            d_aR            d_rvL            d_rvR
+  # F_x row:            0               0               0                0
+  # F_z row:  -q S CL_da     -q S CL_da      -q S CL_drv      -q S CL_drv
+  # M_x row:  +q S b Cl_da   -q S b Cl_da    +q S b Cl_drv    -q S b Cl_drv
+  # M_y row:  +q S c Cm_da   +q S c Cm_da    +q S c Cm_drv    +q S c Cm_drv
+  # M_z row:  +q S b Cn_da   -q S b Cn_da    -q S b Cn_drv    +q S b Cn_drv
+  #
+  surfaces:
+    # Aileron derivatives
+    CL_da: 0.45      # lift increment per rad aileron (TE-down)
+    Cl_da: 0.060     # roll moment per rad aileron
+    Cm_da: 0.0       # pitch moment per rad aileron
+    Cn_da: -0.004    # yaw moment per rad aileron (adverse yaw)
+    # Ruddervator (V-tail) derivatives
+    CL_drv: 0.30     # lift increment per rad ruddervator (TE-down)
+    Cl_drv: 0.010    # roll moment per rad ruddervator
+    Cm_drv: -0.55    # pitch moment per rad ruddervator (negative = tail lift up -> nose down)
+    Cn_drv: 0.035    # yaw moment per rad ruddervator
+
+allocation:
+  polygon_facets: 12                # N for inscribed regular polygon thrust constraint
+  Ws: [2.0, 5.0, 6.0, 6.0, 4.0]   # wrench tracking weights [Fx, Fz, Mx, My, Mz]
+  Wdelta: 20.0                      # actuator change penalty weight on D_u^-1 (u - u_prev); retuned from 0.15 (which gave no
+                                    # smoothing after normalisation: a 50 N jump cost 0.006 vs 25 per N^2 of Fz slack) so that a full-range
+                                    # jump costs about 2 N of Fz slack. REFERENCE_SEED_NOT_MEASURED.
+  Wu: 0.02                          # actuator use penalty weight
+
+control:
+  indi_rate_hz: 100
+  allocator_rate_hz: 100
+  position_rate_hz: 50
+  # Filter cutoff frequencies
+  accel_filter_hz: 12.0
+  gyro_derivative_filter_hz: 12.0
+  actuator_filter_hz: 12.0
+  # INDI gains
+  Kp: 1.5          # position gain (omega_n ~1.2 rad/s with Kv)
+  Kv: 2.2          # velocity gain
+  Kw: 8.0          # angular rate gain (omega_n ~4 rad/s with KR)
+  KR: 16.0         # attitude gain
+
+logging:
+  research_log_rate_hz: 50
+
+# ---------- actuator PWM-to-physical maps (used by plant FDM) ----------
+pwm_maps:
+  # Motor PWM: 1000 us -> throttle=0, 2000 us -> throttle=1 (linear)
+  motor_min_us: 1000
+  motor_max_us: 2000
+  # Tilt PWM -> angle map:  1000 us -> -10 deg, 2000 us -> +90 deg
+  tilt_min_us: 1000
+  tilt_max_us: 2000
+  tilt_min_deg: -10.0
+  tilt_max_deg: 90.0
+  # Surface PWM -> deflection map: 1000/1500/2000 us -> -max / 0 / +max deg
+  surface_min_us: 1000
+  surface_trim_us: 1500
+  surface_max_us: 2000
+
+# ---------- Nondimensionalisation scales (for THXI SigMin) ----------
+nondim:
+  D_u_T_N: 95.0          # D_u for thrust channels = T_max
+  D_u_delta_rad: 0.349   # D_u for surface channels = 20 deg in rad
+  D_w_F_N: 294.3         # D_w for force  = m*g
+  D_w_M_Nm: 235.44       # D_w for moment = m*g*L_r
+
+# ---------- Monte Carlo perturbation ranges ----------
+monte_carlo:
+  mass_pct: 10.0           # +/- %
+  inertia_pct: 10.0        # +/- %
+  thrust_coeff_pct: 10.0   # +/- %
+  surface_eff_pct: 15.0    # +/- %
+  cg_delta_m: 0.03         # +/- m each axis
+  wind_min_m_s: 0.0
+  wind_max_m_s: 8.0
+  delay_min_ms: 0
+  delay_max_ms: 30

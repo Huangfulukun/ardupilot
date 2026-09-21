@@ -101,6 +101,11 @@
 #include "tuning.h"
 #endif
 
+#include <AP_TiltHexa/AP_TiltHexa_config.h>
+#if AP_TILTHEXA_ENABLED
+#include <AP_TiltHexa/AP_TiltHexa.h>
+#endif
+
 // Configuration
 #include "config.h"
 
@@ -844,6 +849,11 @@ private:
 #if AP_TUNING_ENABLED
     // support for transmitter tuning
     AP_Tuning_Plane tuning;
+#endif
+
+#if AP_TILTHEXA_ENABLED
+    // reference for tilt_hexa convenience (member lives in ParametersG2 for param system)
+    AP_TiltHexa &tilt_hexa = g2.tilt_hexa;
 #endif
 
     static const struct LogStructure log_structure[];

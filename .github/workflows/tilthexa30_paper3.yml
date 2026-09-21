@@ -9,6 +9,7 @@ on:
       - 'Tools/autotest/models/TiltHexa30.json'
       - 'Tools/autotest/models/TiltHexa30.param'
       - 'Tools/autotest/tilthexa30_paper3.py'
+      - 'Tools/autotest/tilthexa30_paper3_actuator_aware.py'
       - 'Tools/autotest/tilthexa30_paper3_analysis.py'
       - 'libraries/SITL/SIM_QuadPlane.cpp'
   workflow_dispatch:
@@ -45,6 +46,7 @@ jobs:
           set -euxo pipefail
           python3 -m py_compile \
             Tools/autotest/tilthexa30_paper3.py \
+            Tools/autotest/tilthexa30_paper3_actuator_aware.py \
             Tools/autotest/tilthexa30_paper3_analysis.py
           python3 - <<'PY'
           import json
@@ -75,7 +77,7 @@ jobs:
           set -euxo pipefail
           mkdir -p paper3-results/static
           PATH="/github/home/.local/bin:$PATH"
-          python3 Tools/autotest/tilthexa30_paper3.py \
+          python3 Tools/autotest/tilthexa30_paper3_actuator_aware.py \
             --static-only \
             --output-dir paper3-results/static
 
@@ -91,7 +93,7 @@ jobs:
             for method in M1 M2 M3; do
               out="paper3-results/core/${scenario}_${method}"
               echo "=== ${scenario} ${method} ==="
-              python3 Tools/autotest/tilthexa30_paper3.py \
+              python3 Tools/autotest/tilthexa30_paper3_actuator_aware.py \
                 --method "${method}" \
                 --scenario "${scenario}" \
                 --target-speed 8 \
@@ -114,7 +116,7 @@ jobs:
             for method in M1 M2 M3; do
               out="paper3-results/stress/S5_${method}_v${speed}"
               echo "=== S5 ${method} target=${speed} m/s ==="
-              python3 Tools/autotest/tilthexa30_paper3.py \
+              python3 Tools/autotest/tilthexa30_paper3_actuator_aware.py \
                 --method "${method}" \
                 --scenario S5 \
                 --target-speed "${speed}" \
@@ -142,7 +144,7 @@ jobs:
               esac
               out="paper3-results/robustness/S6_${method}_case${case_id}"
               echo "=== S6 ${method} case=${case_id} ==="
-              python3 Tools/autotest/tilthexa30_paper3.py \
+              python3 Tools/autotest/tilthexa30_paper3_actuator_aware.py \
                 --method "${method}" \
                 --scenario S6 \
                 --target-speed 8 \

@@ -69,7 +69,7 @@ public:
         k_param_flap_1_speed,
         k_param_flap_2_percent,
         k_param_flap_2_speed,
-        k_param_reset_switch_chan, // unused
+        k_param_reset_switch_chan, // unused - moved to RC option
         k_param_manual_level, // unused
         k_param_land_pitch_cd,  // unused - moved to AP_Landing
         k_param_ins_old,            // *** Deprecated, remove with next eeprom number change

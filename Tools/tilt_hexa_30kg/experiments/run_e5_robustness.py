@@ -42,7 +42,7 @@ ARM_L = 0.80
 DEG2RAD = math.pi / 180.0
 RAD2DEG = 180.0 / math.pi
 AZIMUTH_DEG = [90, -90, -30, 150, 30, -150]
-SPIN_SIGNS = [1, -1, 1, -1, 1, -1]
+SPIN_SIGNS = [1, -1, 1, -1, -1, 1]  # must match AP_TiltHexa Hexa-X geometry
 
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
@@ -93,9 +93,9 @@ class MCPlantModel(PlantModel):
         # CG shift: +-cg_delta m per axis (Z only, affects arm length)
         cg_shift = self.rng.uniform(-cg_delta, cg_delta, 3)
         self.rotor_z += cg_shift[2]
-        # Note: rotor X/Y positions NOT shifted -- CG shift in X/Y
-        # changes moment arms but requires proper (r_i - cg) computation.
-        # Small +-3cm X/Y shift has negligible effect on symmetric hexa.
+        # Apply the full CG shift to the rotor moment arms.  Treating X/Y
+        # shifts as "negligible" would under-test the allocation geometry.
+        self.rotor_pos = self.rotor_pos - cg_shift.reshape(1, 3)
         self._perturbations["cg_shift_m"] = [float(v) for v in cg_shift]
 
         # Wind: 0 to wind_max m/s, random direction

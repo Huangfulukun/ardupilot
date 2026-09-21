@@ -19,7 +19,7 @@ Acceptance (all must hold for the straight transition profile):
   A7 forward/backward conversions are symmetric in magnitude
   A8 zero controller mode switching (the phase index is monotonic; one MPC
      is used throughout)
-  A9 returns to a stable hover (ground speed < 1.5 m/s, h_final within 1.0 m)
+  A9 returns to a stable hover (V_final < 1.5 m/s, h_final within 1.0 m)
 """
 import argparse
 import json

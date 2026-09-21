@@ -11,7 +11,7 @@ SERVO12_FUNCTION 195
 
 # --- THX_ parameters ---
 THX_ENABLE 1
-THX_ALLOC_MODE 0         # 0 = weighted pseudoinverse (symmetric thrust, fast solve, no constraints)
+THX_ALLOC_MODE 0         # 0 = weighted pseudoinverse + post-allocation physical clipping
 THX_INDI_RATE 100
 THX_ALLOC_RATE 100
 THX_POLY_N 12

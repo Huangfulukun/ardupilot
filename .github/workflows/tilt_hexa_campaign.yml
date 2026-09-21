@@ -60,6 +60,9 @@ jobs:
         run: |
           set +e
           status=0
+          failure_file="Tools/tilt_hexa_30kg/results/ci/campaign_failures.txt"
+          mkdir -p "$(dirname "$failure_file")"
+          : > "$failure_file"
           run_case() {
             echo "::group::$1"
             shift
@@ -67,7 +70,7 @@ jobs:
             rc=$?
             echo "::endgroup::"
             if [ $rc -ne 0 ]; then
-              echo "FAILED: $* (rc=$rc)" >&2
+              echo "FAILED: $* (rc=$rc)" | tee -a "$failure_file" >&2
               status=1
             fi
           }
@@ -127,22 +130,52 @@ jobs:
             echo "seed_status=REFERENCE_SEED_NOT_MEASURED"
           } > Tools/tilt_hexa_30kg/results/ci/campaign_manifest.txt
 
+      - name: Stage compact paper summaries
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="${GITHUB_WORKSPACE}/.paper_summaries"
+          root="Tools/tilt_hexa_30kg/results"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          : > "$stage/excluded_large_or_raw_files.txt"
+
+          if [ -d "$root" ]; then
+            while IFS= read -r -d '' f; do
+              rel="${f#${root}/}"
+              base="$(basename "$f")"
+              size="$(stat -c '%s' "$f")"
+              case "$base" in
+                *truth*.csv|*timehistory*.csv|*time_history*.csv|*timeseries*.csv|*time_series*.csv)
+                  printf '%s %s raw-timeseries\n' "$size" "$rel" >> "$stage/excluded_large_or_raw_files.txt"
+                  continue
+                  ;;
+              esac
+              if [ "$size" -gt 10485760 ]; then
+                printf '%s %s over-10MiB\n' "$size" "$rel" >> "$stage/excluded_large_or_raw_files.txt"
+                continue
+              fi
+              mkdir -p "$stage/$(dirname "$rel")"
+              cp "$f" "$stage/$rel"
+            done < <(
+              find "$root" -type f \( \
+                -name '*.csv' -o -name '*.json' -o -name '*.txt' -o -name '*.md' -o \
+                -name '*.png' -o -name '*.pdf' -o -name '*.svg' -o -name '*.tex' -o \
+                -name '*.yaml' -o -name '*.yml' \
+              \) -print0
+            )
+          fi
+
+          find "$stage" -type f -printf '%s %P\n' | sort -n > "$stage/compact_manifest.txt"
+          du -sh "$stage"
+
       - name: Upload compact paper summaries
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: tilt-hexa-paper-summaries-${{ env.CAMPAIGN }}-${{ github.run_id }}
-          path: |
-            Tools/tilt_hexa_30kg/results/**/*.csv
-            Tools/tilt_hexa_30kg/results/**/*.json
-            Tools/tilt_hexa_30kg/results/**/*.txt
-            Tools/tilt_hexa_30kg/results/**/*.md
-            Tools/tilt_hexa_30kg/results/**/*.png
-            Tools/tilt_hexa_30kg/results/**/*.pdf
-            Tools/tilt_hexa_30kg/results/**/*.svg
-            Tools/tilt_hexa_30kg/results/**/*.tex
-            Tools/tilt_hexa_30kg/results/**/*.yaml
-            Tools/tilt_hexa_30kg/results/**/*.yml
+          path: .paper_summaries/**
           if-no-files-found: warn
           retention-days: 30
 

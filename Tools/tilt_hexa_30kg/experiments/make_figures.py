@@ -261,6 +261,43 @@ def fig_solve_time():
     save(fig, "fig_solve_time")
 
 
+def fig_mc():
+    """Monte Carlo (20 seeds): tracking RMSE and solve-time distributions."""
+    import json
+    summ = os.path.join(MPC, "campaign", "mc_summary.json")
+    with open(summ) as f:
+        s = json.load(f)
+    s = [r for r in s if r.get("valid")]
+    h = np.array([r["h_rmse"] for r in s])
+    V = np.array([r["V_rmse"] for r in s])
+    p99 = np.array([r["mpc_p99_ms"] for r in s])
+    worst = np.array([r["mpc_worst_ms"] for r in s])
+
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.6))
+    ax = axes[0]
+    bp = ax.boxplot([h, V], positions=[0, 1], widths=0.5,
+                    patch_artist=True, showfliers=True)
+    for patch in bp["boxes"]:
+        patch.set_facecolor(C_MPC); patch.set_alpha(0.6)
+    ax.scatter(np.zeros_like(h) + np.random.RandomState(0).uniform(-0.08, 0.08, len(h)),
+               h, s=8, color=C_MPC, alpha=0.7)
+    ax.scatter(np.ones_like(V) + np.random.RandomState(1).uniform(-0.08, 0.08, len(V)),
+               V, s=8, color=C_NC, alpha=0.7)
+    ax.set_xticks([0, 1]); ax.set_xticklabels(["Altitude RMSE\n(m)", "Speed RMSE\n(m/s)"])
+    ax.set_title("Tracking RMSE over %d seeds" % len(s), fontsize=9)
+
+    ax = axes[1]
+    ax.scatter(np.arange(len(p99)), p99, s=14, color=C_MPC, label="P99")
+    ax.scatter(np.arange(len(worst)), worst, s=14, color=C_NC, marker="x",
+               label="worst")
+    ax.axhline(30.0, color=C_REF, ls="--", lw=1.0, label="30 ms period")
+    ax.set_xlabel("seed index"); ax.set_ylabel("solve time (ms)")
+    ax.set_title("Per-seed solve time", fontsize=9)
+    ax.legend(framealpha=0.9, fontsize=7, loc="upper right")
+    fig.tight_layout()
+    save(fig, "fig_mc")
+
+
 if __name__ == "__main__":
     fig_corridor()
     fig_trim_schedule()
@@ -269,4 +306,5 @@ if __name__ == "__main__":
     fig_aws()
     fig_robustness()
     fig_solve_time()
+    fig_mc()
     print("done")

@@ -206,7 +206,7 @@ class MCPlantModel(PlantModel):
 
         Mx_aero = q_bar * S * b * 0.05 * (da_L - da_R) * se
         My_aero = q_bar * S * c * (-0.85) * 0.5 * (drv_L + drv_R) * se
-        Mz_aero = q_bar * S * b * 0.03 * (drv_R - da_L) * se
+        Mz_aero = q_bar * S * b * 0.03 * (drv_R - drv_L) * se
 
         surface_moment = np.array([Mx_aero, My_aero, Mz_aero], dtype=np.float64)
         moment_body += surface_moment

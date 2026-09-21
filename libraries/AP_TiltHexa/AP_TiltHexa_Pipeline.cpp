@@ -424,6 +424,10 @@ void TiltHexa_Pipeline::run_full_pipeline(
         TiltHexa_Command *cmd,
         TiltHexa_Telemetry *telem) {
 
+    // Telemetry is cleared exactly once for the flying/landing pipeline.
+    // Flags raised later in this cycle must survive until logging.
+    memset(telem, 0, sizeof(*telem));
+
     float dt = sensor->dt;
     if (dt <= 0.0f || dt > 0.05f) dt = 0.01f;
     float indi_hz = _params.indi_rate_hz;
@@ -588,45 +592,35 @@ void TiltHexa_Pipeline::run_full_pipeline(
 
     thx_indi_compute(&indi_in, &indi_out);
 
-    // ---- 6. Clamp w_d (physical limits, identical for both allocators) ----
+    // ---- 6. Numerical sanity guard on w_d ----
+    // Do NOT project the command onto an approximate attainable force/moment
+    // envelope here.  The paper compares how PI+clipping and constrained WLS
+    // handle the same INDI wrench request, including deliberately infeasible
+    // requests in E3.  This guard only prevents NaN/Inf or gross numerical
+    // excursions from reaching the allocator.
     {
-        float T_max = _params.T_max;
-        float L = _params.arm_l;
+        const float T_max = _params.T_max;
+        const float L = _params.arm_l;
+        const float F_guard = 10.0f * 6.0f * T_max;
+        const float M_guard = 10.0f * 3.0f * T_max * L;
+        bool guarded = false;
 
-        float F_max = 6.0f * T_max;      // max total force from 6 rotors
-        float M_max = 3.0f * T_max * L;
-
-        // HARD RULE 2: Both PI and WLS receive the IDENTICAL w_d.
-        // No allocator-specific Fx zeroing, no fx_frac, no Fx rate limiter.
-
-        // Mild physical clamp: ensure w_d stays within absolute limits.
-        bool w_d_was_clamped = false;
-        float Fx_before = indi_out.w_d.Fx;
-        float Fz_before = indi_out.w_d.Fz;
-        float Mx_before = indi_out.w_d.Mx;
-        float My_before = indi_out.w_d.My;
-        float Mz_before = indi_out.w_d.Mz;
-
-        // Step 1: clamp individual channels
-        indi_out.w_d.Fx = clamp(indi_out.w_d.Fx, -F_max, F_max);
-        indi_out.w_d.Fz = clamp(indi_out.w_d.Fz, -F_max, 0.0f);
-        indi_out.w_d.Mx = clamp(indi_out.w_d.Mx, -M_max, M_max);
-        indi_out.w_d.My = clamp(indi_out.w_d.My, -M_max, M_max);
-        indi_out.w_d.Mz = clamp(indi_out.w_d.Mz, -M_max, M_max);
-
-        // Step 2: combined force constraint (same pool for Fx and Fz)
-        float Fz_eff = fmaxf(fabsf(indi_out.w_d.Fz), 0.0f);
-        float Fx_pool = sqrtf(fmaxf(0.0f, F_max * F_max - Fz_eff * Fz_eff));
-        float Fx_after = clamp(indi_out.w_d.Fx, -Fx_pool, Fx_pool);
-        indi_out.w_d.Fx = Fx_after;
-
-        // Set clamp flag if any channel was actually clamped
-        w_d_was_clamped = (fabsf(Fx_before - indi_out.w_d.Fx) > 1e-6f) ||
-                          (fabsf(Fz_before - indi_out.w_d.Fz) > 1e-6f) ||
-                          (fabsf(Mx_before - indi_out.w_d.Mx) > 1e-6f) ||
-                          (fabsf(My_before - indi_out.w_d.My) > 1e-6f) ||
-                          (fabsf(Mz_before - indi_out.w_d.Mz) > 1e-6f);
-        telem->w_d_clamped = w_d_was_clamped;
+        float *w[5] = {
+            &indi_out.w_d.Fx, &indi_out.w_d.Fz,
+            &indi_out.w_d.Mx, &indi_out.w_d.My, &indi_out.w_d.Mz
+        };
+        const float lim[5] = {F_guard, F_guard, M_guard, M_guard, M_guard};
+        for (uint8_t i = 0; i < 5; i++) {
+            if (!isfinite(*w[i])) {
+                *w[i] = 0.0f;
+                guarded = true;
+            } else {
+                const float before = *w[i];
+                *w[i] = clamp(*w[i], -lim[i], lim[i]);
+                guarded |= fabsf(before - *w[i]) > 1.0e-6f;
+            }
+        }
+        telem->w_d_clamped = guarded;
     }
 
     // ---- 7. Run allocator ----
@@ -660,46 +654,71 @@ void TiltHexa_Pipeline::run_full_pipeline(
     // Timing hook
     uint32_t t_start = sensor->micros_now;  // caller-provided monotonic us
 
+    // The PI and WLS branches receive identical w_d, gains, filters, B(x),
+    // actuator limits and previous-command state.  Only the allocation method
+    // differs.  This is a paper-level experimental contract.
+    _pi_solver.use_symmetric_tilt = false;
+
     if (_params.alloc_mode == 1) {
-        // ---- Constrained WLS via QP ----
-        // PI symmetric tilt is disabled for WLS; QP handles constraints natively.
-        _pi_solver.use_symmetric_tilt = false;
+        // ---- Proposed constrained WLS/QP ----
+        // The PI solution is used only as a warm-start / emergency fallback;
+        // a successful WLS cycle always returns the QP optimum.
+        TiltHexa_PIResult pi_res = _pi_solver.solve(&alloc_in);
 
-        // Always run QP when Fx demand is significant (transition),
-        // even if PI solution is formally "feasible".  The PI's
-        // symmetric-tilt minimum-norm solution clips Fx at the tilt
-        // rate limit and loses control margin; the QP can distribute
-        // Fx across fewer rotors to preserve vertical thrust.
-        bool use_pi_directly = false;
+        TiltHexa_ConstraintSet cs_pos;
+        TiltHexa_RateConstraintSet cs_rate;
+        TiltHexa_ConstraintSet cs_combined;
+        cs_pos.clear();
+        cs_rate.clear();
+        cs_combined.clear();
+        cs_pos.assemble(&alloc_in);
+        cs_rate.assemble(&alloc_in);
 
-        {
-            TiltHexa_PIResult pi_res = _pi_solver.solve(&alloc_in);
+        // Surface-rate constraints are centred on the *previous commanded*
+        // actuator vector, not on the PI candidate.  Tilt-rate sectors are
+        // already assembled from alloc_in.u_prev in cs_pos.
+        thx_combine_rate_constraints(&cs_combined, &cs_pos, &cs_rate, _u_prev_vec);
 
-            // Assemble constraints and check PI feasibility
-            TiltHexa_ConstraintSet cs_pos;
-            TiltHexa_RateConstraintSet cs_rate;
-            cs_pos.clear();
-            cs_rate.clear();
-            cs_pos.assemble(&alloc_in);
-            cs_rate.assemble(&alloc_in);
+        _qp_solver.build_hessian_gradient(&alloc_in);
+        _qp_solver.set_warm_start_point(pi_res.u);
+        _qp_solver.load_constraints(&cs_combined);
 
-            float viol = thx_max_constraint_violation(pi_res.u, &cs_pos, &cs_rate);
+        TiltHexa_QPResult qp_res = _qp_solver.solve(_params.qp_max_iter);
+        alloc_out.solver_status = qp_res.status;
+        alloc_out.solver_iterations = qp_res.iterations;
+        alloc_out.n_active_constraints = qp_res.n_active;
 
-            // Determine whether QP is worthwhile
-            float Fx_demand = fabsf(alloc_in.w_d.Fx);
-            float Fz_hover = _params.mass_kg * (_params.g > 0.0f ? _params.g : GRAVITY);
-            bool significant_Fx = (Fx_demand > 0.05f * Fz_hover);  // >5% of hover thrust
+        if (qp_res.status == THX_SOLVER_OK) {
+            for (int i = 0; i < 16; i++) {
+                _u_prev_vec[i] = qp_res.u_opt[i];
+            }
+            memcpy(&alloc_out.w_achieved, qp_res.w_achieved, 5 * sizeof(float));
+            _has_feasible_solution = true;
+        } else {
+            // Safety fallback is deliberately visible in THXQ.Stat.  It is
+            // never re-labelled as a successful WLS result in post-processing.
+            for (int i = 0; i < 16; i++) {
+                _u_prev_vec[i] = pi_res.u[i];
+            }
+            memcpy(&alloc_out.w_achieved, pi_res.w_achieved, 5 * sizeof(float));
+            alloc_out.n_active_constraints = pi_res.clip_count;
+        }
+    } else {
+        // ---- Algorithmic baseline: weighted pseudo-inverse + physical clipping ----
+        // No QP redistribution and no allocator-specific wrench shaping.
+        TiltHexa_PIResult pi_res = _pi_solver.solve(&alloc_in);
+        for (int i = 0; i < 16; i++) {
+            _u_prev_vec[i] = pi_res.u[i];
+        }
+        memcpy(&alloc_out.w_achieved, pi_res.w_achieved, 5 * sizeof(float));
+        alloc_out.solver_status = THX_SOLVER_OK;
+        alloc_out.solver_iterations = 1;
+        alloc_out.n_active_constraints = pi_res.clip_count;
+        alloc_out.sig_min = pi_res.sig_min;
+        _has_feasible_solution = true;
+    }
 
-            if (!significant_Fx && viol <= 1e-5f) {
-                // PI solution is feasible and Fx demand negligible: use directly
-                for (int i = 0; i < 16; i++) {
-                    _u_prev_vec[i] = pi_res.u[i];
-                }
-                memcpy(&alloc_out.w_achieved, pi_res.w_achieved, 5 * sizeof(float));
-                alloc_out.solver_status   = THX_SOLVER_OK;
-                alloc_out.solver_iterations = 1;
-                alloc_out.n_active_constraints = 0;
-                alloc_out.solver_time_us = sensor->micros_now - t_start;
+    alloc_out.solver_time_us = sensor->micros_now - t_start;
                 alloc_out.sig_min = pi_res.sig_min;
                 _has_feasible_solution = true;
                 use_pi_directly = true;
@@ -898,7 +917,6 @@ void TiltHexa_Pipeline::run_full_pipeline(
     }
 
     // ---- 10. Fill telemetry ----
-    memset(telem, 0, sizeof(*telem));
     telem->w_d[0] = indi_out.w_d.Fx;
     telem->w_d[1] = indi_out.w_d.Fz;
     telem->w_d[2] = indi_out.w_d.Mx;

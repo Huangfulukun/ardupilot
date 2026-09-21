@@ -42,6 +42,12 @@ SITL_BINARY = os.path.join(BUILD_DIR, "arduplane")
 # Port conventions
 JSON_BASE_PORT = 9002   # + 10*instance for JSON FDM
 MAVLINK_BASE_PORT = 5760  # + 10*instance for MAVLink TCP
+
+# Each SITL instance gets an isolated working/log directory.  Without this,
+# parallel paper experiments race on the repository-root *.BIN files and can
+# parse another instance's still-open log.
+_SITL_LOG_DIRS = {}
+
 SIM_VEHICLE_SCRIPT = os.path.join(REPO_ROOT, "Tools", "autotest", "sim_vehicle.py")
 
 # MAVLink globals and imports (deferred until needed)
@@ -255,13 +261,21 @@ def launch_sitl(instance: int, parm_file: str,
     if extra_args:
         cmd.extend(extra_args)
 
+    # Isolate EEPROM and DataFlash logs per experiment/instance.  All
+    # experiment callers build a combined parameter file inside a unique
+    # temporary directory, so use that directory as the SITL cwd.
+    sitl_cwd = os.path.dirname(os.path.abspath(parm_file))
+    os.makedirs(sitl_cwd, exist_ok=True)
+    _SITL_LOG_DIRS[instance] = sitl_cwd
+
     print(f"[SITL launcher] Starting SITL: {' '.join(cmd)}")
+    print(f"[SITL launcher] Work/log directory: {sitl_cwd}")
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         preexec_fn=_set_pgrp,
-        cwd=REPO_ROOT,
+        cwd=sitl_cwd,
     )
     # Wait for SITL to initialise (parameters, EKF boot)
     time.sleep(3.0)
@@ -565,26 +579,50 @@ def wait_thx_completion(mav: Any, timeout: float = 600.0) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def find_bin_log(instance: int) -> Optional[str]:
-    """Find the most recent .BIN log file for the given SITL instance.
+    """Find the newest complete-looking BIN log for one SITL instance.
 
-    SITL writes logs to the current directory or a 'logs' subdirectory.
+    Parallel research experiments must never search the shared repository root
+    first: another instance may still be writing its DataFlash file there.
+    launch_sitl() records an isolated cwd for every instance.
     """
-    search_dirs = [
-        REPO_ROOT,
-        os.path.join(REPO_ROOT, "logs"),
-    ]
+    search_dirs = []
+    instance_dir = _SITL_LOG_DIRS.get(instance)
+    if instance_dir:
+        search_dirs.extend([instance_dir, os.path.join(instance_dir, "logs")])
+
+    # Backward-compatible fallback for manually launched legacy runs only.
+    search_dirs.extend([REPO_ROOT, os.path.join(REPO_ROOT, "logs")])
+
     candidates = []
+    seen = set()
     for d in search_dirs:
-        if not os.path.isdir(d):
+        d = os.path.abspath(d)
+        if d in seen or not os.path.isdir(d):
             continue
+        seen.add(d)
         for fn in os.listdir(d):
             if fn.lower().endswith(".bin"):
                 fpath = os.path.join(d, fn)
-                candidates.append((os.path.getmtime(fpath), fpath))
+                try:
+                    st = os.stat(fpath)
+                except OSError:
+                    continue
+                # Ignore empty/tiny files which are not useful DataFlash logs.
+                if st.st_size < 1024:
+                    continue
+                candidates.append((st.st_mtime, st.st_size, fpath))
+        # If the isolated instance directory contains a log, do not fall
+        # through to repository-root logs from other instances.
+        if candidates and instance_dir and d in {
+            os.path.abspath(instance_dir),
+            os.path.abspath(os.path.join(instance_dir, "logs")),
+        }:
+            break
+
     if not candidates:
         return None
     candidates.sort(reverse=True)
-    return candidates[0][1]
+    return candidates[0][2]
 
 
 def collect_results(instance: int, exp_name: str, bin_path: Optional[str],

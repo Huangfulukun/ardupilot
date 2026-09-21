@@ -9,6 +9,8 @@ on:
       - 'Tools/autotest/models/JobyS4.json'
       - 'Tools/autotest/models/JobyS4.param'
       - 'Tools/autotest/pysim/vehicleinfo.py'
+      - 'Tools/autotest/joby_s4_flight.py'
+      - 'Tools/autotest/joby_s4_log_analysis.py'
       - 'libraries/SITL/SIM_Frame.cpp'
       - 'libraries/SITL/SIM_QuadPlane.cpp'
   workflow_dispatch:

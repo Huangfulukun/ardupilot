@@ -1,0 +1,89 @@
+name: TiltHexa research CI
+
+on:
+  push:
+    branches:
+      - pr_unifympc_wls_20260918_apm47
+    paths:
+      - 'libraries/AP_TiltHexa/**'
+      - 'Tools/tilt_hexa_30kg/**'
+      - 'ArduPlane/**'
+      - 'libraries/SRV_Channel/**'
+      - 'libraries/AP_Logger/**'
+      - '.github/workflows/tilt_hexa_ci.yml'
+  pull_request:
+    paths:
+      - 'libraries/AP_TiltHexa/**'
+      - 'Tools/tilt_hexa_30kg/**'
+      - 'ArduPlane/**'
+      - 'libraries/SRV_Channel/**'
+      - 'libraries/AP_Logger/**'
+  workflow_dispatch:
+
+concurrency:
+  group: tilt-hexa-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-and-analysis:
+    runs-on: ubuntu-22.04
+    container:
+      image: ardupilot/ardupilot-dev-base:v0.1.3
+      options: --user 1001
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Configure environment
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          python3 -m pip install --user -q pytest pyyaml numpy scipy pandas matplotlib
+          echo "/github/home/.local/bin" >> "${GITHUB_PATH}"
+      - name: Seed/header and research-contract tests
+        run: |
+          python3 -m pytest             Tools/tilt_hexa_30kg/tests/test_seed_header_fresh.py             Tools/tilt_hexa_30kg/tests/test_research_contract.py -q
+      - name: HAL-free core tests (float)
+        run: make -C libraries/AP_TiltHexa/core test
+      - name: HAL-free core tests (double)
+        run: make -C libraries/AP_TiltHexa/core test_double
+      - name: Allocator E0 boundary tests
+        run: make -C libraries/AP_TiltHexa/core e0_test
+      - name: Python nonlinear-plant tests
+        run: python3 -m pytest Tools/tilt_hexa_30kg/tests -q
+      - name: Trim and AFMS analysis smoke
+        run: |
+          python3 Tools/tilt_hexa_30kg/experiments/run_e1_trim.py
+          python3 Tools/tilt_hexa_30kg/analysis/run_afms.py
+      - name: Upload analysis artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: tilt-hexa-ci-analysis
+          path: |
+            Tools/tilt_hexa_30kg/results/E0/**
+            Tools/tilt_hexa_30kg/results/E1/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  arduplane-sitl-build:
+    runs-on: ubuntu-22.04
+    container:
+      image: ardupilot/ardupilot-dev-base:v0.1.3
+      options: --user 1001
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Build ArduPlane SITL
+        shell: 'script -q -e -c "bash {0}"'
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          PATH="/github/home/.local/bin:$PATH"
+          ./waf configure --board sitl
+          ./waf plane
+      - name: Parameter metadata parse
+        run: |
+          PATH="/github/home/.local/bin:$PATH"
+          python3 Tools/autotest/param_metadata/param_parse.py --vehicle ArduPlane

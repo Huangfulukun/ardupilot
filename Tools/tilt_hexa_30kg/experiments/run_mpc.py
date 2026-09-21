@@ -80,14 +80,23 @@ class FixedScheduleRef(MissionReference):
 
 def run(scenario="transition", alt=5.0, cruise=20.0, seed=42, wind=0.0,
         gust=None, monte_carlo=False, latency_ms=0.0, no_corridor=False,
-        ctrl_dt=0.03, out_dir=None, label="mpc", max_t=None):
+        ctrl_dt=0.03, out_dir=None, label="mpc", max_t=None, perturb_fn=None):
     np.random.seed(seed)
     p = SeedParams(alloc_mode=1)
-    wind_ned = (wind * 0.7, wind * 0.7, 0.0) if wind else (0, 0, 0)
+    # steady wind is a pure CROSSWIND (East, 90 deg to the North track): it
+    # tests lateral position-hold / crabbing without corrupting the along-track
+    # airspeed criterion the way a tailwind does (a 045-deg wind capped the
+    # achievable airspeed at groundspeed 20 and made A2 unachievable).
+    wind_ned = (0.0, wind, 0.0) if wind else (0, 0, 0)
     truth_csv = os.path.join(out_dir, f"{label}_truth.csv") if out_dir else None
     fdm = TiltHexaFDM(CONFIG, seed=seed, wind_ned=wind_ned,
                       monte_carlo=monte_carlo, gust_params=gust,
                       delay_ms=latency_ms, csv_out=truth_csv, start_alt=0.0)
+    # Deterministic single-factor perturbation for the S1-S9 campaign.
+    # The controller is built from the nominal SeedParams (p), so a plant
+    # perturbation is a genuine model mismatch: the controller never sees it.
+    if perturb_fn is not None:
+        perturb_fn(fdm, p)
     T_max_plant = float(fdm.cfg.propulsion.max_static_thrust_N)
     expo = float(fdm.cfg.propulsion.thrust_curve_expo)
     surf_max = [math.radians(fdm.cfg.surfaces.aileron_left_max_deg),
@@ -113,8 +122,11 @@ def run(scenario="transition", alt=5.0, cruise=20.0, seed=42, wind=0.0,
     turn = None
     cruise_dur = 10.0
     if scenario == "full":
-        turn = dict(t_start=3.0, t_end=9.0, rate_dps=15.0)
-    mk = dict(alt=alt, cruise=cruise, cruise_dur=cruise_dur, hover0=3.0, hover1=3.0,
+        # gentle coordinated cruise turn: 45 deg heading change at 5 dps
+        # (steady bank ~10 deg), which is well within the roll tracking
+        # authority of the tilt-rotor configuration at cruise.
+        turn = dict(t_start=2.0, t_end=11.0, rate_dps=5.0)
+    mk = dict(alt=alt, cruise=cruise, cruise_dur=cruise_dur, hover0=3.0, hover1=8.0,
               turn=turn)
     ctrl = TiltHexaMPC(p, mission_kwargs=mk, ctrl_dt=ctrl_dt, use_corridor=not no_corridor)
     if no_corridor:
@@ -134,6 +146,7 @@ def run(scenario="transition", alt=5.0, cruise=20.0, seed=42, wind=0.0,
             state = np.concatenate([fdm.rb.pos, fdm.rb.vel,
                                     [roll, pitch, yaw], fdm.rb.omega])
             V = float(np.linalg.norm(fdm.rb.vel))
+            # mission clock starts once airborne; before that, climb from t=0
             if -fdm.rb.pos[2] > 0.3:
                 started = True
             t_mission = t

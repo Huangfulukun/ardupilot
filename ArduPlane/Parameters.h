@@ -69,7 +69,7 @@ public:
         k_param_flap_1_speed,
         k_param_flap_2_percent,
         k_param_flap_2_speed,
-        k_param_reset_switch_chan, // unused - moved to RC option
+        k_param_reset_switch_chan, // unused
         k_param_manual_level, // unused
         k_param_land_pitch_cd,  // unused - moved to AP_Landing
         k_param_ins_old,            // *** Deprecated, remove with next eeprom number change
@@ -371,6 +371,7 @@ public:
         k_param_mode_autoland,
         k_param__gcs,
 
+        k_param_tilt_hexa = 274,  // AP_TiltHexa research module
     };
 
     AP_Int16 format_version;
@@ -594,6 +595,10 @@ public:
 
 #if AP_PLANE_SYSTEMID_ENABLED
     AP_SystemID systemid;
+#endif
+
+#if AP_TILTHEXA_ENABLED
+    AP_TiltHexa tilt_hexa;
 #endif
 };
 

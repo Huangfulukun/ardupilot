@@ -135,6 +135,7 @@ jobs:
             jobys4-sitl.log
             jobys4-analysis.json
             joby-buildlogs
+            joby-flight-run
             logs
           if-no-files-found: warn
           retention-days: 14

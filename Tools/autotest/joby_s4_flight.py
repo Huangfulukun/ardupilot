@@ -6,9 +6,16 @@ import os
 import sys
 
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_ROOT = os.path.realpath(os.path.join(THIS_DIR, "..", ".."))
 sys.path.insert(0, THIS_DIR)
 
-from pymavlink import mavutil
+try:
+    from pymavlink import mavutil
+except ImportError:
+    # Match sim_vehicle.py: use the pymavlink checkout carried as an
+    # ArduPilot submodule when the dev image has no site-package install.
+    sys.path.insert(0, os.path.join(REPO_ROOT, "modules", "mavlink"))
+    from pymavlink import mavutil
 
 from quadplane import AutoTestQuadPlane
 from vehicle_test_suite import Test
@@ -123,7 +130,7 @@ class AutoTestJobyS4(AutoTestQuadPlane):
 
 
 def main():
-    repo_root = os.path.realpath(os.path.join(THIS_DIR, "..", ".."))
+    repo_root = REPO_ROOT
     binary = os.path.join(repo_root, "build", "sitl", "bin", "arduplane")
     logs_dir = os.environ.get(
         "JOBY_BUILDLOGS",

@@ -25,11 +25,11 @@
     "moment_inertia": [14000.0, 8500.0, 20000.0],
     "num_motors": 6.0,
 
-    "motor1_position": [0.30, 4.30, 0.00],
-    "motor2_position": [0.30, -4.30, 0.00],
-    "motor3_position": [0.45, -2.10, 0.00],
+    "motor1_position": [1.35, 4.30, 0.00],
+    "motor2_position": [1.35, -4.30, 0.00],
+    "motor3_position": [1.35, -2.10, 0.00],
     "motor4_position": [-2.70, 1.60, -0.35],
-    "motor5_position": [0.45, 2.10, 0.00],
+    "motor5_position": [1.35, 2.10, 0.00],
     "motor6_position": [-2.70, -1.60, -0.35],
 
     "motor1_vector": [0.0, 0.0, -1.0],

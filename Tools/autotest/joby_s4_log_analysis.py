@@ -58,8 +58,7 @@ def find_log(root):
     candidates = []
     for base, _, files in os.walk(root):
         for name in files:
-            lower = name.lower()
-            if lower.endswith(".bin"):
+            if name.endswith(".BIN") or name.lower().endswith("-log.bin"):
                 path = os.path.join(base, name)
                 candidates.append((os.path.getsize(path), os.path.getmtime(path), path))
     if not candidates:

@@ -255,7 +255,7 @@ const AP_Param::Info Plane::var_info[] = {
 
     // @Param: WP_LOITER_RAD
     // @DisplayName: Waypoint Loiter Radius
-    // @Description: Defines the distance from the waypoint center, the plane will maintain during a loiter. If you set this to a negative number then the default loiter direction will be counter-clockwise instead of clockwise. If the value is too close to zero, the achieved loiter radius will be determined by ROLL_LIMIT_DEG.
+    // @Description: Defines the distance from the waypoint center, the plane will maintain during a loiter. If you set this value to a negative number then the default loiter direction will be counter-clockwise instead of clockwise. If the value is too close to zero, the achieved loiter radius will be determined by ROLL_LIMIT_DEG.
     // @Units: m
     // @Range: -32767 32767
     // @Increment: 1
@@ -611,7 +611,7 @@ const AP_Param::Info Plane::var_info[] = {
 
     // @Param: MIXING_OFFSET
     // @DisplayName: Mixing Offset
-    // @Description: The offset for the Vtail and elevon output mixers, as a percentage. This can be used in combination with MIXING_GAIN to configure how the control surfaces respond to input. The response to aileron or elevator input can be increased by setting this to a positive or negative value. A common usage is to enter a positive value to increase the aileron response of the elevons of a flying wing. The default value of zero will leave the aileron-input response equal to the elevator-input response.
+    // @Description: The offset for the Vtail and elevon output mixers, as a percentage. This can be used in combination with MIXING_GAIN to configure how the control surfaces respond to input. The response to aileron or elevator input can be increased by setting this parameter to a positive or negative value. A common usage is to enter a positive value to increase the aileron response of the elevons of a flying wing. The default value of zero will leave the aileron-input response equal to the elevator-input response.
     // @Units: d%
     // @Range: -1000 1000
     // @User: Standard
@@ -1561,7 +1561,7 @@ void Plane::load_parameters(void)
     {
         static const AP_Param::ConversionInfo gcs_conversion_info[] {
             { Parameters::k_param_sysid_this_mav_old, 0, AP_PARAM_INT16,  "MAV_SYSID" },
-            { Parameters::k_param_sysid_my_gcs_old, 0, AP_PARAM_INT16, "MAV_GCS_SYSID" },
+            { Parameters::k_param_sysid_my_gcs_old, 0, AP_PARAM_INT16,  "MAV_GCS_SYSID" },
             { Parameters::k_param_g2,  4, AP_PARAM_INT8, "MAV_OPTIONS" },
             { Parameters::k_param_telem_delay_old,  0, AP_PARAM_INT8, "MAV_TELEM_DELAY" },
         };

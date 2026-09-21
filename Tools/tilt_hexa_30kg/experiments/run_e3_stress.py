@@ -468,6 +468,58 @@ def compute_saturation_metrics(bin_path: Optional[str]) -> Dict[str, float]:
     return defaults
 
 
+
+def find_pi_saturation_boundary(all_results: List[Dict[str, Any]]) -> Optional[float]:
+    """Return the first stress lambda at which the PI baseline reaches a limit.
+
+    A run is considered at/over the boundary when it does not complete, when
+    allocator/actuator saturation exceeds the E3 thresholds, or when finite
+    model-wrench RMSE grows by WRMSE_INCREASE_THRESHOLD relative to the
+    lambda=0 PI baseline. Non-finite RMSE values are ignored here so logging
+    defects cannot manufacture a saturation boundary.
+    """
+    pi_results = sorted(
+        (r for r in all_results if r.get("method") == "pi"),
+        key=lambda r: float(r.get("lambda", math.inf)),
+    )
+    if not pi_results:
+        return None
+
+    baseline_rmse = float("nan")
+    for r in pi_results:
+        if abs(float(r.get("lambda", math.inf))) < 1e-9:
+            candidate = float(r.get("wrench_rmse_model", float("nan")))
+            if math.isfinite(candidate) and candidate > 0.0:
+                baseline_rmse = candidate
+            break
+
+    actuator_keys = (
+        "thrust_sat_fraction",
+        "tilt_sat_fraction",
+        "surface_sat_fraction",
+        "tilt_rate_sat_fraction",
+    )
+
+    for r in pi_results:
+        lam = float(r.get("lambda", math.inf))
+        if not r.get("completed", False):
+            return lam
+
+        if float(r.get("sat_fraction", 0.0) or 0.0) >= SAT_FRACTION_THRESHOLD:
+            return lam
+
+        if any(float(r.get(k, 0.0) or 0.0) >= ACTUATOR_SAT_THRESHOLD
+               for k in actuator_keys):
+            return lam
+
+        rmse = float(r.get("wrench_rmse_model", float("nan")))
+        if (math.isfinite(baseline_rmse) and math.isfinite(rmse)
+                and rmse >= WRMSE_INCREASE_THRESHOLD * baseline_rmse):
+            return lam
+
+    return None
+
+
 # ============================================================================
 # Time history export (near-boundary)
 # ============================================================================

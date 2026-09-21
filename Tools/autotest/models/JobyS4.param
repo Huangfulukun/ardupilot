@@ -6,7 +6,7 @@
 
 Q_ENABLE         1
 Q_FRAME_CLASS    2
-Q_FRAME_TYPE     1
+Q_FRAME_TYPE     22
 
 Q_TILT_ENABLE    1
 Q_TILT_TYPE      0

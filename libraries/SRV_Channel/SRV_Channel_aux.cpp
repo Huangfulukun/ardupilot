@@ -644,7 +644,7 @@ float SRV_Channels::get_output_scaled(SRV_Channel::Function function)
 float SRV_Channels::get_slew_limited_output_scaled(SRV_Channel::Function function)
 {
     if (!SRV_Channel::valid_function(function)) {
-        return 0.0f;
+        return 0.0;
     }
     for (slew_list *slew = _slew; slew; slew = slew->next) {
         if (slew->func == function) {

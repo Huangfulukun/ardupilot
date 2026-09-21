@@ -803,6 +803,29 @@ bool AP_MotorsMatrix::setup_hexa_matrix(motor_frame_type frame_type)
         add_motors(motors, ARRAY_SIZE(motors));
         break;
     }
+    case MOTOR_FRAME_TYPE_JOBY_S4: {
+        // Joby S4 concept geometry used by SITL.
+        //
+        // Raw factors follow the actual lever-arm signs:
+        //   roll  ~= -y / max(|y|)
+        //   pitch ~=  x / max(|x|)
+        //
+        // Four wing propulsion stations are 1.35 m forward of the CG
+        // and the two V-tail stations are 2.70 m aft.  The lateral arms
+        // are +/-4.30 m, +/-2.10 m and +/-1.60 m.  AP_MotorsMatrix
+        // subsequently normalises each axis to +/-0.5.
+        _frame_type_string = "JOBY_S4";
+        static const AP_MotorsMatrix::MotorDefRaw motors[] {
+            { -1.0000f,  0.5000f, AP_MOTORS_MATRIX_YAW_FACTOR_CW,   2 }, // M1 outer right wing
+            {  1.0000f,  0.5000f, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 5 }, // M2 outer left wing
+            {  0.4884f,  0.5000f, AP_MOTORS_MATRIX_YAW_FACTOR_CW,   6 }, // M3 inner left wing
+            { -0.3721f, -1.0000f, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 3 }, // M4 right V-tail
+            { -0.4884f,  0.5000f, AP_MOTORS_MATRIX_YAW_FACTOR_CCW, 1 }, // M5 inner right wing
+            {  0.3721f, -1.0000f, AP_MOTORS_MATRIX_YAW_FACTOR_CW,   4 }, // M6 left V-tail
+        };
+        add_motors_raw(motors, ARRAY_SIZE(motors));
+        break;
+    }
     case MOTOR_FRAME_TYPE_H: {
         // H is same as X except middle motors are closer to center
         _frame_type_string = "H";

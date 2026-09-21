@@ -23,7 +23,7 @@ on:
 
 concurrency:
   group: tilt-hexa-campaign-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   paper-campaign:

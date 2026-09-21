@@ -127,6 +127,25 @@ jobs:
             echo "seed_status=REFERENCE_SEED_NOT_MEASURED"
           } > Tools/tilt_hexa_30kg/results/ci/campaign_manifest.txt
 
+      - name: Upload compact paper summaries
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: tilt-hexa-paper-summaries-${{ env.CAMPAIGN }}-${{ github.run_id }}
+          path: |
+            Tools/tilt_hexa_30kg/results/**/*.csv
+            Tools/tilt_hexa_30kg/results/**/*.json
+            Tools/tilt_hexa_30kg/results/**/*.txt
+            Tools/tilt_hexa_30kg/results/**/*.md
+            Tools/tilt_hexa_30kg/results/**/*.png
+            Tools/tilt_hexa_30kg/results/**/*.pdf
+            Tools/tilt_hexa_30kg/results/**/*.svg
+            Tools/tilt_hexa_30kg/results/**/*.tex
+            Tools/tilt_hexa_30kg/results/**/*.yaml
+            Tools/tilt_hexa_30kg/results/**/*.yml
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload campaign results and logs
         if: always()
         uses: actions/upload-artifact@v6

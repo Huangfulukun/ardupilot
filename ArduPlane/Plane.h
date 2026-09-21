@@ -101,6 +101,11 @@
 #include "tuning.h"
 #endif
 
+#include <AP_TiltHexa/AP_TiltHexa_config.h>
+#if AP_TILTHEXA_ENABLED
+#include <AP_TiltHexa/AP_TiltHexa.h>
+#endif
+
 // Configuration
 #include "config.h"
 
@@ -517,7 +522,7 @@ private:
         // Minimum pitch to hold during takeoff command execution.  Hundredths of a degree
         int16_t takeoff_pitch_cd;
 
-        // Flag for using gps ground course instead of INS yaw.  Set false when takeoff command in process.
+        // Flag for using gps ground course instead of IMU yaw.  Set false when takeoff command in process.
         bool takeoff_complete;
 
         // are we headed to the land approach waypoint? Works for any nav type
@@ -846,6 +851,11 @@ private:
     AP_Tuning_Plane tuning;
 #endif
 
+#if AP_TILTHEXA_ENABLED
+    // reference for tilt_hexa convenience (member lives in ParametersG2)
+    AP_TiltHexa &tilt_hexa = g2.tilt_hexa;
+#endif
+
     static const struct LogStructure log_structure[];
 
     // rudder mixing gain for differential thrust (0 - 1)
@@ -1014,7 +1024,7 @@ private:
     bool do_change_speed(const AP_Mission::Mission_Command& cmd);
     void do_set_home(const AP_Mission::Mission_Command& cmd);
     bool start_command_callback(const AP_Mission::Mission_Command &cmd);
-    bool verify_command_callback(const AP_Mission::Mission_Command& cmd);
+    bool verify_command_callback(const AP_Mission::Mission_Command &cmd);
     float get_wp_radius() const;
 
     bool is_land_command(uint16_t cmd) const;
@@ -1094,7 +1104,7 @@ private:
 #endif
     void one_second_loop(void);
     void three_hz_loop(void);
-#if AP_AIRSPEED_AUTOCAL_ENABLE
+#if AP_AIRSPEED_AUTOCAL_ENABLED
     void airspeed_ratio_update(void);
 #endif
     void update_logging10(void);

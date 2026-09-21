@@ -1,0 +1,174 @@
+name: TiltHexa30 paper-3 five-DOF SITL experiments
+
+on:
+  push:
+    branches:
+      - paper3/tilthexa30-5dof-comfort-sitl
+    paths:
+      - '.github/workflows/tilthexa30_paper3.yml'
+      - 'Tools/autotest/models/TiltHexa30.json'
+      - 'Tools/autotest/models/TiltHexa30.param'
+      - 'Tools/autotest/tilthexa30_paper3.py'
+      - 'Tools/autotest/tilthexa30_paper3_analysis.py'
+      - 'libraries/SITL/SIM_QuadPlane.cpp'
+  workflow_dispatch:
+
+concurrency:
+  group: tilthexa30-paper3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paper3:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    container:
+      image: ardupilot/ardupilot-dev-base:v0.1.3
+      options: --privileged --cap-add=SYS_PTRACE --security-opt apparmor=unconfined --security-opt seccomp=unconfined
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Build ArduPlane SITL
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          PATH="/github/home/.local/bin:$PATH"
+          ./waf configure --board sitl --debug
+          ./waf build --target bin/arduplane
+
+      - name: Validate experiment sources and 30 kg model
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 -m py_compile             Tools/autotest/tilthexa30_paper3.py             Tools/autotest/tilthexa30_paper3_analysis.py
+          python3 - <<'PY'
+          import json
+          import numpy
+          with open('Tools/autotest/models/TiltHexa30.json', encoding='utf-8') as f:
+              m = json.load(f)
+          assert m['mass'] == 30.0
+          assert int(m['num_motors']) == 6
+          assert abs(m['hoverThrOut'] - 0.50) < 1e-9
+          for i in range(1, 7):
+              assert len(m[f'motor{i}_position']) == 3
+              assert len(m[f'motor{i}_vector']) == 3
+          print('numpy', numpy.__version__)
+          print('TiltHexa30 source/model validation: PASS')
+          PY
+
+      - name: S0 five-DOF rank and reachable-force analysis
+        id: static
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p paper3-results/static
+          PATH="/github/home/.local/bin:$PATH"
+          python3 Tools/autotest/tilthexa30_paper3.py             --static-only             --output-dir paper3-results/static
+
+      - name: Run S1-S4 core comparisons
+        id: core
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          PATH="/github/home/.local/bin:$PATH"
+          fail=0
+          for scenario in S1 S2 S3 S4; do
+            for method in M1 M2 M3; do
+              out="paper3-results/core/${scenario}_${method}"
+              echo "=== ${scenario} ${method} ==="
+              python3 Tools/autotest/tilthexa30_paper3.py                 --method "${method}"                 --scenario "${scenario}"                 --target-speed 8                 --speedup 6                 --output-dir "${out}" || fail=1
+              sleep 1
+            done
+          done
+          exit "${fail}"
+
+      - name: Run S5 maneuver-intensity sweep
+        id: stress
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          PATH="/github/home/.local/bin:$PATH"
+          fail=0
+          for speed in 4 8 12; do
+            for method in M1 M2 M3; do
+              out="paper3-results/stress/S5_${method}_v${speed}"
+              echo "=== S5 ${method} target=${speed} m/s ==="
+              python3 Tools/autotest/tilthexa30_paper3.py                 --method "${method}"                 --scenario S5                 --target-speed "${speed}"                 --speedup 6                 --output-dir "${out}" || fail=1
+              sleep 1
+            done
+          done
+          exit "${fail}"
+
+      - name: Run S6 robustness cases
+        id: robustness
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          PATH="/github/home/.local/bin:$PATH"
+          fail=0
+          for method in M1 M2 M3; do
+            for case_id in 1 2 3; do
+              case "${case_id}" in
+                1) mass=0.90; inertia=1.10; turb=0.4 ;;
+                2) mass=1.00; inertia=1.00; turb=0.6 ;;
+                3) mass=1.10; inertia=0.90; turb=0.5 ;;
+              esac
+              out="paper3-results/robustness/S6_${method}_case${case_id}"
+              echo "=== S6 ${method} case=${case_id} ==="
+              python3 Tools/autotest/tilthexa30_paper3.py                 --method "${method}"                 --scenario S6                 --target-speed 8                 --speedup 6                 --seed "${case_id}"                 --mass-scale "${mass}"                 --inertia-scale "${inertia}"                 --wind-turb "${turb}"                 --output-dir "${out}" || fail=1
+              sleep 1
+            done
+          done
+          exit "${fail}"
+
+      - name: Aggregate metrics and generate paper figures
+        id: analysis
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -x
+          PATH="/github/home/.local/bin:$PATH"
+          python3 Tools/autotest/tilthexa30_paper3_analysis.py             --root paper3-results
+          echo "=== review gates ==="
+          cat paper3-results/paper3-review-gates.json || true
+          echo "=== metrics ==="
+          cat paper3-results/paper3-metrics.csv || true
+
+      - name: Inventory paper-3 outputs
+        if: always()
+        shell: bash
+        run: |
+          echo "=== summary files ==="
+          find paper3-results -maxdepth 4 -type f             \( -name '*.json' -o -name '*.csv' -o -name '*.png' -o -name '*.BIN' \)             -printf '%p %s bytes\n' 2>/dev/null | sort || true
+
+      - name: Upload paper-3 logs, metrics, and figures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tilthexa30-paper3-results
+          path: paper3-results
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Assert experiment suite passed
+        if: always()
+        shell: bash
+        run: |
+          echo "static:     ${{ steps.static.outcome }}"
+          echo "core:       ${{ steps.core.outcome }}"
+          echo "stress:     ${{ steps.stress.outcome }}"
+          echo "robustness: ${{ steps.robustness.outcome }}"
+          echo "analysis:   ${{ steps.analysis.outcome }}"
+          test "${{ steps.static.outcome }}" = "success"
+          test "${{ steps.core.outcome }}" = "success"
+          test "${{ steps.stress.outcome }}" = "success"
+          test "${{ steps.robustness.outcome }}" = "success"
+          test "${{ steps.analysis.outcome }}" = "success"

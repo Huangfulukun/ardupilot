@@ -589,6 +589,11 @@ class TiltHexaMPC:
         # Cruise/backward use the time-based reference trim directly: indexing
         # the backward schedule on (possibly early) achieved speed tilts the
         # nacelles aft early and is positively destabilising (stall).
+        # Forward conversion indexes the current-node trim on ACHIEVED airspeed
+        # (never unload the rotors before the wing genuinely carries).  The
+        # backward conversion is left on the time-based reference: indexing it
+        # on (possibly early) achieved speed tilts the nacelles aft early, a
+        # positively destabilising feedback that collapses the speed.
         if refs[0]["phase"] == 3:
             # Forward conversion indexes the current-node trim on ACHIEVED
             # airspeed so the rotors never unload before the wing genuinely

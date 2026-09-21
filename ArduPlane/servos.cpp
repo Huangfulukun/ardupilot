@@ -562,7 +562,7 @@ float Plane::apply_throttle_limits(float throttle_in)
         min_throttle = takeoff_state.throttle_lim_min;
     } else if (landing.is_flaring()) {
         // Allow throttle cutoff when flaring.
-        // This is to allow the aircraft to bleed speed faster and land with a shut off thruster.
+        // It is to allow the aircraft to bleed speed faster and land with a shut off thruster.
         min_throttle = 0;
     }
 
@@ -709,7 +709,7 @@ void Plane::set_servos_flaps(void)
             auto_flap_percent = g.flap_2_percent;
         } else if ( g.flap_1_speed != 0 && flapSpeedSource <= g.flap_1_speed) {
             auto_flap_percent = g.flap_1_percent;
-        } //else flaps stay at default zero deflection
+        } //else flaps stay at default zero
 
 #if HAL_SOARING_ENABLED
         if (control_mode == &mode_thermal) {
@@ -731,7 +731,7 @@ void Plane::set_servos_flaps(void)
                 break;
             case AP_FixedWing::FlightStage::NORMAL:
                 if (g.takeoff_flap_percent != 0 && in_preLaunch_flight_stage()) {
-                    // TODO: move this to a new FLIGHT_PRE_TAKEOFF stage
+                    // TODO: move to a new FLIGHT_PRE_TAKEOFF stage
                     auto_flap_percent = g.takeoff_flap_percent;
                 }
                 break;
@@ -1051,6 +1051,11 @@ void Plane::servos_output(void)
     if (g2.manual_rc_mask.get() != 0 && control_mode == &mode_manual) {
         SRV_Channels::copy_radio_in_out_mask(uint32_t(g2.manual_rc_mask.get()));
     }
+
+#if AP_TILTHEXA_ENABLED
+    // TiltHexa research module output override (no-op unless THX_ENABLE=1)
+    tilt_hexa.output();
+#endif
 
     SRV_Channels::calc_pwm();
 

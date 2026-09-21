@@ -457,3 +457,60 @@ stale CSVs — check timestamps/metrics before trusting results.
   hooks already committed locally); (3) user fills the author/affiliation/corresponding
   placeholders in main.tex before submission (the only formal blocker per review round 3);
   (4) when all goals are met, disable/delete cron 12305222854914 and report completion.
+
+## §16 Checkpoint 2026-09-22 (clean from-scratch SITL build verified; full Python tool/test/config set pushed and byte-verified)
+- GOAL OF THIS ROUND: prove the remote-tracked source set builds a SITL plane from scratch
+  with AP_TiltHexa compiled and linked, and finish synchronising the reproducibility
+  (Python physics/MPC/tests/config) package to the fork.
+- CLEAN FROM-SCRATCH FIRMWARE BUILD (firmware milestone closed):
+  * `rm -rf build/sitl`, then `/opt/python3.12/bin/python3 waf configure --board sitl`
+    (CONFIGURE_EXIT=0, log build_logs/clean_verify_config.log, "Enabled custom controller: yes")
+    and `/opt/python3.12/bin/python3 waf plane` -> "'plane' finished successfully (26m36s)",
+    PLANE_EXIT=0, 0 errors (log build_logs/clean_verify_plane.log, driver
+    build_logs/clean_verify_driver.log).
+  * build/sitl/bin/arduplane regenerated (5,682,464 B). AP_TiltHexa objects present under
+    build/sitl/libraries/AP_TiltHexa/ and the linked binary contains the class symbols
+    (e.g. AP_TiltHexa::update_trajectory, apply_actuator_outputs, write_logs). This proves the
+    pushed tree (library + wscript + ArduPlane hooks) independently compiles and links.
+- PUSHED THIS ROUND (branch pr_doubao_apm47, github_oauth push_files; every file re-verified
+  byte-identical by a public HTTPS `git fetch` into refs/remotes/verify/apm47 and
+  `git hash-object` vs `git rev-parse verify/apm47:<path>`; trailing-newline-only diffs were
+  aligned locally with an append, not re-pushed):
+  * tools/mpc_controller.py final 643-line version (commit bb5fee4): only difference vs the
+    older remote copy was a 5-line comment in step() explaining forward conversion indexes
+    the current-node trim by measured airspeed while reverse conversion keeps the time
+    reference (otherwise early tilting pushes the tail into stall); code logic identical.
+  * tests/ all 9 files (commits 2b7e2ef, c4b1622, 0732eaf): __init__.py,
+    test_bench_physics_contract, test_research_contract, test_seed_header_fresh,
+    test_physics_rigid_body, test_physics_actuator, test_physics_aero, test_physics_propulsion,
+    test_physics_integration. Local `/opt/python3.12/bin/python3 -m pytest` on the 5 physics
+    test files: 29 passed.
+  * .gitignore + config/generate_thx_defaults.py (commit 8650ab8); the 4 SITL parameter sets
+    config/{default,indi_pi,indi_wls,native_baseline}.parm (commit b41b558). All MATCH.
+  * tools/qp_reference.py (commit 9000f9b): Nocedal-Wright Alg.16.3 primal active-set QP
+    reference, the step/tolerance/status specification for the fixed-size C++ QP.
+    Self-test `python3 tools/qp_reference.py`: cases=500, OK&match=496 (99.2%),
+    worst_rel_gap=3.34e-04, worst_viol=3.22e-10, iters mean=17.0 p95=32 max=40. The 4 cases
+    above 1e-6 hit the iteration cap (incomplete convergence, not a correctness error).
+  * tools/test_qp_differential.py (commit e48b9a4): firmware thx_qp_solve_raw vs the Python
+    reference and quadprog (random + warm-start walk).
+  * tools/test_bench_acceptance.py (commit c4b4d4a): PI/WLS hover and transition acceptance
+    (slow marked) and the PI/WLS gain-identity contract.
+- PUSHED IN THE PREVIOUS ROUND (already byte-verified, do not re-push): physics package 11
+  files (incl. the rigid_body.py quaternion-product fix y1*y1 -> y1*y2, commit 85fb983, with
+  an independent math sanity test PASS), eval_truth.py, seed.yaml, make_figures.py, plus the
+  earlier firmware library (38 files), 3 runtime hooks and ArduPlane wscript.
+- REMAINING (next continuation): (1) push the remaining reproducibility harness/docs that are
+  local-only: experiments/common.py (924 lines, SITL+FDM launch/MAVLink/arm helpers),
+  experiments/smoke_sitl.py, experiments/run_e0..e5_*.py, run_campaign.py, metrics_common.py,
+  analysis/run_afms.py, top-level docs (EXPERIMENTS.md, IMPLEMENTATION_*.md, LOG_SCHEMA.md,
+  PARAMETER_MAP.md, README.md), physics/README_physics.md, tools/README_tools.md; list with
+  `git fetch ... && git diff verify/apm47 --name-status -- Tools/tilt_hexa_30kg/`.
+  (2) No push channel for binary figures (figures/fig_*.pdf/png) or the large results/
+  truth CSV/BIN set (gitignored); consider text-pushing the small summary JSONs
+  (fixed_summary.json, mc_summary.json, paper_metrics.json, comparison_nominal.json). Truth
+  CSVs are regenerable. (3) Optionally run --alloc pi and E3 stress smoke to extend the hold
+  fix verification (wls hover + E2 transition already pass). (4) User replaces the author /
+  affiliation / corresponding placeholders in main.tex (the only formal submission blocker
+  per review round 3). (5) When all goals are met, disable/delete cron 12305222854914 and
+  report completion.

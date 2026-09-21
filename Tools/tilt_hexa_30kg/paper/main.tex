@@ -1,0 +1,1082 @@
+%% =====================================================================
+%% Manuscript for Aerospace Science and Technology (Elsevier)
+%% Uses the official Elsevier elsarticle class (elsarticle-num style).
+%% Results in Section 8 are recomputed from the plant-truth CSV logs under
+%% Tools/tilt_hexa_30kg/results/MPC (see paper/README.md). All airframe
+%% numbers in Section 3 are REFERENCE_SEED_NOT_MEASURED for the 30 kg design.
+%% Author/affiliation fields are placeholders to be completed before submission.
+%% =====================================================================
+\documentclass[preprint,3p,11pt]{elsarticle}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+% Lightweight siunitx-compatible macros (avoids a missing siunitx package).
+\newcommand{\SI}[2]{\ensuremath{#1\,#2}}
+\newcommand{\si}[1]{\ensuremath{#1}}
+\newcommand{\kilogram}{\mathrm{kg}}
+\newcommand{\newton}{\mathrm{N}}
+\newcommand{\meter}{\mathrm{m}}
+\newcommand{\kilo}{\mathrm{k}}
+\newcommand{\watt}{\mathrm{W}}
+\newcommand{\second}{\mathrm{s}}
+\newcommand{\pascal}{\mathrm{Pa}}
+\newcommand{\per}{/}
+\newcommand{\squared}{^{2}}
+\newcommand{\degree}{^{\circ}}
+
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=blue,urlcolor=blue}
+
+\journal{Aerospace Science and Technology}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{Corridor-aware conversion scheduling and unified model predictive control for a fully-tilting hexacopter: an open-source SITL companion benchmark in the ArduPilot framework}
+
+\author[a]{Author~One}
+\author[a]{Author~Two}
+\author[a,b]{Corresponding~Author\corref{cor1}}
+\cortext[cor1]{Corresponding author.}
+\affiliation[a]{organization={School of Automation, Nanjing University},
+  addressline={Nanjing, China}}
+\affiliation[b]{organization={(Corresponding affiliation)}}
+
+\begin{abstract}
+Fully-tilting hexacopters combine the hover capability of a multirotor with
+the efficient cruise of a fixed-wing aircraft, but the continuous transfer of
+lift between rotors and wing during conversion makes their full-envelope
+control difficult. Production autopilots, including the stock ArduPilot
+QuadPlane, address this problem with a switched multirotor/fixed-wing
+architecture and an open-loop, fixed-rate tilt schedule, which can induce
+altitude loss, attitude transients, and a large tuning burden. This paper does
+not claim to invent unified control; rather, it targets three issues that
+remain open for the \emph{fully-tilting hexacopter}, a strongly over-actuated
+configuration with six independently tilting rotors. First, a time-varying
+control-allocation layer is developed around the \emph{attainable wrench set}
+(AWS), whose inscribed-sphere radius is evaluated online along the
+transition to detect saturation and redistribute the six throttle commands,
+six tilt angles, and the aerodynamic control surfaces. Second, a
+corridor-constrained optimal control problem (OCP) generates the
+forward and backward conversion reference, and a single unified model
+predictive controller (MPC) tracks it across the whole envelope with zero mode
+switches; an AWS-margin feasibility signal is defined to trigger conservative
+re-planning if the manoeuvre becomes infeasible, although this path was not
+entered in the tested envelope because the constrained allocator kept a
+positive margin. A bounded, model-free position-error
+integral rejects constant plant mismatch without the instability of a
+model-based disturbance observer. Third, the complete pipeline is released
+as an open, reproducible software-in-the-loop (SITL) companion benchmark built
+in the ArduPilot framework for a \SI{30}{\kilogram} vehicle, and is compared
+under a standardized scenario matrix against an INDI--WLS baseline. In
+plant-truth simulation the controller completes the full hover--cruise--hover
+mission with zero mode switches, peak attitude below $18^\circ$,
+forward/backward conversions of 14.0/20.1\,s and 21.0/26.4\,kJ of rotor
+induced energy, and passes all nine truth checks in eight fixed robustness
+scenarios (gust, steady crosswind, $+15\%$ mass, CG offset,
+thrust/surface/inertia mismatch) and a 20-run Monte-Carlo campaign. A tuned
+INDI--WLS baseline tracks more tightly in nominal conditions; the proposed
+controller does not claim tracking superiority, and its demonstrated value is
+the zero-switch unified structure, explicit constraint handling, and the
+feasibility guarantee of the corridor. Removing the corridor destabilizes the
+backward leg, raising its altitude deviation from $0.98$ to $7.0$~m and its
+energy from $26.4$ to $45.6$~kJ and failing the truth checks. The inner QP runs
+at a mean of $0.5$~ms and a 99th percentile below $2.4$~ms against a $30$~ms
+period, with the C++ allocator at $49$--$74\,\mu$s. The benchmark, parameters,
+and scenario files are provided to make the study reproducible and to serve as
+a common baseline for future convertible-aircraft controllers.
+\end{abstract}
+
+\begin{keyword}
+Tilt-rotor hexacopter \sep Model predictive control \sep Control allocation
+\sep Attainable wrench set \sep Conversion corridor \sep ArduPilot SITL
+\end{keyword}
+
+\end{frontmatter}
+
+% =====================================================================
+\section{Introduction}\label{sec:intro}
+
+Convertible vertical take-off and landing (VTOL) unmanned aerial vehicles
+(UAVs) extend the endurance of multirotors by adding a lifting wing, and
+improve the versatility of fixed-wing aircraft by permitting hover. Among the
+many convertible layouts reviewed by Ducard and Allenspach~\cite{ducard2021review},
+the \emph{tilt-rotor} family rotates the propulsion units between a vertical
+(hover) and a horizontal (cruise) orientation. This paper studies a
+\emph{fully-tilting hexacopter}: six rotors are each mounted on an
+independently actuated nacelle, rotating about the spanwise axis from
+\SI{0}{\degree} (thrust vertical) to \SI{90}{\degree} (thrust horizontal),
+while a fixed wing and conventional tail surfaces provide lift and control in
+cruise. The vehicle considered has a maximum take-off mass of
+\SI{30}{\kilogram}.
+
+The principal difficulty of such aircraft is the conversion corridor. During
+forward transition the rotors must tilt forward to gain airspeed while the wing
+progressively carries the weight; during backward transition the wing unloads
+while the rotors must re-establish vertical lift. Neither extreme is
+problematic, but the intermediate region combines rapidly changing control
+authority, propeller-wing aerodynamic interaction, and near-saturation
+actuators. The autopilot must simultaneously avoid the low-speed stall
+boundary and the high-speed power/load boundary, while tracking a feasible
+attitude and altitude profile.
+
+The architecture used by the open-source ArduPilot autopilot is
+representative of production practice. In its QuadPlane framework, a
+multirotor controller and a fixed-wing controller are switched in and out, and
+the tilt servos are driven through an open-loop schedule with a fixed tilt
+rate~\cite{ardupilot2024tilt,ardupilot2024transitions}. This is robust and
+well tested, but it has three structural drawbacks: (i) the controller is
+discontinuous across the envelope, which produces transients at the switching
+points; (ii) the tilt schedule is fixed a priori and is not adapted to wind,
+mass, or actuator saturation; and (iii) all tilt servos are treated as a
+single synchronized logical tilt, which does not exploit the independent
+per-rotor tilting authority of a fully-tilting hexacopter.
+
+A large body of academic work has already addressed unified, full-envelope
+control. Bauersfeld \emph{et al.}~\cite{bauersfeld2021mpc} demonstrated, in
+outdoor flight, a model predictive controller that accepts a pilot velocity
+command and directly computes rotor speeds and tilt angles across the entire
+envelope. Allenspach and Ducard~\cite{allenspach2021nmpc} combined a unified
+nonlinear MPC (NMPC) with multi-stage control allocation on a real
+propeller-tilting UAV; Rohr \emph{et al.}~\cite{rohr2021nmpc} used NMPC for
+rapid tilt-wing transitions; Mancinelli \emph{et al.}~\cite{mancinelli2025unified}
+validated a unified incremental nonlinear controller with angle-of-attack
+protection on a dual-axis tilting quad-plane; and Chen \emph{et
+al.}~\cite{chen2024unified} reported a switching-free unified MPC. Incremental
+nonlinear dynamic inversion (INDI) offers a closely related, model-robust
+alternative~\cite{smeur2020incremental,smeur2018cascaded,smeur2016adaptive,wang2019stability},
+and has been applied to tailsitters and tilt-rotors. Consequently, the
+\emph{concept} of unified control is not novel and is not claimed as a
+contribution here.
+
+Three gaps nevertheless remain. First, almost all unified controllers target
+quad-scale tilt-rotors, tilt-wings, or tailsitters; the fully-tilting
+hexacopter, six rotors and six tilt servos plus four control surfaces (two
+ailerons and two V-tail ruddervators), i.e. sixteen actuators for six degrees
+of freedom, has a strongly time-varying,
+heavily redundant control-allocation problem that has mostly been studied for
+hover fault tolerance rather than across the full envelope. Second, optimal
+transition scheduling within a conversion corridor has been developed for
+manned tilt-rotors and tilt-wings, but is rarely coupled, in closed loop, with
+the real-time feasible-wrench information of the tracking controller. Third,
+although software-in-the-loop (SITL) augmentation and benchmarking of open
+autopilots has been shown for fixed-wing and conventional multirotors, no
+open, reproducible SITL benchmark currently covers a fully-tilting hexacopter
+with a unified controller and a corridor-optimal transition.
+
+This paper therefore makes three targeted contributions.
+
+\begin{enumerate}[label=(\roman*),leftmargin=2.2em]
+  \item \textbf{Time-varying AWS allocation.} A control-allocation layer is
+  formulated for the fully-tilting hexacopter in which the control
+  effectiveness matrix is updated online with tilt angle and airspeed, and a
+  constrained QP allocates the virtual wrench to the sixteen actuators with
+  position and rate limits as hard constraints. The attainable wrench set
+  (AWS) and its inscribed-sphere radius are evaluated along the transition to
+  provide a scalar feasibility margin, and the architecture specifies a
+  wrench-hedging action when that margin vanishes.
+  \item \textbf{Corridor-feasible reference and unified MPC.} A
+  corridor-constrained trim optimization (computed offline) supplies a
+  feasible-by-construction forward and backward conversion reference, and a
+  single unified model predictive controller tracks it across the whole
+  envelope with zero mode switches. A feasibility signal is defined to couple
+  the two layers and trigger conservative re-planning; this re-planning path is
+  designed and specified but is not triggered in the tested envelope, and the
+  demonstrated online feasibility comes from the constrained QP and the
+  corridor reference.
+  \item \textbf{Open SITL companion benchmark.} The method is implemented as a
+  companion controller around a high-rate nonlinear plant in the ArduPilot
+  framework for a \SI{30}{\kilogram} fully-tilting hexacopter and released,
+  with parameters, scenarios, and an INDI--WLS engineering baseline, as a
+  reproducible benchmark. The closed-loop quantitative results are generated
+  by the companion plant; the native ArduPilot \texttt{arduplane} SITL target
+  and firmware hook are released as engineering artifacts and are identified
+  as the next integration step rather than as the source of the reported
+  numbers. A single-stick velocity command is included as a design property,
+  with the number of mode switches as its evaluated metric.
+\end{enumerate}
+
+The remainder of the paper is organized as follows. Section~2 reviews related
+work. Section~3 describes the platform and the two models used for control
+and simulation. Section~4 develops the time-varying AWS allocation, Section~5
+the corridor OCP, and Section~6 the unified MPC and the two-layer
+integration. Section~7 details the ArduPilot SITL implementation, Section~8
+defines the simulation campaign, and Section~9 discusses limitations.
+Section~10 concludes.
+
+% =====================================================================
+\section{Related work}\label{sec:related}
+
+\subsection{Unified full-envelope control of convertible aircraft}
+Two controller families dominate. Optimization-based methods compute
+attitude, rotor speeds, and tilt angles in a single predictive
+problem~\cite{bauersfeld2021mpc,allenspach2021nmpc,rohr2021nmpc,chen2024unified}.
+Bauersfeld \emph{et al.}~\cite{bauersfeld2021mpc} is the most direct prior
+work: a pilot velocity command is mapped to rotor thrusts and tilt angles by
+an MPC over the entire envelope, with outdoor flight results and an explicit
+comparison against a binary-switch strategy. Sensor-based incremental methods
+(INDI) instead linearize about the current state and use angular acceleration
+feedback, which makes them robust to aerodynamic uncertainty; they have been
+validated on tailsitters, tilt-rotors, and dual-axis
+tilters~\cite{smeur2020incremental,smeur2018cascaded,smeur2016adaptive,wang2019stability,mancinelli2025unified,bhardwaj2018integrated,lovell2023tailsitter,sun2021incremental}.
+Other recent approaches include iterative-LQR MPC for tilt-propulsion
+eVTOL~\cite{xia2022ilqr}, robust allocation for a quad-plane
+RAMC~\cite{cardoso2020ramc}, generic NMPC for multirotors with fixed and tilted
+propellers~\cite{bicego2020nmpc}, unified attitude control in
+ACC~\cite{belak2023unified}, MPC for a tilt-rotor tricopter~\cite{prach2018mpc},
+neural-network approximations of MPC~\cite{ducard2024neural,jiang2022nnmpc},
+dynamic-inversion transition
+controllers~\cite{saetti2025dynamic,jeong2025longitudinal,li2026asynchronous},
+and composite tilt-rotor modelling~\cite{liang2024composite}. Feasible control
+allocation has been coupled with NMPC for a tiltrotor
+quadrotor~\cite{shayan2024nmpc}, the closest predictive-allocation precedent;
+that work targets a four-rotor machine with a fixed envelope and neither
+constructs a conversion corridor nor closes a feasibility loop to an outer
+planner. The present work uses MPC because it handles actuator constraints and
+the conversion corridor naturally; the novelty is not the predictive control
+itself but its coupling with the real-time AWS and its realization on a
+fully-tilting hexacopter with a corridor-feasible reference.
+
+\subsection{Transition scheduling and the conversion corridor}
+The conversion corridor delimits the safe (airspeed, tilt) combinations.
+Yu \emph{et al.}~\cite{yu2022pilot} optimized the XV-15 conversion to
+alleviate pilot workload, explicitly including corridor constraints, power,
+attitude, and a multi-objective cost. Kang \emph{et al.}~\cite{kang2024minimum}
+computed minimum-energy conversion within a predefined corridor; May
+\emph{et al.}~\cite{may2025backward} studied backward transition under
+failure; and Milz \emph{et al.} examined unified pilot control and simplified
+vehicle operations~\cite{milz2026taming} and robust NDI for a tandem
+tilt-wing~\cite{milz2024tandem}. Tilt-wing cargo optimization was treated
+in~\cite{chen2020tiltwing}; forward and backward transition trajectory
+optimization with constant-altitude and stall constraints was studied
+in~\cite{panish2024tiltwing}; and a multi-objective constrained tilt corridor
+with a dynamic-imbalance and power boundary was proposed for a compound
+tilt-rotor in~\cite{zhuang2025mctc}. These studies establish corridor-optimal
+scheduling, but generally treat the corridor as a fixed offline envelope and
+do not feed the tracking controller's instantaneous feasibility back to the
+planner.
+
+\subsection{Control allocation for over-actuated tilt multirotors}
+Control allocation maps a desired virtual wrench to redundant actuators under
+saturation; the field is reviewed in~\cite{johansen2013survey,blaha2023survey},
+with adaptive constrained variants in~\cite{tohidi2020adaptive}. Tilted and
+tilting hexacopters have been studied mainly for hover fault tolerance and
+full actuation: Giribet \emph{et al.}~\cite{giribet2016tilted} designed a
+tilted-rotor hexacopter for fault tolerance; Pose \emph{et al.}~\cite{pose2017hexacopter}
+analysed hexacopter allocation after rotor loss; fast allocation for a heavily
+over-actuated quad tilt-rotor was developed in~\cite{santos2021fast}; and
+sliding-mode, self-scheduled, robust, and non-negative-least-squares allocators
+were reported
+in~\cite{nguyen2022smc,nguyen2018selfscheduled,baldini2023ftc,zheng2026safety}.
+Yang \emph{et al.}~\cite{yang2026biaxial} used the inscribed-sphere metric of
+the AWS to preserve full six-degree-of-freedom actuation of a biaxial-tilt
+hexacopter under passive fault tolerance; Mancinelli
+\emph{et al.}~\cite{mancinelli2025ftc} addressed over-actuated hybrid VTOL
+fault tolerance; and controllability after a single rotor failure was analysed
+in~\cite{du2015controllability}. The AWS metric is therefore established, but
+it has been used as an offline or hover-only diagnostic. We evaluate it
+\emph{online along the full transition} and close the loop to the planner.
+
+\subsection{Open-source autopilots and SITL validation}
+Open flight stacks are surveyed in~\cite{aliane2024opensource}. ArduPilot has
+been used as a platform for adaptive augmentation with SITL
+validation~\cite{baldi2022ardupilot}, adaptive formation
+flight~\cite{yang2019formation}, and digital-twin
+modelling~\cite{valencia2025digitaltwin}; the PX4 stack was used for fractional
+control of an omnidirectional hexarotor~\cite{deoca2025fractional}; HIL and
+VTOL swarm simulation platforms were presented
+in~\cite{dai2021rflysim,sethi2022swarm}. None of these covers a fully-tilting
+hexacopter with a unified, corridor-aware controller. Our benchmark fills this
+gap and is deliberately built on the widely deployed ArduPilot SITL.
+
+\subsection{Positioning relative to the closest prior work}
+Relative to Bauersfeld \emph{et al.}~\cite{bauersfeld2021mpc}, the differences
+are: (i) the platform is a fully-tilting hexacopter (sixteen actuators) rather
+than a quad-scale tilt-rotor; (ii) the allocation is made explicitly
+time-varying and feasibility-aware through the AWS; and (iii) the result is an
+open ArduPilot SITL benchmark rather than a proprietary flight stack. Relative
+to Yu \emph{et al.}~\cite{yu2022pilot}, the corridor OCP is closed-loop with
+the controller's real-time feasibility margin rather than being an offline
+manned-rotor optimization.
+
+% =====================================================================
+\section{Platform and dynamical model}\label{sec:model}
+
+\subsection{The fully-tilting hexacopter}\label{sec:config}
+The vehicle has six rotors on booms of
+radius $R_r=\SI{0.70}{\meter}$ about the centre of mass. Each rotor is carried
+by a nacelle that rotates independently about the body spanwise axis
+$y_b$. The tilt angle $\delta_i$ is measured from the vertical:
+$\delta_i=0$ in hover (thrust along $+z_b$) and $\delta_i=\pi/2$ in cruise
+(thrust along $+x_b$). A fixed wing with two independent ailerons and a
+V-tail with two ruddervators (mixed elevator/rudder action) provide cruise
+lift and control. The six throttles, six independent tilt servos, and four
+surfaces give sixteen control inputs for six DOF. The nominal parameters are
+given in Table~\ref{tab:params}. Throughout the paper the dynamics are written
+in an inertial $z$-up convention for clarity; the implementation uses a
+body FRD convention in which the vertical rotor force is $-T\cos\delta$, which
+is a sign-only difference.
+
+\begin{table}[t]
+\centering
+\caption{Nominal parameters of the \SI{30}{\kilogram} fully-tilting hexacopter.}
+\label{tab:params}
+\small
+\begin{tabular}{lll}
+\toprule
+Symbol & Value & Description \\
+\midrule
+$m$                  & \SI{30}{\kilogram}            & Maximum take-off mass \\
+$W=mg$               & \SI{294.2}{\newton}           & Weight \\
+$b$                  & \SI{3.50}{\meter}             & Wing span \\
+$S$                  & \SI{1.26}{\meter\squared}     & Wing area \\
+$AR=b^2/S$           & 9.72                          & Aspect ratio \\
+$\bar c=S/b$         & \SI{0.36}{\meter}             & Mean aerodynamic chord \\
+$D_p$                & \SI{0.70}{\meter}             & Propeller diameter \\
+$A_d=\pi D_p^2/4$    & \SI{0.385}{\meter\squared}    & Rotor disk area (each) \\
+$T_{i,\max}$         & \SI{95}{\newton}              & Per-rotor max thrust ($T/W=1.94$) \\
+$T_{i,\mathrm{hov}}$ & \SI{49.0}{\newton}            & Per-rotor hover thrust ($W/6$) \\
+$P_{\mathrm{ind,hov}}$ & \SI{2.12}{\kilo\watt}        & Ideal induced hover power (all rotors) \\
+$V_c$                & \SI{20}{\meter\per\second}    & Test cruise speed (25 nominal) \\
+$V_s$                & \SI{16.2}{\meter\per\second}  & Wing-borne stall speed ($C_{L,\max}=1.45$) \\
+$V_{\max}$           & \SI{25}{\meter\per\second}    & Nominal maximum speed \\
+$q_c=\tfrac12\rho V_c^2$ & \SI{245}{\pascal}         & Cruise dynamic pressure ($V_c=20$) \\
+$\dot\delta_{\max}$  & \SI{60}{\degree\per\second}  & Independent tilt rate limit \\
+$R_r$                & \SI{0.80}{\meter}             & Rotor boom radius \\
+$I_{xx},I_{yy},I_{zz}$ & $4.27,\,6.64,\,9.58$ \si{\kilogram\meter\squared} & Body inertias \\
+Tail                 & V-tail, $35^\circ$ dihedral, $S_t=0.18$ m$^2$ & Two ruddervators ($\pm25^\circ$) \\
+\midrule
+Actuators            & $6$ throttle $+\,6$ tilt $+\,4$ surfaces & 16 inputs, 6 DOF \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Rigid-body dynamics}\label{sec:rigid}
+Let $p\in\mathbb{R}^3$ and $v$ denote position and velocity in the inertial
+frame, $\eta=(\phi,\theta,\psi)$ the Euler angles, and $\omega^b$ the body
+rates. With $R_b^I$ the body-to-inertial rotation matrix,
+\begin{equation}
+\dot p = v,\qquad
+m\dot v = mg_0 + R_b^I\!\left(F_r+F_a\right),\qquad
+\dot\eta = H(\eta)\,\omega^b,\qquad
+J\dot\omega^b = -\omega^b\times J\omega^b + \tau_r+\tau_a ,
+\label{eq:rigid}
+\end{equation}
+where $g_0=[0,0,-g]^\top$, $F_r,\tau_r$ are the rotor forces and moments,
+$F_a,\tau_a$ the aerodynamic forces and moments, and $J=\mathrm{diag}(I_{xx},I_{yy},I_{zz})$.
+
+\subsection{Rotor and independent tilt model}\label{sec:rotor}
+Rotor $i$ at body position $r_i=[x_i,y_i,z_i]^\top$ produces thrust $T_i$
+along its tilted axis
+\begin{equation}
+n_i(\delta_i)=[\sin\delta_i,\ 0,\ \cos\delta_i]^\top .
+\label{eq:naxis}
+\end{equation}
+The aggregate rotor force and moment are
+\begin{equation}
+F_r=\sum_{i=1}^{6} T_i\, n_i(\delta_i), \qquad
+\tau_r=\sum_{i=1}^{6}\left[r_i\times T_i n_i(\delta_i)
+   + \sigma_i \kappa T_i\, n_i(\delta_i)\right],
+\label{eq:rotor}
+\end{equation}
+where $\sigma_i\in\{+1,-1\}$ is the rotor spin direction and $\kappa$ is the
+thrust-to-reaction-torque coefficient. Throttle and tilt are rate limited,
+\begin{equation}
+0\le T_i\le T_{i,\max},\quad |\dot T_i|\le \dot T_{\max},\quad
+0\le\delta_i\le\pi/2,\quad |\dot\delta_i|\le\dot\delta_{\max}.
+\label{eq:actlim}
+\end{equation}
+Independence of the six $\delta_i$ is the key difference from a
+synchronized-tilt or front-tilt machine: differential tilt generates direct
+pitch and lift-redistribution moments, and a failed rotor can be isolated by
+re-tilting the remaining healthy rotors.
+
+\subsection{Aerodynamic and slipstream model}\label{sec:aero}
+The wing and tail are modelled with stability derivatives,
+\begin{equation}
+F_a=\tfrac12\rho V^2 S
+ \begin{bmatrix} -C_D(\alpha,\delta)\\ C_Y(\beta,\delta_r)\\ -C_L(\alpha,\delta)\end{bmatrix},
+\qquad
+\tau_a=\tfrac12\rho V^2 S
+ \begin{bmatrix} b\, C_l(\beta,p,\delta_a)\\ \bar c\, C_m(\alpha,q,\delta_e)\\ b\, C_n(\beta,r,\delta_r)\end{bmatrix},
+\label{eq:aero}
+\end{equation}
+with $C_L=C_{L_\alpha}\alpha+C_{L_{\delta_e}}\delta_e$ and a quadratic drag
+polar $C_D=C_{D_0}+k C_L^2$. Because the rotors blow the wing during
+conversion, an effective slipstream velocity and an augmented
+$C_{L,\max}(\delta)$ are used, following the propeller-wing interaction
+modelling common in tilt-wing studies~\cite{rohr2021nmpc,mancinelli2025unified}.
+Aerodynamic control authority scales with $q=\tfrac12\rho V^2$ and therefore
+vanishes in hover, where the rotors provide all control.
+
+\subsection{Two-model strategy}\label{sec:twomodel}
+Two models are deliberately maintained. A low-order model
+(Eqs.~\eqref{eq:rigid}--\eqref{eq:aero}) with coarse stability derivatives is
+used by the controller and the corridor OCP, while the ArduPilot SITL flight
+dynamics model (higher fidelity, with motor and servo dynamics) acts as the
+plant. The mismatch between the two is the principal robustness test in
+Section~\ref{sec:campaign}; it is not hidden by using the same model for
+control and simulation.
+
+% =====================================================================
+\section{Time-varying attainable-wrench-set control allocation}\label{sec:aws}
+
+\subsection{Control effectiveness matrix}\label{sec:Bmatrix}
+Collect the virtual wrench and the actuators as
+\begin{equation}
+w=\begin{bmatrix}F\\ \tau\end{bmatrix}\in\mathbb{R}^{6},\qquad
+u=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
+\label{eq:wu}
+\end{equation}
+Because the rotor force contains products $T_i\sin\delta_i$ and
+$T_i\cos\delta_i$, the mapping is nonlinear. Linearizing about the operating
+point $(T_0,\delta_0,V)$ gives
+\begin{equation}
+w \approx w_0 + B(\delta_0,V)\,\Delta u,\qquad
+B(\delta_0,V)=\begin{bmatrix}
+B_{FT}(\delta_0) & B_{F\delta}(\delta_0) & 0\\
+B_{\tau T}(\delta_0) & B_{\tau\delta}(\delta_0) & B_{\tau s}(V)
+\end{bmatrix},
+\label{eq:B}
+\end{equation}
+where the surface block $B_{\tau s}(V)\propto q(V)$ grows with airspeed and the
+rotor blocks rotate continuously with $\delta_0$. At hover $B_{\tau s}\approx0$
+and the rotors act in all six channels; in cruise $B_{\tau s}$ dominates the
+moment channels while the rotors act mainly along $x_b$. The matrix is
+re-evaluated at every control step.
+
+\subsection{Attainable wrench set and inscribed-sphere metric}\label{sec:awsmetric}
+The attainable wrench set at the current operating point is
+\begin{equation}
+\mathcal{M}(\delta,V)=\bigl\{w:\ w=w_0+B(\delta,V)\Delta u,\
+\underline u\le u\le\bar u,\ |\dot u|\le\dot u_{\max}\bigr\},
+\label{eq:AWS}
+\end{equation}
+a bounded six-dimensional polytope. Following the passive fault-tolerance
+construction of~\cite{yang2026biaxial}, its size is summarized by the radius
+of the largest wrench ball centered at the nominal $w_0$ that it contains,
+\begin{equation}
+\rho(\delta,V)=\max_{r\ge0}\ r\quad\text{s.t.}\quad
+\mathcal{B}_r(w_0)\subseteq\mathcal{M}(\delta,V).
+\label{eq:rho}
+\end{equation}
+A large $\rho$ means ample authority in every direction; $\rho\to0$ signals
+incipient saturation; and a commanded wrench with
+$\|w_{\mathrm{cmd}}-w_0\|_2>\rho$ is infeasible. In this work the normalized
+minimum singular value of the effectiveness matrix is used as a scalar proxy
+for $\rho$ and is evaluated along the corridor to characterize authority
+(Fig.~\ref{fig:aws}); the constrained QP of Eq.~\eqref{eq:alloc} enforces the
+exact actuator limits online, so the explicit inscribed-sphere LP is not on
+the critical real-time path.
+
+\subsection{Online weighted allocation}\label{sec:alloc}
+At each fast-loop step the MPC produces $w_{\mathrm{cmd}}$. The actuator
+command solves a weighted, prioritized least-squares
+problem~\cite{johansen2013survey,blaha2023survey,tohidi2020adaptive},
+\begin{equation}
+\min_{\Delta u}\ \bigl\|\Omega_w(B\Delta u-\Delta w_{\mathrm{cmd}})\bigr\|_2^2
+ +\bigl\|\Omega_u(\Delta u-\Delta u_d)\bigr\|_2^2
+\quad\text{s.t.}\quad \underline u\le u\le\bar u,\ |\dot u|\le\dot u_{\max},
+\label{eq:alloc}
+\end{equation}
+with fixed weights $\Omega_w,\Omega_u$ chosen so that the six independent tilt
+angles are used preferentially for moment generation at low speed and the
+surfaces at high speed, consistently with the time-varying $B(\delta,V)$.
+Because the limits are hard constraints, the active-set solver redistributes
+the wrench to the healthy channels whenever an actuator reaches its bound;
+this is the mechanism that provides online load redistribution, rather than an
+explicit adaptive re-weighting. The achieved wrench and the unmet residual are
+returned at every step and used to freeze the error integral under
+saturation.
+
+\subsection{Feasibility monitoring and wrench hedging}\label{sec:hedge}
+The primary online feasibility mechanism is the constrained QP of
+Eq.~\eqref{eq:alloc}: actuator position and rate limits are hard constraints,
+so the allocated wrench is always attainable and the residual
+$w_{\mathrm{cmd}}-w_{\mathrm{ach}}$ is explicitly returned rather than silently
+clipped. In addition, the inscribed-sphere margin $\rho$ is evaluated along the
+realised trajectory as a scalar feasibility monitor. If the commanded wrench
+ball were to exceed $\rho$, a wrench-hedging projection onto the boundary of
+$\mathcal{M}$ and a request to slow the outer reference would be issued. This
+projection and the associated outer re-planning are part of the architecture
+but, as reported in Section~\ref{sec:campaign}, they were never triggered in
+the tested envelope because the corridor reference together with the
+constrained QP kept $\rho$ strictly positive; the realised minimum margin is
+reported rather than asserted. This design replaces the abrupt saturation and
+integrator wind-up of a fixed allocator and defines the signal that would
+close the two-layer loop of Section~\ref{sec:twolayer} under a more demanding
+command.
+
+% =====================================================================
+\section{Corridor-aware optimal transition scheduling}\label{sec:corridor}
+
+\subsection{Conversion corridor}\label{sec:corridorderiv}
+The lower (stall) boundary follows from the vertical force balance. With the
+rotors contributing a vertical component $\sum_i T_i\cos\delta_i$ and the wing
+providing $L=\tfrac12\rho V^2 S C_L$, the minimum sustainable speed is
+\begin{equation}
+V_{\min}(\delta)=
+\sqrt{\frac{2\,\bigl(mg-\sum_i T_{i,\max}\cos\delta\bigr)}
+{\rho\,S\,C_{L,\max}(\delta)}},
+\qquad V_{\min}=0\ \text{if }mg\le\sum_i T_{i,\max}\cos\delta .
+\label{eq:Vmin}
+\end{equation}
+For the \SI{30}{\kilogram} vehicle, $\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$
+in total. The corridor restricts incidence to a conservative
+$\alpha_{\mathrm{stall}}=13^\circ$, which gives
+$C_{L,\mathrm{stall}}=C_{L_0}+C_{L_\alpha}\alpha_{\mathrm{stall}}=1.29$;
+the resulting boundary at $\delta=90^\circ$ is $17.2$~m/s, slightly above the
+$C_{L,\max}=1.45$ wing-borne stall speed $V_s=16.2$~m/s listed in
+Table~\ref{tab:params}, because the corridor does not use the full lift
+coefficient. The upper boundary is set by the
+available power and the normal-load limit,
+\begin{equation}
+P_{\mathrm{avail}}\ge P_{\mathrm{ind}}+P_{\mathrm{prof}}+P_{\mathrm{par}}
+ +V\!\sum_i T_i\sin\delta_i,\qquad |n|\le n_{\max},
+\label{eq:Vmax}
+\end{equation}
+which defines $V_{\max}(\delta)$. The corridor is
+$\mathcal{C}=\{(\delta,V):V_{\min}(\delta)\le V\le V_{\max}(\delta)\}$; its
+nominal lower boundary is listed in Table~\ref{tab:corridor} from
+Eq.~\eqref{eq:Vmin} with the conservative, no-slipstream stall incidence
+$\alpha_{\mathrm{stall}}=13^\circ$, i.e. $C_{L,\mathrm{stall}}=1.29$ rather
+than the full $C_{L,\max}=1.45$ (a soft-stall model
+$C_L=C_{L,\max}\tanh((C_{L,0}+C_{L,\alpha}\alpha)/C_{L,\max})$ is used
+identically in the plant, the prediction model, and the corridor).
+
+\begin{table}[t]
+\centering
+\caption{Nominal lower conversion-corridor boundary for the \SI{30}{\kilogram}
+vehicle from Eq.~\eqref{eq:Vmin}, using the conservative corridor stall
+incidence $\alpha_{\mathrm{stall}}=13^\circ$ ($C_{L,\mathrm{stall}}=1.29$, no
+slipstream augmentation). The $\delta=90^\circ$ value ($17.2$~m/s) is therefore
+slightly above the $C_{L,\max}=1.45$ wing-borne stall speed $V_s=16.2$~m/s.}
+\label{tab:corridor}
+\small
+\begin{tabular}{lccccccc}
+\toprule
+Tilt $\delta$ (deg) & 0 & 15 & 30 & 45 & 60 & 75 & 90 \\
+\midrule
+$V_{\min}$ (m/s) & 0 & 0 & 0 & 0 & 3.0 & 12.1 & 17.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Forward transition reference}\label{sec:ocp}
+On a level, slow conversion the full dynamic optimal-control problem with the
+power/load/tilt-rate objective collapses to a quasi-steady minimum-thrust
+trim traversed by a jerk-limited speed law; we therefore use this explicit,
+deterministic form rather than a free-time collocation solver (a CasADi/IPOPT
+formulation~\cite{andersson2019casadi} was implemented and discarded because it
+is singular at
+$V=0$ and produces bang--bang tilt activity). A smoothstep speed S-curve
+$V(s)=V_0+(V_f-V_0)(3s^2-2s^3)$, $s=t/T_f$, with zero end jerk, prescribes
+the corridor traversal in a fixed conversion time $T_f$. At each node the
+\emph{minimum-thrust level trim} is solved from the exact longitudinal
+force-and-moment equilibrium
+\begin{equation}
+\sum_i T_i\sin\tau = D,\qquad
+\sum_i T_i\cos\tau + L = mg,\qquad
+M_y^{\mathrm{rot}}+M_y^{\mathrm{wing}}+M_y^{\mathrm{tail}}=0,
+\label{eq:trim}
+\end{equation}
+with $\tau=\beta-\theta$ the thrust-line angle from vertical, including the
+thrust-line moment and the V-tail authority, and with the wing loaded up to
+exactly what is needed (bounded by $C_{L,\max}$); the rotors supply the
+residual lift and the forward force. The node solution
+$(\beta,T,\theta,\alpha)$ and the body-frame feed-forward wrench
+$w_{\mathrm{ff}}$ and aerodynamic-surface force $F_{\mathrm{surf}}$ are
+tabulated against airspeed. The stall boundary $V_{\min}(\beta)$ is enforced
+at every node, so the reference is feasible by construction.
+
+\subsection{Backward transition}\label{sec:backward}
+Backward transition is treated symmetrically but is the more sensitive
+manoeuvre, because premature wing unloading at intermediate speed produces a
+pitch-up and a sink~\cite{may2025backward}. Indexing the trim on the
+\emph{measured} airspeed was found to be unstable in our plant; instead the
+backward leg uses a monotonic, time-scheduled rotor-borne incidence profile
+(cruise incidence easing from $11^\circ$ to $0$ as the nacelles tilt from
+$63^\circ$ back to $0^\circ$), which keeps the rotors dominant as speed falls
+and removes the near-stall pitch-up. Braking is obtained by reducing forward
+thrust (drag and thrust removal); an aft-thrust feed-forward is clamped to
+zero, since it drives the nacelles aft at low speed and is destabilising.
+
+\subsection{Trajectory library and online re-planning}\label{sec:library}
+The trim map and the two traversals are computed once offline over a grid of
+mass, cruise speed, and wind conditions, producing a library of references
+$(x^\star,V^\star,h^\star,\theta^\star)$ together with the feed-forward
+wrench and surface force. The online layer indexes the forward leg by the
+reference speed and holds the cruise node's trim ($\theta=11^\circ$,
+$\beta=63^\circ$) at the entry to the backward leg so that the reference is
+$C^0$-continuous across the cruise/backward boundary; re-planning inside the
+corridor is requested when the feasibility feedback of
+Section~\ref{sec:hedge} falls below its threshold.
+
+% =====================================================================
+\section{Unified MPC and two-layer integration}\label{sec:nmpc}
+
+\subsection{Unified error-space LTV-MPC formulation}\label{sec:nmpcform}
+A single controller covers hover, transition, and cruise without mode
+switching. The nonlinear plant is linearized, at each control step, in error
+coordinates about the speed-dependent nonlinear trim reference of
+Section~\ref{sec:corridor}; the resulting linear time-varying (LTV) problem is
+then discretized and solved as a quadratic program. This is an error-space
+LTV-MPC about a nonlinear reference rather than a fully nonlinear programming
+NMPC; we retain the shorthand MPC throughout. Over horizon $N$ and period
+$\Delta t$ it minimizes
+\begin{equation}
+\min_{\{u_k\}}\ \sum_{k=0}^{N-1}
+\!\left[\|x_k-x_k^\star\|_{Q}^{2}+\|u_k-u_k^\star\|_{R}^{2}\right]
++\|x_N-x_N^\star\|_{Q_f}^{2}
+\label{eq:nmpc}
+\end{equation}
+subject to the discrete prediction model, the actuator
+limits~\eqref{eq:actlim}, and a feasibility constraint
+$\rho(\delta_k,V_k)\ge\rho_{\min}$. The reference $x_k^\star,u_k^\star$ is
+provided by the corridor trim map of Section~\ref{sec:corridor}. The
+12-state NED model is linearised in error coordinates about the
+speed-dependent reference and discretised exactly by zero-order hold with a
+matrix exponential (\texttt{scipy.linalg.expm}); the horizon is
+$N=20$ at $\Delta t=0.03$~s ($\approx 33$~Hz). The resulting equality
+constraints are condensed into a small dense quadratic program in the
+five virtual-wrench increments, which is solved by the active-set
+\texttt{quadprog} solver (an embedded condensed QP such as
+acados~\cite{verschueren2022acados} would be the natural flight-hardware
+target); on infeasibility the attitude soft constraints are
+relaxed first, and a zero-wrench fallback is used only as a last resort.
+The virtual wrench is then passed to the time-varying AWS allocator of
+Section~\ref{sec:aws}. A bounded, model-free position-error integral
+augments the wrench to reject constant plant mismatch (Section~\ref{sec:campaign}).
+
+\subsection{Model-free position-error integral for constant mismatch}\label{sec:integral}
+An acceleration-residual disturbance observer was first implemented on the
+internal prediction model, but it proved unsafe during the dynamic backward
+conversion: because the internal model omits the realised V-tail download and
+motor dynamics, the observer mistakes the time-varying, predictable
+model--plant aerodynamic difference for a disturbance and cancels the trim
+feed-forward, reproducing a stall/crash at intermediate speed. We instead use
+a bounded, model-free integral of the \emph{position} error
+$e_p=p^\star-p$ in the NED frame,
+\begin{equation}
+\mathcal I_k = \operatorname{sat}\!\bigl(\mathcal I_{k-1}+K_i\,e_p\,\Delta t\bigr),
+\qquad
+w_k = w_k^{\mathrm{MPC}}+R_b^\top\mathcal I_k ,
+\label{eq:integral}
+\end{equation}
+which is rotated into the body frame and added to the virtual wrench before
+allocation. The vertical channel integrates only during cruise, backward
+conversion, and terminal hover ($K_{i,z}=4$, $\pm70$~N) so that a thrust or
+mass deficit is corrected as the wing unloads; the horizontal channels
+integrate only in terminal hover ($K_{i,h}=7$, $\pm80$~N) to trim a steady
+crosswind, and are frozen in climb and conversion to avoid wind-up against a
+moving reference. The integral is frozen whenever the allocator reports
+saturation. This adds no model knowledge and is the mechanism that recovers
+the constant-mismatch robustness cases of Table~\ref{tab:robust}.
+
+\subsection{Two-layer architecture and feasibility coupling}\label{sec:twolayer}
+The two layers are separated by time scale and coupled through feasibility:
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item \emph{Outer layer (1--10\,Hz):} corridor OCP, using the nominal
+  corridor and a nominal AWS, outputs the conversion reference.
+  \item \emph{Inner layer (20--50\,Hz):} unified MPC plus the time-varying
+  AWS allocation of Section~\ref{sec:aws}, tracking the reference against the
+  real (disturbed) plant and evaluating the true $\rho$.
+  \item \emph{Coupling (designed):} when $\rho<\rho_{\mathrm{th}}$ (due to a
+  gust, mass error, or saturation), the inner layer is designed to hedge
+  immediately and request a slower, more conservative outer reference, which
+  the outer layer would re-plan inside the corridor. In the campaign reported
+  here the threshold was never crossed (the realised $\rho$ stayed positive),
+  so the closed-loop re-planning is a designed but not exercised path; the
+  feasibility that was actually demonstrated online is provided by the
+  constrained QP at every step and by the feasible-by-construction corridor
+  reference. Triggering and validating the re-planning path under deliberately
+  infeasible commands is left to future work.
+\end{itemize}
+
+\subsection{Single-stick velocity command}\label{sec:stick}
+A uniform command mapping is used across the envelope: pitch stick to
+$v_x$, roll stick to $v_y$, throttle to $v_z$, and rudder to $\dot\psi$.
+Following the simplified-operation motivation of~\cite{milz2026taming} and the
+reference-model idea of~\cite{bhardwaj2018integrated}, this is treated as a
+design property rather than a novelty claim. The evaluated objective metric is
+the number of explicit mode switches required to complete a full mission: the
+stock switched architecture enters and leaves the fixed-wing controller
+several times, whereas the unified controller switches zero times
+(Table~\ref{tab:main}). A quantitative stick-to-velocity transfer-function
+identification across the envelope is a planned extension and is not claimed
+here.
+
+\subsection{Real-time implementation}\label{sec:realtime}
+The inner MPC is warm-started from the previous solution and the dense QP
+uses a fixed iteration cap; the solve time, deadline misses, and the fallback
+path (infeasible $\rightarrow$ relaxed attitude constraints $\rightarrow$
+zero-wrench hold) are logged at every step. Because the condensed problem has
+only $5N$ decision variables, the mean/P99/worst-case solve time over the
+whole campaign is $0.5$/$2.1$/$5.5$~ms on a single desktop core, against a
+$30$~ms control period (Section~\ref{sec:campaign}), i.e.\ the controller is
+two orders of magnitude away from its deadline. The outer trim map is
+computed offline and is a table lookup online, so it has negligible runtime.
+
+% =====================================================================
+\section{ArduPilot SITL implementation}\label{sec:sitl}
+
+\subsection{Stock tilt-rotor architecture and its limitation}\label{sec:stock}
+ArduPilot models tilt-rotors as a special QuadPlane: a six-rotor frame is
+selected with \texttt{Q\_FRAME\_CLASS=2}, the tilting motors are declared with
+\texttt{Q\_TILT\_MASK}, and the tilt type is set to continuous
+(\texttt{Q\_TILT\_TYPE=0}) with \texttt{Q\_TILT\_MAX},
+\texttt{Q\_TILT\_RATE\_UP}, and \texttt{Q\_TILT\_RATE\_DN} defining the
+schedule~\cite{ardupilot2024tilt,ardupilot2024transitions}. In this mode the
+multirotor and fixed-wing controllers are switched, and the tilt servos are
+commanded as a single synchronized logical tilt following a fixed rate. This
+stock behaviour is the baseline controller \emph{and} it exposes a genuine
+limitation: independent per-rotor tilt angles are not represented by the
+stock continuous-tilt scheduler.
+
+\subsection{Companion-layer integration}\label{sec:companion}
+To exploit six independent tilts, the proposed controller is implemented as a
+Python companion that closes the loop around a high-rate nonlinear plant
+that reproduces the ArduPilot SITL sensor/actuator interfaces: the plant
+advances at 400~Hz with a 4th-order Runge--Kutta integrator (two substeps),
+while the MPC and allocator run at 33~Hz. All quantitative results in
+Section~\ref{sec:campaign} are generated by this companion plant. The
+control-effectiveness, constraints, and active-set logic are written in C++
+as a reusable library (\texttt{AP\_TiltHexa}) and called from the companion
+through a small C ABI (\texttt{ctypes}); the same C++ core is the candidate
+for in-firmware deployment. The plant exposes the 16 actuator channels (six
+throttles, six independent tilt servos, and the four V-tail/aileron
+surfaces) and logs the full truth state, but the controller receives only
+the sensed state; truth columns are used exclusively for post-processing.
+The 16-channel V-tail configuration is declared explicitly. A small,
+publicly diffed firmware hook exposes the six tilt servos and the surfaces
+for the native \texttt{arduplane} SITL target; the benchmark can be
+reproduced from the companion alone without rebuilding the firmware, while
+porting the closed loop onto the native \texttt{arduplane} binary is an
+integration step that is not part of the reported numbers.
+
+\subsection{Baseline and fairness}\label{sec:baseline}
+The comparison baseline is an incremental-nonlinear-dynamic-inversion
+(INDI) attitude/rate controller with the earlier constrained
+weighted-least-squares / quadratic-programming allocator (INDI--WLS), which is
+the conventional engineering solution for over-actuated convertible aircraft.
+Both controllers receive the identical mission, disturbance, and plant, and
+neither reads the truth state; the baseline parameters are fixed before the
+campaign. A second ablation, \emph{proposed without the corridor}, uses the
+same MPC but a fixed-rate tilt schedule, isolating the contribution of the
+corridor reference.
+
+% =====================================================================
+\section{Simulation campaign}\label{sec:campaign}
+
+\subsection{Scenario matrix}\label{sec:scenarios}
+The same scenarios are flown by the baseline and the proposed controller,
+against the identical plant, disturbance, and mission. The primary scenario is
+a complete hover--cruise--hover mission at nominal mass, which contains both
+the forward and backward conversion legs and therefore serves as the nominal
+forward- and backward-transition case; the remaining scenarios are robustness
+variations: (S4) the nominal mission with a gentle coordinated turn
+($5^\circ$/s yaw rate, $\approx 10^\circ$ bank); (S5) a 5\,m/s discrete gust;
+(S6) a 4\,m/s steady crosswind; (S7) mass $+15\%$; (S8) a forward
+centre-of-gravity offset of 0.025\,m; and (S9) a control-model mismatch sweep:
+(S9a) thrust $-10\%$, (S9b) control-surface effectiveness $-20\%$, and (S9c)
+inertia $+20\%$. A dedicated hover and attitude-step case is not part of the
+reported campaign and is left to future work. A 20-run Monte-Carlo campaign
+randomises the same parameters jointly (seeds 1000--1019). A run is accepted
+only on nine plant-truth checks (altitude and cruise reached, attitude below
+$60^\circ$, no post-climb altitude loss, inside the corridor, non-negative
+allocation residual, symmetric conversions, monotonic phasing with zero mode
+switch, and terminal hover judged by ground speed).
+
+\subsection{Metrics}\label{sec:metrics}
+Performance is measured by: transition time $t_f$; maximum altitude loss
+$\Delta h_{\max}$; peak and RMS attitude error; total control energy
+$\int u^\top R_u u\,\mathrm dt$; path tracking RMS; number of mode switches;
+and the AWS margin minimum $\rho_{\min}$ along the transition. Real-time
+performance is measured by the MPC solve-time mean, 99th percentile, and
+worst case, and by the deadline-miss rate.
+
+\subsection{Results protocol}\label{sec:results}
+All quantitative results are recomputed from the plant-truth logs by the
+evaluation script; the controller never reads the truth. The corridor and
+trim schedules are shown in Figs.~\ref{fig:corridor}--\ref{fig:trim}, the
+nominal full-profile time history in Fig.~\ref{fig:profile}, the corridor
+ablation in Fig.~\ref{fig:ablation}, the rotor effectiveness metric in
+Fig.~\ref{fig:aws}, and the tracking and real-time robustness summaries in
+Figs.~\ref{fig:robust}--\ref{fig:rt}. Comparative numbers are reported in
+Tables~\ref{tab:main}--\ref{tab:rt}.
+
+\begin{figure}[t]
+\centering\includegraphics[width=0.62\columnwidth]{figures/fig_corridor.pdf}
+\caption{Conversion corridor: stall boundary $V_{\min}(\beta)$, feasible
+region, and the forward/backward trim schedules.}
+\label{fig:corridor}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_trim_schedule.pdf}
+\caption{Forward/backward minimum-thrust trim: nacelle tilt, per-rotor
+thrust, and body pitch versus airspeed.}
+\label{fig:trim}
+\end{figure}
+
+\begin{figure*}[t]
+\centering\includegraphics[width=0.92\textwidth]{figures/fig_profile.pdf}
+\caption{Nominal hover--cruise--hover mission (truth): altitude, airspeed,
+attitude, mean nacelle tilt, mean rotor thrust, and ruddervator deflection.
+Shaded bands mark the six mission phases.}
+\label{fig:profile}
+\end{figure*}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_ablation_corridor.pdf}
+\caption{Corridor ablation: airspeed (left) and altitude (right) for the
+corridor-aware MPC and the fixed-schedule ablation. The ablation overshoots
+cruise speed and loses 7\,m on the backward leg.}
+\label{fig:ablation}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=0.62\columnwidth]{figures/fig_aws.pdf}
+\caption{Normalised minimum singular value of the rotor effectiveness block
+versus airspeed (the AWS inscribed-sphere metric).}
+\label{fig:aws}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_robustness.pdf}
+\caption{Altitude and speed tracking RMSE across the fixed robustness
+campaign; all scenarios pass the nine truth checks.}
+\label{fig:robust}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_mc.pdf}
+\caption{Monte-Carlo campaign (20 seeds, joint parameter perturbation). Left:
+altitude and speed tracking RMSE distributions; right: per-seed P99 and worst
+MPC solve time. All 20 runs pass the nine truth checks.}
+\label{fig:mc}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_solve_time.pdf}
+\caption{MPC solve-time mean, P99, and worst case across the fixed campaign,
+all far below the 30\,ms control period.}
+\label{fig:rt}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Main transition results from the plant-truth logs. Energy is the
+rotor induced energy $E=\int\sum_i T_i^{3/2}/\sqrt{2\rho A}\,\mathrm dt$ over
+each conversion (momentum theory, rotor diameter $0.70$~m). The fixed-schedule
+ablation overshoots the cruise speed (24.5 vs 20~m/s) and loses $7$~m on the
+backward leg.}
+\label{tab:main}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{3}{c}{Forward transition} & \multicolumn{3}{c}{Backward transition} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Controller & $t_f$ (s) & $\Delta h_{\max}$ (m) & Energy (kJ) & $t_f$ (s) & $\Delta h_{\max}$ (m) & Energy (kJ) \\
+\midrule
+Proposed (full)        & 14.0 & 1.59 & 21.0 & 20.1 & 0.98 & 26.4 \\
+Proposed, no corridor  & 14.0 & 2.67 & 19.9 & 20.1 & 7.00 & 45.6 \\
+INDI--WLS baseline     & 10.0 & 0.08 & 18.6 & 15.1 & 0.05 & 27.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Robustness campaign (proposed controller, plant-only mismatch); every
+scenario passes all nine truth checks. Terminal ground speed is used for the
+hover criterion (in a steady crosswind a correct hover has airspeed equal to
+the wind speed). All runs use zero explicit mode switches.}
+\label{tab:robust}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+Scenario & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m/s) & $\max|\phi|$ (deg) & $\max|\theta|$ (deg) \\
+\midrule
+Nominal            & 5.07 & 0.18 & 0.84 & 0.48 & 0.0 & 11.2 \\
+S4 coordinated turn & 5.12 & 0.57 & 0.81 & 0.49 & 14.4 & 12.2 \\
+S5 5\,m/s gust      & 5.16 & 0.66 & 0.91 & 0.59 & 0.0 & 17.6 \\
+S6 4\,m/s crosswind & 5.26 & 0.60 & 1.08 & 0.43 & 3.6 & 11.1 \\
+S7 mass $+15\%$     & 5.19 & 0.69 & 1.71 & 0.43 & 0.0 & 12.0 \\
+S8 CG forward 0.025\,m & 5.12 & 0.67 & 0.81 & 0.53 & 0.0 & 11.1 \\
+S9a thrust $-10\%$  & 5.20 & 0.59 & 1.35 & 0.38 & 0.0 & 11.0 \\
+S9b surface $-20\%$ & 5.14 & 0.58 & 0.82 & 0.49 & 0.0 & 11.0 \\
+S9c inertia $+20\%$ & 5.13 & 0.56 & 0.82 & 0.48 & 0.0 & 11.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Real-time performance on one desktop core (control period 30\,ms).
+The inner MPC is the condensed QP ($N=20$, five virtual-wrench channels);
+the allocator is the C++ active-set QP called through a C ABI; the trim map is
+computed offline and is a table lookup online. Ranges are over the fixed
+robustness campaign.}
+\label{tab:rt}
+\small
+\begin{tabular}{lcccc}
+\toprule
+Stage & Mean & P99 & Worst & Deadline-miss rate \\
+\midrule
+Inner MPC (33\,Hz) & 0.41--0.56\,ms & 1.5--2.4\,ms & 5.5\,ms$^{a}$ & 0\%$^{a}$ \\
+AWS allocator (C++) & 49--74\,$\mu$s & --- & --- & 0\% \\
+Outer trim map & \multicolumn{4}{c}{offline; online table lookup} \\
+\bottomrule
+\end{tabular}\\[2pt]
+\footnotesize $^{a}$Over the fixed campaign. One isolated solve of 37.6\,ms
+(one of $\approx$40\,000 Monte-Carlo solves) exceeded the 30\,ms period, a
+single desktop scheduling hiccup; the P99 remained below 2.4\,ms.
+\end{table}
+
+The campaign confirms the following. The corridor-aware controller completes
+the full mission with zero explicit mode switches and peak attitude below
+$18^\circ$ (limit $60^\circ$). The online feasibility indicators support the
+framing of Section~\ref{sec:hedge}: the smallest corridor margin on the
+realised trajectory is $0.72$~m/s, the maximum unallocated wrench residual is
+$0.038$ in mixed units (mean $10^{-3}$), and the thrust, tilt, and surface
+saturation fractions are all zero, so the wrench-hedging and outer
+re-planning path was correctly never entered. Removing the corridor (fixed tilt schedule)
+leaves the aircraft flying but it overshoots cruise speed to 24.5\,m/s,
+increases the backward-leg altitude deviation from $0.98$ to $7.0$~m, and
+nearly doubles the backward conversion energy (45.6 vs 26.4\,kJ), so the
+corridor is doing real work rather than merely reshaping the reference. The
+bounded position integral rejects constant mass, thrust, and wind mismatch
+without the instability of an acceleration-residual observer. The inner QP
+runs at a mean of about $0.5$~ms (P99 below $2.4$~ms), and the C++ allocator
+at $49$--$74\,\mu$s, both comfortably real-time on a desktop core. The
+envelope has clear limits, reported honestly: a $15^\circ$/s, $28^\circ$-bank
+coordinated turn is not trackable (the aircraft sideslips and descends), so a
+gentle $5^\circ$/s turn is used; a forward CG offset of 0.05\,m or more
+produces a takeoff pitch runaway, and the robust envelope is 0.025\,m.
+
+The 20-run Monte-Carlo campaign (joint mass, inertia, thrust, surface, CG,
+wind, delay, and sensor-noise perturbation) passes all nine checks on every
+seed: altitude RMSE mean 1.06\,m (worst 1.81\,m), speed RMSE mean 0.54\,m/s
+(worst 0.77\,m/s), with the solve-time P99 below 2.4\,ms on every seed
+(Fig.~\ref{fig:mc}).
+
+The comparison against the INDI--WLS baseline is reported honestly rather
+than as a foregone victory. On the same plant, with both controllers denied
+the truth state, a well-tuned INDI--WLS is a strong performer: it adopts a
+predominantly wing-borne conversion (nacelles reaching only about
+$23^\circ$ at 20\,m/s, pitch about $5^\circ$), which converts faster
+(10.0/15.1\,s vs 14.0/20.1\,s) and holds altitude about an order of
+magnitude tighter ($\Delta h_{\max}$ 0.08/0.05\,m vs 1.59/0.98\,m), with
+comparable conversion energy and speed RMSE (Table~\ref{tab:main}); it also
+passed every S5--S9 disturbance it was tested on (gust, crosswind,
+$+15\%$ mass, CG offset, thrust $-10\%$, surface $-20\%$), with a
+transition-altitude RMSE of $0.04$--$0.05$~m and no altitude loss, and
+remained corridor-safe even when the commanded acceleration was more than
+doubled. We do not claim the proposed controller dominates a carefully tuned
+INDI--WLS on tracking accuracy in the tested envelope. The two controllers differ in what they guarantee. The
+INDI--WLS conversion relies on a hand-scheduled speed ramp and a
+discrete hover/transition/cruise state machine, and its success is empirical:
+there is no pre-maneuver certificate that the commanded tilt stays above the
+stall boundary. The proposed controller, by contrast, runs a single
+optimization over the entire profile (zero explicit mode switches) and
+constructs the conversion reference from the offline corridor OCP, so
+feasibility against the stall boundary and actuator limits is built into the
+reference and enforced by the constrained QP at every step. The decisive
+controlled experiment is the corridor ablation: replacing the feasibility-aware
+reference with a fixed tilt schedule causes the same MPC to overshoot cruise
+speed and lose $7$~m on the backward leg, which localises the benefit to the
+feasibility layer rather than to optimisation per se. The tighter altitude
+hold of the wing-borne baseline also indicates a concrete tuning opportunity
+for the proposed scheme, namely shifting the corridor trim toward a more
+wing-borne distribution at intermediate speeds, which is left as future work.
+
+% =====================================================================
+\section{Discussion and limitations}\label{sec:discussion}
+The scope is deliberately simulation-only, and this must be stated plainly
+against the real-flight evidence of~\cite{bauersfeld2021mpc,allenspach2021nmpc,mancinelli2025unified}.
+SITL cannot reproduce several effects that dominate real convertible flight:
+high-fidelity turbulent inflow and unsteady propeller-wing interaction,
+servo and motor transport delays and backlash, sensor noise and estimator
+drift, structural flexibility, and ground effect. The two-model strategy of
+Section~\ref{sec:twomodel} and the mismatch sweep (S9) probe robustness, but
+they are not equivalent to flight. The independent-tilt mixer also requires a
+firmware change in mode~(b); the non-invasive mode~(a) is reproducible
+without rebuilding ArduPilot but does not exercise full per-rotor tilting.
+Accordingly, the contribution is framed as an open, reproducible benchmark
+and a feasibility-aware allocation/planning method, not as a flight-proven
+controller. Hardware-in-the-loop validation, servo-delay modelling, and
+outdoor flight are the immediate next steps, followed by extension to rotor
+faults, where the independent tilts and the AWS metric offer a direct
+fault-tolerance path~\cite{yang2026biaxial,santos2021fast,giribet2016tilted}.
+
+% =====================================================================
+\section{Conclusions}\label{sec:conclusion}
+A full-envelope control architecture was presented for a \SI{30}{\kilogram}
+fully-tilting hexacopter with six independently tilting rotors. It combines
+(i) a time-varying control-allocation layer built on the attainable wrench set
+and its inscribed-sphere margin, with a constrained QP enforcing actuator
+limits at every step, (ii) a corridor-constrained trim optimization that
+supplies a feasible-by-construction conversion reference tracked by a single
+unified MPC with zero mode switches, and (iii) an open SITL companion benchmark
+in the ArduPilot framework with a standardized comparison against an INDI--WLS
+engineering baseline. The paper deliberately does not claim unified control as
+new, nor tracking superiority over the tuned INDI--WLS baseline, which converts
+faster and holds altitude more tightly in nominal conditions. The stated
+contributions are the full-envelope, time-varying AWS allocation for the
+over-actuated fully-tilting hexacopter, the corridor-feasible reference together
+with a specified feasibility-coupling path, and a reproducible open benchmark.
+The conversion-corridor boundary was derived analytically for the stated
+vehicle, and the corridor ablation localizes the stabilizing benefit to the
+feasibility layer rather than to optimization per se. Future work will trigger
+and validate the online re-planning path under deliberately infeasible
+commands, shift the corridor trim toward a more wing-borne distribution, port
+the closed loop to the native ArduPilot SITL target, and proceed to
+hardware-in-the-loop, flight tests, and rotor-fault scenarios.
+
+% =====================================================================
+\section*{CRediT authorship contribution statement}
+Author One: Conceptualization, Methodology, Software, Writing -- original draft.
+Author Two: Validation, Visualization, Writing -- review \& editing.
+Corresponding Author: Supervision, Funding acquisition, Writing -- review \& editing.
+
+\section*{Declaration of competing interest}
+The authors declare that they have no known competing financial interests or
+personal relationships that could have appeared to influence the work reported
+in this paper.
+
+\section*{Data availability}
+The ArduPilot SITL parameters, scenario files, controller source, baseline
+configuration, and random seeds will be released in a public repository to
+permit full reproduction of the benchmark.
+
+\appendix
+\section{Open-source artifacts and reproducibility}\label{app:artifacts}
+The released artifact contains:
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item ArduPilot parameter files (stock baseline and proposed configuration),
+  including \texttt{Q\_FRAME\_CLASS}, \texttt{Q\_TILT\_MASK}, tilt rates, and
+  limits;
+  \item the nonlinear SITL plant for the \SI{30}{\kilogram} fully-tilting
+  hexacopter and the Python companion controller (with a C ABI to the C++
+  allocation library);
+  \item the corridor/trim optimization and the error-space LTV-MPC source
+  (Python with \texttt{scipy} and \texttt{quadprog}), together with the C++
+  AWS allocation routine and its unit tests;
+  \item the scenario scripts (nominal plus S4--S9), Monte-Carlo seeds, and plotting code;
+  \item a step-by-step build/run guide and, for mode~(b), the public firmware
+  diff exposing the six independent tilt servos.
+\end{itemize}
+
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+
+\end{document}

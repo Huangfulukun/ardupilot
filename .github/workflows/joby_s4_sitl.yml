@@ -90,10 +90,58 @@ jobs:
           grep -q "Loaded plane aero coefficients from" jobys4-sitl.log
           echo "Joby S4 SITL boot smoke test: PASS"
 
-      - name: Upload SITL log
+      - name: Run Joby S4 end-to-end flight profile
+        id: flight
+        continue-on-error: true
+        shell: bash
+        env:
+          JOBY_BUILDLOGS: ${{ github.workspace }}/joby-buildlogs
+        run: |
+          set -euxo pipefail
+          mkdir -p joby-buildlogs
+          PATH="/github/home/.local/bin:$PATH"
+          python3 Tools/autotest/joby_s4_flight.py
+
+      - name: Inventory flight logs
+        if: always()
+        shell: bash
+        run: |
+          echo "=== joby-buildlogs ==="
+          find joby-buildlogs -maxdepth 4 -type f -printf '%p %s bytes\n' 2>/dev/null || true
+          echo "=== SITL logs ==="
+          find logs -maxdepth 3 -type f -printf '%p %s bytes\n' 2>/dev/null || true
+
+      - name: Analyze Joby S4 DataFlash log
+        if: always()
+        id: analysis
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -x
+          PATH="/github/home/.local/bin:$PATH"
+          python3 Tools/autotest/joby_s4_log_analysis.py \
+            --root "${{ github.workspace }}" \
+            --output jobys4-analysis.json
+          cat jobys4-analysis.json
+
+      - name: Upload Joby S4 flight logs and analysis
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: jobys4-sitl-log
-          path: jobys4-sitl.log
-          retention-days: 7
+          name: jobys4-flight-results
+          path: |
+            jobys4-sitl.log
+            jobys4-analysis.json
+            joby-buildlogs
+            logs
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Assert flight profile passed
+        if: always()
+        shell: bash
+        run: |
+          echo "flight outcome: ${{ steps.flight.outcome }}"
+          echo "analysis outcome: ${{ steps.analysis.outcome }}"
+          test "${{ steps.flight.outcome }}" = "success"
+          test "${{ steps.analysis.outcome }}" = "success"

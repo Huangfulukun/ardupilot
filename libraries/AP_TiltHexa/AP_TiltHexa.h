@@ -157,7 +157,7 @@ private:
 
     // ---- Utility methods ----
     static float deg2rad(float deg) { return deg * 0.01745329252f; }
-    static float rad2deg(float rad) { return 57.29577951f; }
+    static float rad2deg(float rad) { return rad * 57.29577951f; }
 
     // Conversion functions
     float thrust_to_throttle(float thrust_N, float T_max);

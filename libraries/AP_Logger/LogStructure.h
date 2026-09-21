@@ -445,7 +445,7 @@ struct PACKED log_MAG {
     int16_t  motor_offset_x;
     int16_t  motor_offset_y;
     int16_t  motor_offset_z;
-    uint8_t health;
+    uint8_t  health;
     uint32_t SUS;
 };
 
@@ -644,8 +644,8 @@ struct PACKED log_MotBatt {
     float   lift_max;
     float   bat_volt;
     float   th_limit;
-    float   th_average_max;
-    float   th_out;
+    float th_average_max;
+    float th_out;
     uint8_t mot_fail_flags;
 };
 
@@ -702,7 +702,7 @@ struct PACKED log_VER {
 // @Field: ArmState: true if vehicle is now armed
 // @Field: ArmChecks: arming bitmask at time of arming
 // @FieldBitmaskEnum: ArmChecks: AP_Arming::Check
-// @Field: Forced: true if arm/disarm is forced
+// @Field: Forced: true if arm/disarm was forced
 // @Field: Method: method used for arming
 // @FieldValueEnum: Method: AP_Arming::Method
 
@@ -719,7 +719,7 @@ struct PACKED log_VER {
 // @Field: H: True if sensor is healthy
 // @Field: Hp: Probability sensor is healthy
 // @Field: TR: innovation test ratio
-// @Field: Pri: Primary instance number. If equal to I then this sensor is primary
+// @Field: Pri: Primary instance number. If equal to I then this sensor is primary sensor
 
 // @LoggerMessage: DMS
 // @Description: DataFlash-Over-MAVLink statistics
@@ -1065,7 +1065,7 @@ struct PACKED log_VER {
 // @Field: Active: true if SmartRTL could be used right now
 // @Field: NumPts: number of points currently in use
 // @Field: MaxPts: maximum number of points that could be used
-// @Field: Action: most recent internal action taken by SRTL
+// @Field: Action: most recent internal action taken by SRTL library
 // @FieldValueEnum: Action: AP_SmartRTL::Action
 // @Field: N: point associated with most recent action (North component)
 // @Field: E: point associated with most recent action (East component)

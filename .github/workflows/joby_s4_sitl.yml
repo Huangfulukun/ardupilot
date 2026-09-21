@@ -1,4 +1,5 @@
 name: Joby S4 SITL smoke test
+# Requested end-to-end flight validation with DataFlash analysis
 
 on:
   push:

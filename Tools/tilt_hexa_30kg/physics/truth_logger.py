@@ -1,9 +1,29 @@
 """
 physics/truth_logger.py -- CSV logger for the nonlinear plant.
 
-Fx_true..Mz_true are the body-frame wrench from propulsion + surface
-increments, EXCLUDING gravity and neutral aerodynamic forces/moments, i.e.
-the controllable wrench the allocator acts on.
+Records at every sub-step:
+  t, pos_NED(3), vel_NED(3), quat(4) or euler(3), omega_body(3),
+  airspeed, alpha, beta_sideslip,
+  per-motor T and beta (actual), surface deflections (4),
+  Fx_true, Fz_true, Mx_true, My_true, Mz_true  (total body force/moment
+    from propulsion + surface increments, EXCLUDING gravity),
+  neutral aero Fx, Fz, Mx, My, Mz (separately),
+  saturation flags.
+
+Definition of Fx_true..Mz_true:
+  These are the body-frame wrench components produced by the propulsion
+  system and the aerodynamic surface increments. They EXCLUDE:
+    - Gravity
+    - Neutral (un-actuated) aerodynamic forces/moments
+  They represent the "controlled wrench" w_a,p consistent with what the
+  allocator controls: only the propulsive and control-surface contributions
+  that the controller can influence.
+
+  Fx_true = Fx_propulsion + Fx_aero_surface
+  Fz_true = Fz_propulsion + Fz_aero_surface
+  Mx_true = Mx_propulsion + Mx_aero_surface
+  My_true = My_propulsion + My_aero_surface
+  Mz_true = Mz_propulsion + Mz_aero_surface
 """
 
 import csv
@@ -52,6 +72,22 @@ class TruthLogger:
             thrusts, betas, surfaces,
             F_prop, M_prop, F_neutral, M_neutral, F_surface, M_surface,
             sat_thrust=False, sat_tilt=False, sat_surface=False):
+        """Write one row of truth data.
+
+        Args:
+            t: simulation time (s)
+            pos, vel: NED position/velocity (3-vector)
+            quat: [w, x, y, z]
+            omega: body angular velocity (3-vector)
+            airspeed, alpha, beta_sideslip: scalars
+            thrusts: array of 6 thrust values (N)
+            betas: array of 6 tilt angles (rad)
+            surfaces: array of 4 surface deflections (rad)
+            F_prop, M_prop: propulsion force/moment (3-vectors)
+            F_neutral, M_neutral: neutral aero force/moment
+            F_surface, M_surface: surface aero force/moment
+            sat_thrust, sat_tilt, sat_surface: saturation flags
+        """
         if self.writer is None:
             return
 

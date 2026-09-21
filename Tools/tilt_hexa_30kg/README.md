@@ -3,7 +3,7 @@
 **Branch**: `pr_unifympc_wls_20260918_apm47`
 **Base**: ArduPilot 4.7.0-beta3
 **Status**: All parameters in this project carry `REFERENCE_SEED_NOT_MEASURED`.
-**Current (2026-09-20)**: Gains Kp=1.5, Kv=2.2, Kw=8.0, KR=16.0. PI baseline validated. WLS transition crashes (per-motor W_u weighting needed).
+**Current (2026-09-21)**: Research-comparison contract repaired: PI and WLS receive identical INDI wrench commands and differ only in the allocator. WLS always attempts the constrained QP; PI is weighted pseudo-inverse plus physical clipping with no QP redistribution. Long SITL E0-E5 campaign is delegated to GitHub Actions and results remain pending.
 
 ## Overview
 
@@ -21,8 +21,7 @@ Trajectory / Mission
               -> Nonlinear 30 kg plant (Python FDM)
 ```
 
-PI baseline: Fx zeroed, pitch-based forward flight.
-WLS proposed: Fx computed incrementally, tilt-based forward flight.
+PI baseline and proposed WLS use the same INDI-generated five-channel wrench, including the same Fx demand. The only algorithmic difference is weighted pseudo-inverse + post-allocation clipping versus constrained WLS/QP.
 
 No MPC, no scheduled beta(V), no plant-truth feedforward into the controller.
 

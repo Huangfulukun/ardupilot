@@ -83,6 +83,12 @@ aero:
   Cnr_per_rad: -0.35    # yaw damping
 
   # Aerodynamic surface derivatives for the PLANT model.
+  # These SAME named derivatives and SIGN CONVENTIONS are used by the
+  # controller's reduced B_A (Section 0.2), but the plant adds nonlinear
+  # effects (stall interaction, dynamic-pressure scaling, slipstream,
+  # effectiveness loss with deflection ~cos(delta)) that the controller
+  # does not model -- guaranteeing "controller model != plant model".
+  #
   # Convention: all deflections positive TRAILING-EDGE-DOWN.
   #   left  = body -y side (port)
   #   right = body +y side (starboard)
@@ -93,7 +99,8 @@ aero:
   # F_z row:  -q S CL_da     -q S CL_da      -q S CL_drv      -q S CL_drv
   # M_x row:  +q S b Cl_da   -q S b Cl_da    +q S b Cl_drv    -q S b Cl_drv
   # M_y row:  +q S c Cm_da   +q S c Cm_da    +q S c Cm_drv    +q S c Cm_drv
-  # M_z row:  +q S b Cn_da   -q S b Cn_da    +q S b Cn_drv    +q S b Cn_drv
+  # M_z row:  +q S b Cn_da   -q S b Cn_da    -q S b Cn_drv    +q S b Cn_drv
+  #
   surfaces:
     # Aileron derivatives
     CL_da: 0.45      # lift increment per rad aileron (TE-down)
@@ -109,7 +116,9 @@ aero:
 allocation:
   polygon_facets: 12                # N for inscribed regular polygon thrust constraint
   Ws: [2.0, 5.0, 6.0, 6.0, 4.0]   # wrench tracking weights [Fx, Fz, Mx, My, Mz]
-  Wdelta: 20.0                      # actuator change penalty weight
+  Wdelta: 20.0                      # actuator change penalty weight on D_u^-1 (u - u_prev); retuned from 0.15 (which gave no
+                                    # smoothing after normalisation: a 50 N jump cost 0.006 vs 25 per N^2 of Fz slack) so that a full-range
+                                    # jump costs about 2 N of Fz slack. REFERENCE_SEED_NOT_MEASURED.
   Wu: 0.02                          # actuator use penalty weight
 
 control:

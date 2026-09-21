@@ -523,3 +523,55 @@ REMAINING (next continuation):
   remote paper/ directory).
 - Author/affiliation/corresponding placeholders in main.tex remain the only formal submission
   blocker (user action). Then disable/delete cron 12305222854914 and report completion.
+
+## §18 Checkpoint 2026-09-22 (cron continuation: more SITL drivers pushed)
+- Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
+  * experiments/run_e1_trim.py (743 lines, commit e4de110; trailing newline aligned) — E1 nonlinear plant trim sweep V=0..25.
+  * experiments/run_e3_stress.py (962 lines, commit 0cc5ea0) — SITL E3 stress sweep. FIX: the file called
+    find_pi_saturation_boundary() which was never defined (NameError after the long sweep); added a small
+    defensive helper (first lambda where PI sat_fraction>0.3, any actuator near-limit >0.10, or wrench RMSE
+    >5x the lambda=0 baseline). py_compile OK.
+- CLAUDE.md note: earlier this round a condensed CLAUDE.md was pushed by mistake; restored the full §1-§17
+  history (commit 531aad1) and aligned local to it (removed two stale §6 bullets fully superseded by §7-§17);
+  local == remote blob 2e0e1b9 for CLAUDE.md.
+- REMAINING (next continuation):
+  (1) push experiments/run_e4_mission.py (907) and run_e5_robustness.py (979) — read+push+fetch-verify;
+  (2) push docs: top-level EXPERIMENTS.md, IMPLEMENTATION_PLAN.md, IMPLEMENTATION_REPORT.md, LOG_SCHEMA.md,
+      PAPER_IMPLEMENTATION_AUDIT.md, PARAMETER_MAP.md, README.md, experiments/README_experiments.md,
+      physics/README_physics.md, tools/README_tools.md;
+  (3) small text results (E1/E2/E3/E4/E5 summary JSON+CSV, fixed/mc/paper_metrics/comparison/baseline JSON)
+      can be pushed; per-run truth CSV/BIN and binary figures (figures/*.pdf,png) have no push channel
+      (gitignored/regenerable; figures already in remote paper/); run_baseline.sh mode-bit diff is unpushable;
+  (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker);
+  (5) when all goals met, disable/delete cron 12305222854914 and report completion.
+
+## §19 Checkpoint 2026-09-22 (cron continuation: final two SITL drivers + 7 docs pushed)
+- Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
+  * experiments/run_e4_mission.py (907 lines, commit 97a64bb; trailing newline aligned) — E4 full-mission
+    SITL driver (THX_MISSION=3, PI/WLS at 20/25 m/s, instances 20/21, native FBWA reference, phase/cross-track/
+    landing metrics). MATCH.
+  * experiments/run_e5_robustness.py (979 lines, first commit 46f141b) — E5 bench gust + Monte Carlo.
+    fetch-verify caught ONE real transcription bug: remote line 209 had yaw aero moment
+    `Mz_aero = q_bar*S*b*0.03*(drv_R - da_L)` (wrong: used aileron da_L); local correct is `(drv_R - drv_L)`.
+    Re-pushed corrected file (commit deb9589), re-fetched, MATCH.
+  * 7 documentation files, all MATCH after fetch-verify:
+    - README.md (commit 36c233e)
+    - PAPER_IMPLEMENTATION_AUDIT.md (commit 36c233e)
+    - PARAMETER_MAP.md (commit 71385c9)
+    - physics/README_physics.md (commit d2da4d1)
+    - tools/README_tools.md (commit e96be93)
+    - experiments/README_experiments.md (commit af1dfd7)
+    - LOG_SCHEMA.md (commit aa9f6e5)
+- REMAINING (next continuation):
+  (1) push the three large top-level docs: EXPERIMENTS.md (365 lines), IMPLEMENTATION_REPORT.md (598),
+      IMPLEMENTATION_PLAN.md (1273) — read+push+fetch-verify each (large inline pushes need the same
+      fetch-verify discipline; long comments are the usual transcription-error sites).
+  (2) optional small text results (E1/E2/E3/E4/E5 summary JSON+CSV, fixed/mc/paper_metrics/comparison/
+      baseline JSON) can be pushed; E1 afms .pdf/.png and per-run truth CSV/BIN and binary figures
+      (figures/*.pdf,png) have no push_files channel (gitignored/regenerable; figures already in remote paper/).
+  (3) experiments/run_baseline.sh is content-identical but differs only in the executable bit
+      (100644->100755), which push_files cannot set; skip.
+  (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker).
+  (5) when all goals met, disable/delete cron 12305222854914 and report completion.
+- All scientific/controller/firmware/paper work remains complete and verified (see §14-§18); this round is
+  purely synchronising the reproduction harness + docs to the remote fork.

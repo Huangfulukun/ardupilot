@@ -602,7 +602,7 @@ class TrajectoryGenerator:
                 x_ramp_end = self.accel * T_jerk * T_jerk / 6.0
                 V_ramp_end = 0.5 * self.accel * T_jerk
                 x_const_end = x_ramp_end + V_ramp_end * (T_accel - 2*T_jerk) + 0.5 * self.accel * (T_accel - 2*T_jerk) * (T_accel - 2*T_jerk)
-                V = V_const_end + a_now * t_rd - 0.5 * self.accel * t_rd * t_rd / T_jerk
+                V = V_const_end + self.accel * t_rd - 0.5 * self.accel * t_rd * t_rd / T_jerk
                 x = x_const_end + V_const_end * t_rd + 0.5 * self.accel * t_rd * t_rd - self.accel * t_rd * t_rd * t_rd / (6.0 * T_jerk)
                 phase = 3
             return {"p_r": [x, 0, -self.alt],

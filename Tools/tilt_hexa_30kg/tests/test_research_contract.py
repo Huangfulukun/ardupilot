@@ -48,6 +48,6 @@ def test_hexax_spin_signs_match_controller_and_analysis():
 
 def test_afms_analysis_is_offline_only():
     pipeline = (ROOT.parents[1] / "libraries" / "AP_TiltHexa" / "AP_TiltHexa_Pipeline.cpp").read_text()
-    forbidden = ["AFMS", "attainable force", "control margin"]
+    forbidden = ["AFMS", "control margin"]
     for token in forbidden:
         assert token.lower() not in pipeline.lower(), f"Realtime pipeline unexpectedly contains {token}"

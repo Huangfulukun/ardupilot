@@ -266,6 +266,9 @@ struct thx_pi_result {
     int   damped;
 };
 
+// Forward declaration (required by -Werror=missing-declarations)
+struct thx_pi_result thx_pi_solve(const struct thx_qp_input *in);
+
 // Mirrors thx_qp_solve input construction but calls the production PI
 // allocator, so the E3 open-loop stress comparison uses the same firmware
 // effectiveness, geometry, limits and previous-state for both methods.

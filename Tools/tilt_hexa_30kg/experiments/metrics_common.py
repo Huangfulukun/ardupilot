@@ -160,7 +160,7 @@ def read_log_with_dfreader(bin_path: str, msg_types: Optional[List[str]] = None
         return {}
 
     if msg_types is None:
-        msg_types = ["THXC","THXA","THXE","THXT","THXF","THXS","THXQ","THXI",
+        msg_types = ["THXC","THXA","THXE","THXT","THXF","THXS","THXQ","THXI","THXR",
                       "POS","ATT","ARSP","NTUN","IMU"]
 
     data = {mt: [] for mt in msg_types}
@@ -170,18 +170,28 @@ def read_log_with_dfreader(bin_path: str, msg_types: Optional[List[str]] = None
         print(f"[Metrics] Failed to open {bin_path}: {e}")
         return data
 
+    parse_error = None
     while True:
-        msg = mlog.recv_match(type=msg_types)
+        try:
+            msg = mlog.recv_match(type=msg_types)
+        except Exception as e:
+            # A log may end with a partially flushed packet.  Preserve all
+            # records decoded before the damaged tail, but make the condition
+            # explicit instead of aborting an entire paper campaign.
+            parse_error = f"{type(e).__name__}: {e}"
+            print(f"[Metrics] WARNING: DataFlash parse stopped early for {bin_path}: {parse_error}")
+            break
         if msg is None:
             break
         msg_type = msg.get_type()
         if msg_type in data:
             d = msg.to_dict()
-            # Convert TimeUS to seconds
             if "TimeUS" in d:
                 d["t"] = d["TimeUS"] * 1e-6
             data[msg_type].append(d)
 
+    if parse_error is not None:
+        data["_parse_error"] = [{"message": parse_error}]
     return data
 
 
@@ -330,6 +340,47 @@ def compute_transition_metrics(
             if took_off and not crashed and speed_ok and returned:
                 metrics["mission_completed"] = True
 
+    # -- Primary tracking metrics: time-varying THXR reference vs nonlinear truth --
+    # The transition/full-mission reference is not a constant cruise speed or
+    # constant altitude during takeoff/landing.  Using constant targets across
+    # the whole mission grossly inflates RMSE and can hide valid tracking.
+    used_time_varying_reference = False
+    if truth_data and "THXR" in log_data and len(log_data["THXR"]) > 1:
+        tr = log_data["THXR"]
+        tr_t = np.array([r.get("t", 0.0) for r in tr], dtype=float)
+        tr_pD = np.array([r.get("pD", 0.0) for r in tr], dtype=float)
+        tr_vN = np.array([r.get("vN", 0.0) for r in tr], dtype=float)
+        tr_vE = np.array([r.get("vE", 0.0) for r in tr], dtype=float)
+        tr_vD = np.array([r.get("vD", 0.0) for r in tr], dtype=float)
+
+        tt = truth_data.get("t")
+        pz_t = truth_data.get("pz")
+        vx_t = truth_data.get("vx")
+        vy_t = truth_data.get("vy")
+        vz_t = truth_data.get("vz")
+        if all(v is not None for v in [tt, pz_t, vx_t, vy_t, vz_t]) and len(tt) > 1:
+            t0 = max(float(tr_t[0]), float(tt[0]))
+            t1 = min(float(tr_t[-1]), float(tt[-1]))
+            mask = (tt >= t0) & (tt <= t1)
+            if np.any(mask):
+                tq = tt[mask]
+                ref_alt = -np.interp(tq, tr_t, tr_pD)
+                ref_speed = np.sqrt(
+                    np.interp(tq, tr_t, tr_vN) ** 2 +
+                    np.interp(tq, tr_t, tr_vE) ** 2 +
+                    np.interp(tq, tr_t, tr_vD) ** 2
+                )
+                act_alt = -pz_t[mask]
+                act_speed = np.sqrt(vx_t[mask] ** 2 + vy_t[mask] ** 2 + vz_t[mask] ** 2)
+                alt_err = act_alt - ref_alt
+                speed_err = act_speed - ref_speed
+                metrics["RMSE_h"] = float(np.sqrt(np.mean(alt_err ** 2)))
+                metrics["max_alt_error"] = float(np.max(np.abs(alt_err)))
+                metrics["RMSE_V"] = float(np.sqrt(np.mean(speed_err ** 2)))
+                metrics["max_speed_error"] = float(np.max(np.abs(speed_err)))
+                metrics["n_data_points"] = int(np.sum(mask))
+                used_time_varying_reference = True
+
     # -- Extract position and altitude from POS/ATT messages --
     # SITL POS: RelHomeAlt, RelOriginAlt (both are relative, always prefer these).
     # NEVER use POS.Alt (AMSL) because SITL home at CMAC is 584 m AMSL.
@@ -375,14 +426,13 @@ def compute_transition_metrics(
     arsp_t = np.array(arsp_t)
     arsp_vals = np.array(arsp_vals)
 
-    if len(pos_alt) > 0:
-        # RMSE altitude
+    if not used_time_varying_reference and len(pos_alt) > 0:
         alt_error = pos_alt - target_alt_m
         metrics["RMSE_h"] = float(np.sqrt(np.mean(alt_error ** 2)))
         metrics["max_alt_error"] = float(np.max(np.abs(alt_error)))
         metrics["n_data_points"] = max(metrics["n_data_points"], len(pos_alt))
 
-    if len(arsp_vals) > 0:
+    if not used_time_varying_reference and len(arsp_vals) > 0:
         speed_error = arsp_vals - target_cruise_m_s
         metrics["RMSE_V"] = float(np.sqrt(np.mean(speed_error ** 2)))
         metrics["max_speed_error"] = float(np.max(np.abs(speed_error)))

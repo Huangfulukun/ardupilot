@@ -5,9 +5,17 @@ import argparse
 import json
 import math
 import os
+import sys
 from collections import defaultdict
 
-from pymavlink import DFReader
+THIS_DIR = os.path.dirname(os.path.realpath(__file__))
+REPO_ROOT = os.path.realpath(os.path.join(THIS_DIR, "..", ".."))
+
+try:
+    from pymavlink import DFReader
+except ImportError:
+    sys.path.insert(0, os.path.join(REPO_ROOT, "modules", "mavlink"))
+    from pymavlink import DFReader
 
 
 def finite(v):

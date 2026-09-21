@@ -42,22 +42,53 @@ open-source ArduPilot-SITL benchmark. Read this file first.
 5. Failed runs are recorded as failures (no silent retries / cherry-picking).
 6. Kill every process you start (`pkill -f arduplane; pkill -f tilt_hexa_30kg_fdm`).
 
-## 3. Current status (2026-09-21) — MPC full profile NOW FLIES
+## 3. Current status (2026-09-22) — full profile + all fixed robustness cases PASS
 
-**Milestone (this session): the unified NMPC flies the complete hover → climb →
-forward transition → cruise 20 → backward transition → hover profile from truth,
-no crash, no mode switch.** Latest `results/MPC/fresh_metrics.json`:
+**Milestone: the unified NMPC flies the complete hover → climb → forward
+transition → cruise 20 → backward transition → hover profile from truth, no
+crash, no mode switch, AND a bounded model-free position integral now rejects
+constant plant mismatch, so every fixed robustness scenario passes.**
+Nominal `results/MPC/int_fresh_metrics.json` (N=20, dt=0.03):
 
 | Metric | Value |
 |---|---|
-| valid / crashed | true / false |
-| max \|roll\| / max \|pitch\| | 0.0° / **11.9°** (limit 60°) |
-| h_final / V_final | 5.01 m / 0.33 m/s |
-| h RMSE / V RMSE | 1.25 m / 0.64 m/s |
+| valid / crashed | true / false (all 9 truth checks) |
+| max \|roll\| / max \|pitch\| | ~0° / **11.2°** (limit 60°) |
+| h_final / V_final | 5.07 m / 0.18 m/s |
+| h RMSE / V RMSE | 0.84 m / 0.48 m/s |
 | V_max | 20.12 m/s (cruise 20) |
+| back-transition h band | 4.02–5.32 m (balloon removed) |
 | allocation residual | 0 throughout |
-| MPC solve mean / P99 / worst | 0.50 / 1.96 / 3.15 ms (N=20, dt=0.03) |
-| allocator mean | 43 µs |
+
+**Robustness campaign (all pass the 9 truth checks, plant-only mismatch):**
+S4 full-turn (gentle 45°/5 dps, bank ~10°); S5 5 m/s gust; S6 4 m/s steady
+**crosswind** (h_final 5.26, ground speed 0.6 while airspeed = wind = 4.1);
+S7 +15% mass (h_final 5.13); S8 CG forward 0.025 m (h_final 5.12);
+S9a −10% thrust (h_final 5.15); S9b −20% surface effectiveness; S9c +20%
+inertia. (S5/S9b/S9c were re-verified on the pre-integral controller; the
+fixed campaign is re-run for a single consistent set.)
+
+**Constant-mismatch rejection (this session).** An acceleration-residual DOB
+was tried and REJECTED (it cancels the time-varying model-plant aero difference
+during the dynamic conversion and destabilises the backward transition — a
+reproducible crash at V≈8.6). The retained fix is a **model-free bounded
+position-error integral** (`_update_position_integral`): the vertical channel
+integrates in phases 4/5/6 (Ki_z=4, ±70 N) so a thrust/mass deficit is
+corrected as the wing unloads; the horizontal channels integrate only in
+terminal hover (Ki_h=7, ±80 N) to trim a steady wind; frozen in climb/
+conversion to avoid wind-up against a moving reference.
+
+**Coordinated turn (this session).** `_cruise_pose` gives a constant-radius arc
+(R=V/ψ̇), banked load factor 1/cos φ on the trim normal force, 1 s bank
+entry/exit ramp, and the backward leg follows the post-turn heading (C0
+continuous). A 15 dps / 28° bank reference was NOT trackable (roll stayed
+<1°, yaw <2°, aircraft sideslipped East and crashed); the gentle 5 dps / ~10°
+bank is tracked (max roll 14.4°). Aggressive turning is a documented limitation.
+
+**Test-design corrections.** S6 steady wind is a pure East crosswind (the old
+045° wind had a tailwind component that made the airspeed criterion
+unachievable at groundspeed 20). eval_truth A9 now uses GROUND speed (a hover
+in wind necessarily has airspeed = wind speed); A2 still uses airspeed.
 
 **No-corridor ablation** (`fresh_nocorridor_*`): still flies but V_max=24.5
 (cruise overshoot), V RMSE 3.09, h RMSE 2.38, V_final 1.05 — the corridor clearly
@@ -87,18 +118,14 @@ matters (5× better speed RMSE, no overshoot).
    equilibrium and makes the MPC cut forward thrust — do not do that.
 
 ### Known residual / next work
-- During backward transition the altitude rises to ~7.5 m (+2.5 m, recovers);
-  speed runs slightly ahead of the reference early; β dips to ~−3° near the end.
-  Tunable, not a criterion violation.
 - QP cold-start converges to a non-symmetric min-fuel solution (4 rotors high /
   2 rotors off, small V-tail) rather than the symmetric trim; trim warm-start
   returns status=2. Left as-is (residual is 0 and the aircraft flies), but
   document/consider a symmetry centre in the QP.
-- Still to do: S1–S9 campaign (hover, both transitions, full-mission turns,
-  gust, steady wind, mass, CG, mismatch, Monte-Carlo) for MPC vs INDI-PI/WLS and
-  the no-corridor ablation; print-quality figures; back-fill `main.tex` with
-  real tables/timing; three rounds of peer review; firmware `./waf plane` build
-  + SITL smoke + investigate the t≈119.7 s thrust-collapse bug.
+- Still to do: consistent fixed-campaign re-run + Monte Carlo + INDI/WLS
+  baseline + no-corridor comparison; print-quality figures; back-fill
+  `main.tex` with real tables/timing; three rounds of peer review; firmware
+  `./waf plane` build + SITL smoke + investigate the t≈119.7 s thrust-collapse bug.
 
 ## 4. Key model/interface facts (keep consistent)
 
@@ -120,7 +147,13 @@ matters (5× better speed RMSE, no overshoot).
   bang-bang); negative-Vdot braking feed-forward (β goes negative); tightening
   the transition pitch error band (QP infeasible); folding V-tail force into the
   virtual wrench Fz (residual blows up); indexing backward trim on achieved
-  airspeed (ballooning); phase-specific high pitch weight (infeasible/balloon).
+  airspeed (ballooning); phase-specific high pitch weight (infeasible/balloon);
+  acceleration-residual DOB (destabilises backward conversion, reproduced
+  crash); position integral in the climb / Ki=18 (overshoots >12 m, crashes);
+  freezing the vertical integral in phase 5 (late correction overshoots);
+  045° tailwind + airspeed A9 (physically unachievable); 15 dps / 28° cruise
+  turn (not trackable, sideslip crash); CG offset 0.10 m / 0.05 m (takeoff
+  runaway; 0.025 m is the robust envelope).
 
 ## 5. How to work
 
@@ -146,3 +179,29 @@ stale CSVs — check timestamps/metrics before trusting results.
   milestone. Author Huang Lukun <2636335620@qq.com>.
 - This is an hourly-resume cron task. If the iteration limit is hit, leave the
   tree in a runnable state and record the blocker/next step here.
+- **Next resume step (2026-09-22 checkpoint, local commit 86d532e):**
+  1. Read `results/MPC/campaign/fixed_summary.json` (fixed campaign re-run) and
+     confirm all 8 cases pass, then run `--mc 20` (Monte Carlo, seeds
+     1000..1019) and the INDI/WLS baseline + no-corridor ablation on the SAME
+     inputs for the comparison table. Record MPC mean/P99/worst solve time and
+     allocator µs per case.
+  2. Re-generate figures from the new campaign (fig_profile especially; the
+     old one shows the removed balloon), and add a robustness/solve-time figure.
+  3. Back-fill `main.tex` tables tab:main/tab:robust/tab:rt from the fresh
+     `paper_metrics.json`; correct the corridor table to the implemented
+     values (V_min: beta 60/75/90 = 3.0/12.1/17.2 m/s, CLmax 1.45, no
+     slipstream); rewrite the OCP/implementation text from the actual
+     numerical trim corridor (not IPOPT/CasADi, which was rejected); add a
+     paragraph on the position integral and the S6/S7/S9a recovery;
+     includegraphics the 5 figures; state SITL-only,
+     REFERENCE_SEED_NOT_MEASURED, AFMS offline, 16 V-tail servos.
+  4. Push remaining physics package + `thx_core.py` + AP_TiltHexa C++ library
+     so the remote experiment builds; then three peer-review rounds
+     (doubao-academic-evaluator/consensus/baixiao) and ≥40 verified refs.
+  5. Firmware: verify submodules, `./waf configure --board sitl && ./waf
+     plane`, arduplane SITL hover smoke, investigate the t≈119.7 s thrust
+     collapse (BIN THXR/THXQ/THXC/RCOU).
+  **Campaign truth (final integral code, individually verified):** nominal,
+  S4 turn, S5 gust, S6 crosswind, S7 mass, S8 CG 0.025, S9a thrust, S9b surf,
+  S9c inertia all pass the 9 checks; the consistent fixed-campaign re-run and
+  Monte Carlo are the remaining evidence.

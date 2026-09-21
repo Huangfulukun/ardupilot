@@ -31,7 +31,13 @@ QuadPlane::QuadPlane(const char *frame_str) :
 
     ground_behavior = GROUND_BEHAVIOR_NO_MOVEMENT;
 
-    if (strstr(frame_str, "jobys4")) {
+    if (strstr(frame_str, "tilthexa30")) {
+        // Paper-3 SITL-only 30 kg independently tilting HexaX model.
+        // Reuse the standard HexaX propulsion order while exposing six
+        // additional pitch-tilt servo channels below.
+        frame_type = "hexax";
+        thrust_scale = 0;
+    } else if (strstr(frame_str, "jobys4")) {
         // Six tilting propulsion stations.  The model JSON provides the
         // full-scale mass, inertia, wing aerodynamics and motor positions.
         frame_type = "jobys4";
@@ -103,7 +109,20 @@ QuadPlane::QuadPlane(const char *frame_str) :
         frame->motors[1].servo_type = Motor::SERVO_RETRACT;
         frame->motors[1].servo_rate = 7*60.0/90; // 7 seconds to change
     }
-    
+
+    if (strstr(frame_str, "tilthexa30")) {
+        // SITL-only independent nacelle tilts on SERVO12..SERVO17.
+        // Motor::pitch is opposite the paper beta convention, hence
+        // beta=-10..+90 deg maps to motor pitch=+10..-90 deg.
+        for (uint8_t i = 0; i < frame->num_motors; i++) {
+            frame->motors[i].pitch_servo = 7 + i;
+            frame->motors[i].pitch_min = 10.0f;
+            frame->motors[i].pitch_max = -90.0f;
+            // Motor::servo_rate is seconds per 60 degrees.
+            frame->motors[i].servo_rate = 1.0f;
+        }
+    }
+
     // leave first 4 servos free for plane
     frame->motor_offset = motor_offset;
 
@@ -116,7 +135,9 @@ QuadPlane::QuadPlane(const char *frame_str) :
     // Most legacy quadplane frame JSON files describe only the multicopter
     // portion and add 50% for the fixed-wing structure.  JobyS4.json stores
     // the complete aircraft gross mass, so do not apply that legacy factor.
-    if (strstr(frame_str, "jobys4")) {
+    if (strstr(frame_str, "jobys4") || strstr(frame_str, "tilthexa30")) {
+        // These JSON files store complete aircraft mass, not just the VTOL
+        // propulsion-frame portion used by legacy QuadPlane models.
         mass = frame->get_mass();
     } else {
         mass = frame->get_mass() * 1.5f;

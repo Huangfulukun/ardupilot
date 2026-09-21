@@ -24,6 +24,8 @@ import math
 import os
 import sys
 import time
+import copy
+from collections import deque
 import numpy as np
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -80,9 +82,10 @@ class MCPlantModel(PlantModel):
             inertia_factors[name] = float(factor)
             self._perturbations[f"inertia_factor_{name}"] = float(factor)
 
-        # Thrust coefficient: +-thrust_pct%
+        # Thrust coefficient uncertainty changes realized thrust for a given
+        # command. kappa_Q is a torque-to-thrust ratio and is kept independent;
+        # scaling both would square the yaw-torque error.
         tc_factor = 1.0 + self.rng.uniform(-thrust_pct/100.0, thrust_pct/100.0)
-        self.kq *= tc_factor  # torque coeff scales with thrust
         self._perturbations["thrust_coeff_factor"] = float(tc_factor)
 
         # Surface effectiveness: +-surface_pct%
@@ -101,14 +104,14 @@ class MCPlantModel(PlantModel):
         # Wind: 0 to wind_max m/s, random direction
         wind_speed = self.rng.uniform(0.0, wind_max)
         wind_dir_rad = self.rng.uniform(0.0, 2.0 * math.pi)
-        self.wind_ned = np.array([wind_speed * math.cos(wind_dir_rad),
-                                   wind_speed * math.sin(wind_dir_rad),
-                                   0.0], dtype=np.float64)
-        self._perturbations["wind_ned"] = list(self.wind_ned)
+        self._wind_target_ned = np.array([wind_speed * math.cos(wind_dir_rad),
+                                           wind_speed * math.sin(wind_dir_rad),
+                                           0.0], dtype=np.float64)
+        self.wind_ned = np.zeros(3, dtype=np.float64)
+        self._perturbations["wind_ned"] = list(self._wind_target_ned)
         self._perturbations["wind_speed_m_s"] = float(wind_speed)
 
-        # Delay: not applied in bench (bench has no delay mechanism)
-        # Instead we add extra noise as proxy for delay effects
+        # Sensor/estimator sample delay; MCSensorBuilder applies it explicitly.
         delay_ms = self.rng.uniform(0.0, delay_ms_max)
         self._delay_ms = float(delay_ms)
         self._perturbations["delay_ms"] = float(delay_ms)
@@ -155,9 +158,12 @@ class MCPlantModel(PlantModel):
             F_i = np.array([T * math.sin(beta), 0.0, -T * math.cos(beta)], dtype=np.float64)
             force_body += F_i
 
-            Qi = s * self.kq * T
-            M_i = np.cross(ri, F_i) + np.array([0.0, 0.0, Qi], dtype=np.float64)
+            torque_axis = np.array([math.sin(beta), 0.0, -math.cos(beta)], dtype=np.float64)
+            M_i = np.cross(ri, F_i) + s * self.kq * T * torque_axis
             moment_body += M_i
+
+        controlled_force = force_body.copy()
+        controlled_moment = moment_body.copy()
 
         for i in range(4):
             self.delta_actual[i] += (delta_cmd[i] - self.delta_actual[i]) * min(1.0, self.plant_dt / self.tau_surf)
@@ -202,10 +208,14 @@ class MCPlantModel(PlantModel):
         My_aero = q_bar * S * c * (-0.85) * 0.5 * (drv_L + drv_R) * se
         Mz_aero = q_bar * S * b * 0.03 * (drv_R - drv_L) * se
 
-        moment_body += np.array([Mx_aero, My_aero, Mz_aero], dtype=np.float64)
+        surface_moment = np.array([Mx_aero, My_aero, Mz_aero], dtype=np.float64)
+        moment_body += surface_moment
+        controlled_moment += surface_moment
 
         self.last_force_body = force_body.copy()
         self.last_moment_body = moment_body.copy()
+        self.last_controlled_force_body = controlled_force.copy()
+        self.last_controlled_moment_body = controlled_moment.copy()
 
         return force_body, moment_body
 
@@ -217,11 +227,14 @@ class MCPlantModel(PlantModel):
 class MCSensorBuilder(SensorInputBuilder):
     """Sensor builder with configurable noise."""
 
-    def __init__(self, noise_std_accel=0.0, noise_std_gyro=0.0, rng=None):
+    def __init__(self, noise_std_accel=0.0, noise_std_gyro=0.0, rng=None,
+                 delay_ms=0.0, sample_dt=0.01):
         super().__init__()
         self._noise_accel = noise_std_accel
         self._noise_gyro = noise_std_gyro
         self._rng = rng or np.random.RandomState(0)
+        self._delay_steps = max(0, int(round((delay_ms * 1.0e-3) / sample_dt)))
+        self._delay_fifo = deque(maxlen=self._delay_steps + 1)
 
     def build(self, plant, dt, armed=True):
         si = super().build(plant, dt, armed)
@@ -235,7 +248,8 @@ class MCSensorBuilder(SensorInputBuilder):
             gyro_noisy = [plant.omega[i] + self._rng.normal(0, self._noise_gyro) for i in range(3)]
             si.gyro = gyro_noisy
 
-        return si
+        self._delay_fifo.append(copy.deepcopy(si))
+        return copy.deepcopy(self._delay_fifo[0])
 
 
 # =========================================================================
@@ -476,6 +490,8 @@ def run_mc_transition(alloc="pi", alt=60.0, cruise=20.0, duration=80.0, seed=42)
         noise_std_accel=perturb_dict["noise_std_accel"],
         noise_std_gyro=perturb_dict["noise_std_gyro"],
         rng=rng,
+        delay_ms=perturb_dict["delay_ms"],
+        sample_dt=0.01,
     )
 
     traj = TrajectoryGenerator(mission="transition", alt=alt, cruise=cruise,
@@ -493,6 +509,9 @@ def run_mc_transition(alloc="pi", alt=60.0, cruise=20.0, duration=80.0, seed=42)
     max_roll = 0.0
     max_pitch = 0.0
     reached_cruise = False
+    wind_ramp_start = None
+    current_ref_alt = 0.0
+    current_ref_speed = 0.0
 
     while t < duration and not crashed:
         if pipeline_step_count % pipeline_interval == 0:
@@ -502,6 +521,8 @@ def run_mc_transition(alloc="pi", alt=60.0, cruise=20.0, duration=80.0, seed=42)
             sensor_in = sensor_builder.build(plant, pipeline_dt, armed=(t > 0.5))
 
             ref_dict = traj.generate(t_pipeline)
+            current_ref_alt = -float(ref_dict["p_r"][2])
+            current_ref_speed = float(np.linalg.norm(np.asarray(ref_dict["v_r"], dtype=float)))
 
             class Ref:
                 pass
@@ -521,6 +542,12 @@ def run_mc_transition(alloc="pi", alt=60.0, cruise=20.0, duration=80.0, seed=42)
             T_cmd = list(cmd.T_N)
             beta_cmd = list(cmd.beta_rad)
             delta_cmd = list(cmd.delta_rad)
+
+        if wind_ramp_start is None and plant.get_altitude() > 5.0:
+            wind_ramp_start = t
+        if hasattr(plant, "_wind_target_ned") and wind_ramp_start is not None:
+            frac = min(1.0, max(0.0, (t - wind_ramp_start) / 2.0))
+            plant.wind_ned = plant._wind_target_ned * frac
 
         plant.step(plant_dt, T_cmd, beta_cmd, delta_cmd)
 
@@ -550,20 +577,24 @@ def run_mc_transition(alloc="pi", alt=60.0, cruise=20.0, duration=80.0, seed=42)
             e_wm_norm = np.sqrt(np.sum((we / D_w) ** 2))
 
             wp_model = np.array(list(telem.w_a))
+            wd = np.array(list(telem.w_d))
             wp_plant = np.array([
-                plant.last_force_body[0],
-                plant.last_force_body[2],
-                plant.last_moment_body[0],
-                plant.last_moment_body[1],
-                plant.last_moment_body[2],
+                plant.last_controlled_force_body[0],
+                plant.last_controlled_force_body[2],
+                plant.last_controlled_moment_body[0],
+                plant.last_controlled_moment_body[1],
+                plant.last_controlled_moment_body[2],
             ])
-            e_wp = wp_model - wp_plant
+            e_wp = wd - wp_plant
             e_wp_norm = np.sqrt(np.sum((e_wp / D_w) ** 2))
 
             row = {
                 "t": round(t, 4),
                 "pz": round(alt_actual, 4),
                 "airspeed": round(airspeed, 4),
+                "groundspeed": round(float(np.linalg.norm(plant.vel)), 4),
+                "ref_alt": round(current_ref_alt, 4),
+                "ref_speed": round(current_ref_speed, 4),
                 "roll_deg": round(math.degrees(roll), 2),
                 "pitch_deg": round(math.degrees(pitch), 2),
                 "yaw_deg": round(math.degrees(yaw), 2),
@@ -609,19 +640,19 @@ def run_mc_transition(alloc="pi", alt=60.0, cruise=20.0, duration=80.0, seed=42)
         failure_reason = "crashed"
 
     if took_off and len(log_rows) > 20:
-        flying_rows = [r for r in log_rows if r["pz"] > 5.0]
+        flying_rows = [r for r in log_rows if r["pz"] > 0.5]
         if flying_rows:
             alt_vals = [r["pz"] for r in flying_rows]
             max_alt = max(alt_vals)
             min_alt = min(alt_vals)
-            alt_err_flying = [a - alt for a in alt_vals]
+            alt_err_flying = [r["pz"] - r.get("ref_alt", alt) for r in flying_rows]
             alt_rmse = math.sqrt(sum(e*e for e in alt_err_flying) / len(alt_err_flying))
 
-        cruise_rows = [r for r in log_rows if r["pz"] > 5.0 and r["airspeed"] > 5.0]
-        if cruise_rows:
-            spd_err = [r["airspeed"] - cruise for r in cruise_rows]
+        tracking_rows = [r for r in flying_rows if r.get("ref_speed", 0.0) > 0.5]
+        if tracking_rows:
+            spd_err = [r["groundspeed"] - r["ref_speed"] for r in tracking_rows]
             speed_rmse = math.sqrt(sum(e*e for e in spd_err) / len(spd_err))
-            max_airspeed_val = max(r["airspeed"] for r in cruise_rows)
+            max_airspeed_val = max(r["airspeed"] for r in tracking_rows)
 
         # Wrench RMSE plant
         if any("e_wp_norm" in r for r in log_rows):
@@ -658,13 +689,21 @@ def run_mc_transition(alloc="pi", alt=60.0, cruise=20.0, duration=80.0, seed=42)
                     recovery_time = r["t"]
                     break
 
+    returned_hover = False
+    if len(log_rows) >= 20:
+        tail = log_rows[-min(200, len(log_rows)):]
+        returned_hover = (
+            np.mean([abs(r["pz"] - r.get("ref_alt", alt)) for r in tail]) < 5.0 and
+            np.mean([r["groundspeed"] for r in tail]) < 2.0
+        )
+
     metrics = {
         "seed": seed,
         "method": alloc,
         "took_off": bool(took_off),
         "reached_cruise": bool(reached_cruise),
         "crashed": bool(crashed),
-        "mission_completed": bool(valid and reached_cruise),
+        "mission_completed": bool(valid and reached_cruise and returned_hover),
         "valid_flight": bool(valid),
         "failure_reason": failure_reason,
         "RMSE_V": round(speed_rmse, 3),

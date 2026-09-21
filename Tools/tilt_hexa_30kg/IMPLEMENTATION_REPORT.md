@@ -3,7 +3,7 @@
 **Branch**: `pr_unifympc_wls_20260918_apm47` (ArduPilot 4.7.0-beta3)
 **Date**: 2026-09-20
 **Status**: All parameters are REFERENCE_SEED_NOT_MEASURED.
-**Repair status**: partial -- QP solver fix, Fx channel, actuator estimate, gain retune, and jerk-limited trajectory all in place. WLS transition crashes with roll divergence at high speed (per-motor W_u weighting needed). SITL+FDM joint integration still blocked.
+**Audit status (2026-09-21)**: allocator comparison repaired for paper validity. PI and WLS now receive identical INDI wrench commands; PI never falls back to QP, and WLS always attempts QP (PI is warm-start/emergency fallback only and the failure status remains logged). Surface-rate constraints are centred on the previous commanded actuator state. E1 lift-support calculation and LP variable bounds were corrected; offline AFMS projection analysis and dedicated GitHub Actions workflows were added. Long SITL E0-E5 results for this audited code are pending.
 
 ## Changelog
 
@@ -258,11 +258,14 @@ where:
 - F_x,f, F_z,f = w_f (B(x_f) * u_f from controller model, NEVER plant truth)
 - e_R = rotation from actual TO desired attitude (Bullo & Lewis vee-map)
 
-### 5.4 Fx strategy
+### 5.4 Allocator comparison contract (current code)
 
-**PI baseline (alloc_mode=0)**: Fx demand zeroed. Forward thrust comes from gravity component of tilted thrust: F_x = m*g*sin(theta). The allocator distributes thrust evenly across all 6 rotors with equal tilt angles. Forward speed depends indirectly on pitch angle tracking.
+**Both modes use the same INDI controller and the same desired wrench** `w_d=[Fx,Fz,Mx,My,Mz]`. There is no allocator-specific Fx zeroing, force fraction, or transition schedule.
 
-**WLS proposed (alloc_mode=1)**: Fx computed incrementally (`Delta_Fx`), rate-limited to achievable dFx/dt given current thrust and max tilt rate. QP allocator tilts rotors to produce net Fx. fx_frac=0.50 (WLS uses more of the Fx budget than PI's 0.15). This is the PROPOSED forward flight strategy that differentiates WLS from PI.
+- **PI baseline (alloc_mode=0)**: weighted pseudo-inverse followed by physical thrust/tilt/rate/surface clipping. No QP redistribution.
+- **WLS proposed (alloc_mode=1)**: constrained QP every cycle. The PI solution is only a warm start; if the QP fails it becomes an explicitly logged safety fallback.
+
+This contract is enforced by `tests/test_research_contract.py` and the TiltHexa GitHub Actions workflow.
 
 ### 5.5 Key constraints
 

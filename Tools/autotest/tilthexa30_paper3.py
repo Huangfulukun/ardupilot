@@ -356,7 +356,12 @@ class TiltHexaExperiment:
             encoding="utf-8",
             buffering=1,
         )
-        model_arg = "quadplane-tilthexa30:%s" % model_path
+        # Both Plane and Frame parse a trailing :<json> model spec during
+        # construction.  Use a path relative to the SITL working directory;
+        # passing an absolute host path is re-rooted by AP_Filesystem and
+        # causes the base Plane constructor to panic before QuadPlane can
+        # adjust it.
+        model_arg = "quadplane-tilthexa30:%s" % os.path.basename(model_path)
         cmd = [
             binary,
             "-w",

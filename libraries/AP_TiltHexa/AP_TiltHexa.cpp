@@ -1557,6 +1557,20 @@ void AP_TiltHexa::update_trajectory(float dt)
 
     TiltHexa_Trajectory_generate(_traj_t, traj_config, _traj_ref, complete, _traj_phase);
 
+    // In E4 the physical vehicle may touch down before the time-parameterised
+    // LAND segment has fully elapsed.  Once touchdown/ground is confirmed,
+    // treat the full mission as complete instead of freezing the trajectory
+    // clock in LAND forever and forcing the experiment harness to timeout.
+    if (mission == 3 && _traj_phase == THX_PHASE_LAND) {
+        const uint8_t ppl_phase = _pipeline.get_phase();
+        if (ppl_phase == THX_PPL_PHASE_TOUCHDOWN || ppl_phase == THX_PPL_PHASE_GROUND) {
+            complete = true;
+            _traj_phase = THX_PHASE_COMPLETE;
+            _traj_ref.phase = THX_PHASE_COMPLETE;
+            _traj_ref.mission_complete = true;
+        }
+    }
+
     if (complete) {
         _traj_active = false;
         if (mission != 4) {

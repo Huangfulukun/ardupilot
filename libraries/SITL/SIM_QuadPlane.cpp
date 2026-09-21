@@ -126,8 +126,22 @@ QuadPlane::QuadPlane(const char *frame_str) :
     // leave first 4 servos free for plane
     frame->motor_offset = motor_offset;
 
+    // SITL's POSIX filesystem deliberately maps absolute-looking paths under
+    // the process working directory.  The paper-3 harness writes its model
+    // JSON into that working directory, so pass only the basename to Frame.
+    const char *frame_init_arg = frame_str;
+    char tilthexa30_frame_str[64];
+    if (strstr(frame_str, "tilthexa30")) {
+        const char *model_name = strrchr(frame_str, '/');
+        if (model_name != nullptr) {
+            snprintf(tilthexa30_frame_str, sizeof(tilthexa30_frame_str),
+                     "quadplane-tilthexa30:%s", model_name + 1);
+            frame_init_arg = tilthexa30_frame_str;
+        }
+    }
+
     // we use zero terminal velocity to let the plane model handle the drag
-    frame->init(frame_str);
+    frame->init(frame_init_arg);
     battery.setup(frame->get_model_batt_capacity_ah(),
                   frame->get_model_batt_resistance_ohm(),
                   frame->get_model_batt_max_voltage());

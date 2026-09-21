@@ -1,0 +1,21 @@
+{
+  "label": "fresh_nocorridor",
+  "scenario": "transition",
+  "valid": true,
+  "crashed": false,
+  "duration": 53.91,
+  "max_roll_deg": 2.7,
+  "max_pitch_deg": 15.9,
+  "h_final": 5.1,
+  "V_final": 1.05,
+  "h_rmse": 2.384,
+  "V_rmse": 3.094,
+  "h_min": -0.0,
+  "V_max": 24.51,
+  "mpc_mean_ms": 0.787,
+  "mpc_p99_ms": 3.194,
+  "mpc_worst_ms": 4.788,
+  "alloc_mean_us": 42.9,
+  "mpc_status0": 0,
+  "mpc_n": 1797
+}

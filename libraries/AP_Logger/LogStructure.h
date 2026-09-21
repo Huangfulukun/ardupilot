@@ -145,6 +145,7 @@ const struct MultiplierStructure log_Multipliers[] = {
 #include <AP_ESC_Telem/LogStructure.h>
 #include <AP_AIS/LogStructure.h>
 #include <AP_HAL_ChibiOS/LogStructure.h>
+#include <AP_TiltHexa/LogStructure.h>
 #include <AP_RPM/LogStructure.h>
 #include <AC_Fence/LogStructure.h>
 #include <AP_Landing/LogStructure.h>
@@ -444,7 +445,7 @@ struct PACKED log_MAG {
     int16_t  motor_offset_x;
     int16_t  motor_offset_y;
     int16_t  motor_offset_z;
-    uint8_t  health;
+    uint8_t health;
     uint32_t SUS;
 };
 
@@ -643,8 +644,8 @@ struct PACKED log_MotBatt {
     float   lift_max;
     float   bat_volt;
     float   th_limit;
-    float th_average_max;
-    float th_out;
+    float   th_average_max;
+    float   th_out;
     uint8_t mot_fail_flags;
 };
 
@@ -701,7 +702,7 @@ struct PACKED log_VER {
 // @Field: ArmState: true if vehicle is now armed
 // @Field: ArmChecks: arming bitmask at time of arming
 // @FieldBitmaskEnum: ArmChecks: AP_Arming::Check
-// @Field: Forced: true if arm/disarm was forced
+// @Field: Forced: true if arm/disarm is forced
 // @Field: Method: method used for arming
 // @FieldValueEnum: Method: AP_Arming::Method
 
@@ -718,7 +719,7 @@ struct PACKED log_VER {
 // @Field: H: True if sensor is healthy
 // @Field: Hp: Probability sensor is healthy
 // @Field: TR: innovation test ratio
-// @Field: Pri: Primary instance number. If equal to I then this sensor is primary sensor
+// @Field: Pri: Primary instance number. If equal to I then this sensor is primary
 
 // @LoggerMessage: DMS
 // @Description: DataFlash-Over-MAVLink statistics
@@ -1064,7 +1065,7 @@ struct PACKED log_VER {
 // @Field: Active: true if SmartRTL could be used right now
 // @Field: NumPts: number of points currently in use
 // @Field: MaxPts: maximum number of points that could be used
-// @Field: Action: most recent internal action taken by SRTL library
+// @Field: Action: most recent internal action taken by SRTL
 // @FieldValueEnum: Action: AP_SmartRTL::Action
 // @Field: N: point associated with most recent action (North component)
 // @Field: E: point associated with most recent action (East component)
@@ -1296,6 +1297,7 @@ LOG_STRUCTURE_FROM_VISUALODOM \
     { LOG_FILE_MSG, sizeof(log_File), \
       "FILE",   "NIBZ",       "FileName,Offset,Length,Data", "----", "----" }, \
 LOG_STRUCTURE_FROM_AIS \
+    LOG_STRUCTURE_FROM_TILTHEXA \
     { LOG_SCRIPTING_MSG, sizeof(log_Scripting), \
       "SCR",   "QNIii", "TimeUS,Name,Runtime,Total_mem,Run_mem", "s#sbb", "F-F--", true }, \
     { LOG_VER_MSG, sizeof(log_VER), \
@@ -1384,6 +1386,7 @@ enum LogMessages : uint8_t {
     LOG_IDS_FROM_AC_ATTITUDECONTROL,
     LOG_IDS_FROM_PRECLAND,
     LOG_IDS_FROM_AIS,
+    LOG_IDS_FROM_TILTHEXA,
     LOG_STAK_MSG,
     LOG_FILE_MSG,
     LOG_SCRIPTING_MSG,

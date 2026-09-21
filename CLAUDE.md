@@ -17,7 +17,7 @@ open-source ArduPilot-SITL benchmark. Read this file first.
 
 | Item | Path |
 |---|---|
-| Authoritative paper (elsarticle / AST) | `../tilt-hexacopter-paper/{main.tex,references.bib,elsarticle.cls,elsarticle-num.bst}` (outside repo; ≥40 refs) |
+| Authoritative paper (elsarticle / AST) | `Tools/tilt_hexa_30kg/paper/{main.tex,references.bib}` (23 pp, 57 refs; copy of `../tilt-hexacopter-paper/`) |
 | Proposed controller (Python) | `Tools/tilt_hexa_30kg/tools/mpc_controller.py` (unified NMPC, reference, AWS allocator wrapper) |
 | Offline corridor / trim | `tools/corridor_ocp.py`, `tools/trim_map.py` |
 | Closed-loop experiment | `experiments/run_mpc.py` (CLI `--scenario {transition,full,hover} --no-corridor --wind --seed --label --save`) |
@@ -118,14 +118,16 @@ matters (5× better speed RMSE, no overshoot).
    equilibrium and makes the MPC cut forward thrust — do not do that.
 
 ### Known residual / next work
+- During backward transition the altitude rises to ~7.5 m (+2.5 m, recovers);
+  speed runs slightly ahead of the reference early; β dips to ~−3° near the end.
+  Tunable, not a criterion violation.
 - QP cold-start converges to a non-symmetric min-fuel solution (4 rotors high /
   2 rotors off, small V-tail) rather than the symmetric trim; trim warm-start
   returns status=2. Left as-is (residual is 0 and the aircraft flies), but
   document/consider a symmetry centre in the QP.
-- Still to do: consistent fixed-campaign re-run + Monte Carlo + INDI/WLS
-  baseline + no-corridor comparison; print-quality figures; back-fill
-  `main.tex` with real tables/timing; three rounds of peer review; firmware
-  `./waf plane` build + SITL smoke + investigate the t≈119.7 s thrust-collapse bug.
+- Still to do: firmware `./waf plane` build + SITL smoke + investigate the
+  t≈119.7 s thrust-collapse bug; user fills the author placeholders before
+  submission.
 
 ## 4. Key model/interface facts (keep consistent)
 
@@ -179,29 +181,69 @@ stale CSVs — check timestamps/metrics before trusting results.
   milestone. Author Huang Lukun <2636335620@qq.com>.
 - This is an hourly-resume cron task. If the iteration limit is hit, leave the
   tree in a runnable state and record the blocker/next step here.
-- **Next resume step (2026-09-22 checkpoint, local commit 86d532e):**
-  1. Read `results/MPC/campaign/fixed_summary.json` (fixed campaign re-run) and
-     confirm all 8 cases pass, then run `--mc 20` (Monte Carlo, seeds
-     1000..1019) and the INDI/WLS baseline + no-corridor ablation on the SAME
-     inputs for the comparison table. Record MPC mean/P99/worst solve time and
-     allocator µs per case.
-  2. Re-generate figures from the new campaign (fig_profile especially; the
-     old one shows the removed balloon), and add a robustness/solve-time figure.
-  3. Back-fill `main.tex` tables tab:main/tab:robust/tab:rt from the fresh
-     `paper_metrics.json`; correct the corridor table to the implemented
-     values (V_min: beta 60/75/90 = 3.0/12.1/17.2 m/s, CLmax 1.45, no
-     slipstream); rewrite the OCP/implementation text from the actual
-     numerical trim corridor (not IPOPT/CasADi, which was rejected); add a
-     paragraph on the position integral and the S6/S7/S9a recovery;
-     includegraphics the 5 figures; state SITL-only,
-     REFERENCE_SEED_NOT_MEASURED, AFMS offline, 16 V-tail servos.
-  4. Push remaining physics package + `thx_core.py` + AP_TiltHexa C++ library
-     so the remote experiment builds; then three peer-review rounds
-     (doubao-academic-evaluator/consensus/baixiao) and ≥40 verified refs.
-  5. Firmware: verify submodules, `./waf configure --board sitl && ./waf
-     plane`, arduplane SITL hover smoke, investigate the t≈119.7 s thrust
-     collapse (BIN THXR/THXQ/THXC/RCOU).
-  **Campaign truth (final integral code, individually verified):** nominal,
-  S4 turn, S5 gust, S6 crosswind, S7 mass, S8 CG 0.025, S9a thrust, S9b surf,
-  S9c inertia all pass the 9 checks; the consistent fixed-campaign re-run and
-  Monte Carlo are the remaining evidence.
+
+## 7–9. Campaign checkpoints (summary)
+- Fixed 8-scenario campaign 9/9 PASS (`results/MPC/campaign/fixed_summary.json`,
+  `paper_metrics.json`). Monte Carlo 20/20 valid (`mc_summary.json`, seeds 1000–1019):
+  hRMSE mean 1.058/max 1.811; VRMSE mean 0.542/max 0.766; P99 max 2.36 ms; worst
+  37.64 ms = one isolated SMC_1001 scheduling spike (disclosed as a footnote).
+- INDI-WLS / INDI-PI baselines both valid on the SAME plant. WLS is a STRONG
+  baseline (wing-borne, β~23°, pitch~5°): forward/backward 10.0/15.1 s, dh
+  0.08/0.05 m, airborne hRMSE 0.039, E 18.6/27.0 kJ; passed S5–S9 and accel 2.5/3.5.
+  Do NOT claim MPC dominates on tracking. MPC value = zero mode switches,
+  constructive offline corridor feasibility, explicit QP constraints; the
+  no-corridor ablation is the decisive controlled experiment (same MPC fails:
+  Vmax 24.5, backward dh 7 m, E 45.6 kJ).
+
+## §10 Checkpoint 2026-09-22 (peer-review round 1)
+- Ran submission-review (doubao-academic-evaluator) on the paper -> review_round1.md:
+  4 CRITICAL, 7 MAJOR, 6 MINOR, all fixed.
+  C1 Table 1/§3 now match the REAL seed config (V-tail, 16 actuators, b=3.50,
+  S=1.26, D=0.70, T_max=95, T/W=1.94, inertias 4.27/6.64/9.58).
+  C2 online replanning/wrench-hedging reframed as DESIGNED-but-NOT-TRIGGERED
+  (real online feasibility = constrained QP + feasible-by-construction corridor).
+  C3 titled "SITL companion benchmark in the ArduPilot framework"; numbers from
+  the 400 Hz companion plant, native arduplane stated as next step.
+  C4 abstract/conclusion state INDI-WLS is tighter/faster and we do NOT claim
+  tracking superiority; no-corridor ablation is the decisive attribution.
+  MAJOR: removed unmeasured stick-transfer claim; renamed NMPC -> error-space
+  LTV-MPC for our controller; fixed weights + active-set redistribution; S1–S3
+  removed (not run); Appendix A artifacts corrected (scipy/quadprog, no ROS2).
+
+## §11 Checkpoint 2026-09-22 (peer-review rounds 2 & 3)
+- ROUND 2 (novelty + reference verification via Consensus): all spot-checked
+  2025/2026 refs are REAL but several had wrong title/author/venue; corrected
+  references.bib (yang2026biaxial, zheng2026safety FASTA 2026, jeong2025 IREASE,
+  li2026 Drones, milz2026, may2025 SCITECH). Added 3 verified competitors and
+  cited them: shayan2024nmpc (NMPC+feasible allocation, JINT, closest prior),
+  zhuang2025mctc (CJA corridor), panish2024tiltwing (J Aircraft). Refs 54→57,
+  all cited, 0 undefined. See review_round2.md.
+- ROUND 3 (language/figures/AI-tone/reproducibility): clean of AI-tone words;
+  8 figures present, ordered, regenerated from truth; Table 3/4/5 cross-checked
+  vs JSON truth; SITL-only + REFERENCE_SEED_NOT_MEASURED honest. Fixed an
+  internal stall-speed inconsistency: corridor uses conservative α_stall=13°
+  (CL_stall=1.29) → V_min(90°)=17.2 m/s, while Vs=16.2 m/s uses full CLmax=1.45;
+  both now explained in §5.1/Table 2. ONLY pre-submission blocker = author/
+  affiliation/corresponding placeholders must be replaced by the user.
+  See review_round3.md. Paper: 23 pages, compiles clean, 57 refs all cited.
+
+## §12 Checkpoint 2026-09-22 (paper pushed to fork; hourly cron continuation)
+- PUSHED the full manuscript to Tools/tilt_hexa_30kg/paper/ via github_oauth:
+  main.tex (23 pp, 8 figs, 5 tables), references.bib (57 verified refs), README.md,
+  review_round1/2/3.md, regenerate_figures.py. Remote verified byte-identical via
+  raw.githubusercontent fetch + md5 (main.tex 00e2ee86). Figures are regenerated
+  from results/MPC truth CSVs by regenerate_figures.py; elsarticle.cls/.bst are
+  standard CTAN files (not pushed). Remote commits: ac75fc8 (README), ededaad
+  (bib), 3e2c99e (main.tex), df3190f (reviews), b58d409 (figure script).
+- REMAINING (next continuation):
+  (1) push remaining local code not yet on remote: tools/closed_loop_bench.py
+      (INDI baseline, ~1316 lines), tools/thx_core.py (ctypes bindings),
+      experiments/run_baseline.sh, experiments/make_figures.py (fig_mc update),
+      AP_TiltHexa C++ core/Makefile, config parm;
+  (2) FIRMWARE (not started): verify submodules -> ./waf configure --board sitl
+      && ./waf plane -> arduplane SITL hover smoke -> investigate t~119.7 s
+      thrust-collapse open bug (read BIN THXR/THXQ/THXC/RCOU);
+  (3) user must replace author/affiliation/corresponding placeholders in main.tex;
+  (4) optional: an infeasible-command/rotor-derate scenario that actually
+      triggers online replanning;
+  (5) when all goals are met, disable/delete cron 12305222854914 and report.

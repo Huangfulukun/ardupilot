@@ -1,8 +1,8 @@
 # 30 kg TiltHexa paper-3 SITL experiment defaults
 #
 # This configuration is intentionally SITL-only.  The experiment harness
-# directly drives SERVO5..SERVO10 (motor thrust) and SERVO12..SERVO17
-# (independent nacelle tilt) through MAV_CMD_DO_SET_SERVO.
+# drives RCIN5..10 (motor thrust) and RCIN11..16 (independent nacelle tilt)
+# through MAVLink RC_CHANNELS_OVERRIDE and maps them to SERVO outputs below.
 #
 # The nominal model assumes six 0.9 m-radius propulsion stations, 30 kg gross
 # mass, approximately 0.5 normalized hover thrust, and -10..+90 deg nacelle
@@ -11,6 +11,14 @@
 
 LOG_DISARMED     1
 ARMING_CHECK     0
+
+# The paper-3 pymavlink harness uses source_system=250.  RC override messages
+# are accepted only from MAV_GCS_SYSID, so make the experimental GCS identity
+# explicit rather than silently discarding all actuator commands.
+MAV_GCS_SYSID    250
+
+# RC5 is used as motor command input in this SITL harness, not as a mode switch.
+FLTMODE_CH       0
 
 Q_ENABLE         1
 Q_FRAME_CLASS    2

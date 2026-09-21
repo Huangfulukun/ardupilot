@@ -486,6 +486,7 @@ def compute_lambda_scale(V, cfg, aero, motor_positions, kappa_Q, trim_result):
                 A_ub=A_ineq, b_ub=b_ineq,
                 A_eq=A_eq, b_eq=b_eq,
                 method='highs',
+                bounds=[(None, None)] * 12,
                 options={'disp': False},
             )
             return res.success
@@ -632,7 +633,7 @@ def main():
             "V", "alpha_deg", "theta_deg", "beta_trim_deg", "T_trim_each_N",
             "T_total_N", "Fx_prop", "Fz_prop", "Lift", "Drag",
             "gamma_A", "gamma_T", "elevator_trim_deg", "solver_success",
-            "residual_norm", "sigma_min"
+            "residual_norm", "sigma_min", "support_balance_error"
         ])
         for r in results:
             V = r["V"]
@@ -658,7 +659,8 @@ def main():
             # gamma_A, gamma_T
             mg = cfg.mass.m_kg * G
             gamma_T = -Fz_prop / mg  # propulsive vertical support fraction
-            gamma_A = 0.0  # aerodynamic vertical support fraction (not computed here)
+            gamma_A = Lift / mg       # aerodynamic vertical support fraction
+            support_balance_error = gamma_A + gamma_T - 1.0
 
             writer.writerow([
                 V, r["alpha_deg"], r["theta_deg"], r["beta_deg"],
@@ -670,6 +672,7 @@ def main():
                 int(r["solver_success"]),
                 f"{r['residual_norm']:.2e}",
                 f"{sigma_min:.6f}",
+                f"{support_balance_error:.6f}",
             ])
     print(f"[E1] Full trim CSV written to {csv_path_full}")
 

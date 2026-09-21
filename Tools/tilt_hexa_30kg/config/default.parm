@@ -1,0 +1,74 @@
+# default.parm -- common parameters for all tilt-hexa experiments
+# NOTE: Parameters with the THX_ prefix are defined by the AP_TiltHexa module
+# (being implemented concurrently by Agent Gamma) and used here per the
+# IMPLEMENTATION_PLAN.md Section 0.6.  Assumption: these parameter names are
+# the final names committed by Agent Gamma.
+
+# QuadPlane enabled
+Q_ENABLE 1
+Q_FRAME_CLASS 2
+Q_FRAME_TYPE 1
+
+# Scheduler
+SCHED_LOOP_RATE 300
+
+# Logging
+LOG_DISARMED 1
+LOG_BITMASK 65535
+
+# EKF
+AHRS_EKF_TYPE 3
+EK3_ENABLE 1
+
+# Airspeed -- fed from JSON backend (ARSPD_TYPE=100: SITL sensor)
+ARSPD_TYPE 100
+ARSPD_USE 1
+
+# SITL config -- JSON backend selected via -f JSON:127.0.0.1
+SERVO_32_ENABLE 0
+
+# Real-time clock (disable to avoid time drift warnings)
+BRD_RTC_TYPES 0
+
+# Serial for MAVLink telemetry
+SERIAL0_PROTOCOL 2
+SERIAL0_BAUD 115
+
+# Relax arming checks for SITL testing
+ARMING_RUDDER 0
+ARMING_SKIPCHK 65535
+
+# Disable crash detection  land detector interference
+Q_OPTIONS 0
+
+# Servo min/max/trim for tilt channels 7-12
+SERVO7_MIN 1000
+SERVO7_MAX 2000
+SERVO7_TRIM 1500
+SERVO8_MIN 1000
+SERVO8_MAX 2000
+SERVO8_TRIM 1500
+SERVO9_MIN 1000
+SERVO9_MAX 2000
+SERVO9_TRIM 1500
+SERVO10_MIN 1000
+SERVO10_MAX 2000
+SERVO10_TRIM 1500
+SERVO11_MIN 1000
+SERVO11_MAX 2000
+SERVO11_TRIM 1500
+SERVO12_MIN 1000
+SERVO12_MAX 2000
+SERVO12_TRIM 1500
+
+# Servo functions (research mapping  overridden by specific .parm files)
+SERVO1_FUNCTION 33
+SERVO2_FUNCTION 34
+SERVO3_FUNCTION 35
+SERVO4_FUNCTION 36
+SERVO5_FUNCTION 37
+SERVO6_FUNCTION 38
+SERVO13_FUNCTION 24
+SERVO14_FUNCTION 25
+SERVO15_FUNCTION 79
+SERVO16_FUNCTION 80

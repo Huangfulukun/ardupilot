@@ -1,0 +1,69 @@
+# indi_pi.parm -- INDI controller + weighted pseudo-inverse allocation
+# Very conservative gains for initial stability testing
+
+# --- TiltHexa servo functions (6 independent tilts on channels 7-12) ---
+SERVO7_FUNCTION 190
+SERVO8_FUNCTION 191
+SERVO9_FUNCTION 192
+SERVO10_FUNCTION 193
+SERVO11_FUNCTION 194
+SERVO12_FUNCTION 195
+
+# --- THX_ parameters ---
+THX_ENABLE 1
+THX_ALLOC_MODE 0         # 0 = weighted pseudoinverse + post-allocation physical clipping
+THX_INDI_RATE 100
+THX_ALLOC_RATE 100
+THX_POLY_N 12
+THX_WS_FX 2.0
+THX_WS_FZ 5.0
+THX_WS_MX 6.0
+THX_WS_MY 6.0
+THX_WS_MZ 4.0
+THX_W_DU 20.0
+THX_W_U 0.02
+
+# INDI gains (physics-based retune, Round 3):
+# Attitude loop: omega_n=4.0 rad/s, zeta=1.0 -> KR=16, Kw=8
+# Position loop: omega_n=1.2 rad/s, zeta=0.9 -> Kp=1.5, Kv=2.2
+# MUST be identical to indi_wls.parm.
+# All REFERENCE_SEED_NOT_MEASURED.
+THX_INDI_KP 1.5
+THX_INDI_KV 2.2
+THX_INDI_KW 8.0
+THX_INDI_KR 16.0
+
+# Filter cutoff
+THX_FILT_HZ 12
+THX_ACT_FILT_HZ 12
+
+# Actuator model
+THX_ACT_MODEL 1
+
+# QP solver
+THX_QP_MAX_ITER 40
+
+# Logging
+THX_LOG_EN 1
+THX_LOG_RATE 50
+
+# Tilt limits (from YAML)
+THX_TILT_MIN -10
+THX_TILT_MAX 90
+THX_TILT_RATE 60
+
+# Thrust
+THX_THR_MAX 95.0
+THX_THR_OFF 5.0
+THX_THR_ON 8.0
+
+# Mission
+THX_MISSION 0
+THX_ALT_M 60
+THX_CRUISE_M_S 25
+THX_ACCEL_M_S2 1.5
+THX_TRN_RATE 8            # 8 deg/s coordinated turn (bank ~16 deg at 20 m/s)
+THX_HOVER_DUR_S 5
+THX_CRUISE_DUR_S 10
+THX_DECEL_M_S2 1.0       # braking authority at beta_min=-10 deg is ~1.7 m/s2 without drag
+THX_PITCH_MAX 5          # pitch-attitude reference at cruise (deg); tilt still comes from the allocator

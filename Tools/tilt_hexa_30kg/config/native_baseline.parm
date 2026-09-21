@@ -1,0 +1,93 @@
+# native_baseline.parm -- Native ArduPlane engineering reference
+# Uses stock tiltrotor physics with group tilt (k_motor_tilt=41 on SERVO7-12).
+# Marked ENGINEERING_REFERENCE_ONLY in experiment metadata -- not a fair baseline.
+# Only parameters verified against the current ArduPilot 4.7.0-beta3 tree are used.
+# Q_TRANSITION_MS, Q_ASSIST_*, Q_TRANS_DECEL do not exist in the current tree.
+
+# QuadPlane
+Q_ENABLE,1
+Q_FRAME_CLASS,2
+Q_FRAME_TYPE,1
+
+# Scheduler
+SCHED_LOOP_RATE,300
+
+# Logging
+LOG_DISARMED,1
+LOG_BITMASK,65535
+
+# EKF
+AHRS_EKF_TYPE,3
+EK3_ENABLE,1
+
+# Airspeed (stock SITL, no JSON airspeed field)
+ARSPD_TYPE,0
+ARSPD_USE,0
+
+# SITL
+SERVO_32_ENABLE,0
+BRD_RTC_TYPES,0
+
+# Serial
+SERIAL0_PROTOCOL,2
+SERIAL0_BAUD,115
+
+# Disable rudder arming check
+ARMING_RUDDER,0
+ARMING_SKIPCHK,65535
+
+# ---- Servo assignments (native) ----
+SERVO1_FUNCTION,33
+SERVO2_FUNCTION,34
+SERVO3_FUNCTION,35
+SERVO4_FUNCTION,36
+SERVO5_FUNCTION,37
+SERVO6_FUNCTION,38
+
+# Tilt servos: group function k_motor_tilt (all move together via Q_TILT_MASK)
+SERVO7_FUNCTION,41
+SERVO8_FUNCTION,41
+SERVO9_FUNCTION,41
+SERVO10_FUNCTION,41
+SERVO11_FUNCTION,41
+SERVO12_FUNCTION,41
+
+# Servo MIN/MAX for tilt channels (native: 1100-2000 -> 0-90 deg map)
+SERVO7_MIN,1100
+SERVO7_MAX,2000
+SERVO7_TRIM,1500
+SERVO8_MIN,1100
+SERVO8_MAX,2000
+SERVO8_TRIM,1500
+SERVO9_MIN,1100
+SERVO9_MAX,2000
+SERVO9_TRIM,1500
+SERVO10_MIN,1100
+SERVO10_MAX,2000
+SERVO10_TRIM,1500
+SERVO11_MIN,1100
+SERVO11_MAX,2000
+SERVO11_TRIM,1500
+SERVO12_MIN,1100
+SERVO12_MAX,2000
+SERVO12_TRIM,1500
+
+# Aerodynamic surfaces
+SERVO13_FUNCTION,24
+SERVO14_FUNCTION,25
+SERVO15_FUNCTION,79
+SERVO16_FUNCTION,80
+
+# ---- Tiltrotor configuration ----
+Q_TILT_MASK,63               # all 6 motors tiltable (0b111111)
+Q_TILT_TYPE,0                # continuous tilt
+Q_TILT_RATE_UP,60            # deg/s
+Q_TILT_RATE_DN,60            # deg/s
+Q_TILT_MAX,80                # deg (max allowed by @Range 20-80)
+Q_TILT_YAW_ANGLE,-1          # disabled
+Q_TILT_FIX_ANGLE,0           # disabled
+
+# ---- Airspeed for native fixed-wing flight ----
+AIRSPEED_CRUISE,22           # m/s (within 20-25 range)
+AIRSPEED_MIN,15              # m/s
+AIRSPEED_MAX,30              # m/s

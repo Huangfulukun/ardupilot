@@ -522,7 +522,7 @@ private:
         // Minimum pitch to hold during takeoff command execution.  Hundredths of a degree
         int16_t takeoff_pitch_cd;
 
-        // Flag for using gps ground course instead of IMU yaw.  Set false when takeoff command in process.
+        // Flag for using gps ground course instead of INS yaw.  Set false when takeoff command in process.
         bool takeoff_complete;
 
         // are we headed to the land approach waypoint? Works for any nav type
@@ -1024,7 +1024,7 @@ private:
     bool do_change_speed(const AP_Mission::Mission_Command& cmd);
     void do_set_home(const AP_Mission::Mission_Command& cmd);
     bool start_command_callback(const AP_Mission::Mission_Command &cmd);
-    bool verify_command_callback(const AP_Mission::Mission_Command &cmd);
+    bool verify_command_callback(const AP_Mission::Mission_Command& cmd);
     float get_wp_radius() const;
 
     bool is_land_command(uint16_t cmd) const;
@@ -1104,7 +1104,7 @@ private:
 #endif
     void one_second_loop(void);
     void three_hz_loop(void);
-#if AP_AIRSPEED_AUTOCAL_ENABLED
+#if AP_AIRSPEED_AUTOCAL_ENABLE
     void airspeed_ratio_update(void);
 #endif
     void update_logging10(void);

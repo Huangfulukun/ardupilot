@@ -50,7 +50,7 @@ RAD2DEG = 180.0 / math.pi
 
 # Hexa-X geometry
 AZIMUTH_DEG = [90, -90, -30, 150, 30, -150]
-SPIN_SIGNS = [1, -1, 1, -1, 1, -1]  # CW=+1, CCW=-1
+SPIN_SIGNS = [1, -1, 1, -1, -1, 1]  # canonical ArduPilot Hexa-X torque signs
 
 
 # ---- Simplified Plant Model ----
@@ -100,6 +100,8 @@ class PlantModel:
         # Cached last-step body forces for sensor model
         self.last_force_body = np.zeros(3, dtype=np.float64)
         self.last_moment_body = np.zeros(3, dtype=np.float64)
+        self.last_controlled_force_body = np.zeros(3, dtype=np.float64)
+        self.last_controlled_moment_body = np.zeros(3, dtype=np.float64)
 
     def reset(self):
         self.pos = np.zeros(3)
@@ -112,6 +114,8 @@ class PlantModel:
         self._beta_prev = np.zeros(6)
         self.last_force_body = np.zeros(3)
         self.last_moment_body = np.zeros(3)
+        self.last_controlled_force_body = np.zeros(3)
+        self.last_controlled_moment_body = np.zeros(3)
 
     def quat_to_dcm(self):
         """Body-to-NED DCM from quaternion."""
@@ -204,11 +208,16 @@ class PlantModel:
             F_i = np.array([T * math.sin(beta), 0.0, -T * math.cos(beta)], dtype=np.float64)
             force_body += F_i
 
-            # Torque moment
-            Qi = s * self.kq * T
-            # Moment arm: ri x F_i + [0, 0, Qi]
-            M_i = np.cross(ri, F_i) + np.array([0.0, 0.0, Qi], dtype=np.float64)
+            # Reaction torque acts along the instantaneous tilted rotor axis.
+            # This must match AP_TiltHexa_Effectiveness and the full Python FDM:
+            # s*kQ*T*[sin(beta), 0, -cos(beta)].
+            torque_axis = np.array([math.sin(beta), 0.0, -math.cos(beta)], dtype=np.float64)
+            M_i = np.cross(ri, F_i) + s * self.kq * T * torque_axis
             moment_body += M_i
+
+        # Cache propulsion-controlled wrench before neutral aerodynamics.
+        controlled_force = force_body.copy()
+        controlled_moment = moment_body.copy()
 
         # Surface forces (simplified - only Mx/My/Mz from surfaces)
         for i in range(4):
@@ -266,11 +275,16 @@ class PlantModel:
         # Yawing moment from ruddervator differential
         Mz_aero = q_bar * S * b * 0.03 * (drv_R - drv_L)
 
-        moment_body += np.array([Mx_aero, My_aero, Mz_aero], dtype=np.float64)
+        surface_moment = np.array([Mx_aero, My_aero, Mz_aero], dtype=np.float64)
+        moment_body += surface_moment
+        controlled_moment += surface_moment
 
-        # Cache for sensor model
+        # Cache both total non-gravitational wrench (for IMU emulation) and the
+        # allocator-controlled wrench (for offline e_w,p validation).
         self.last_force_body = force_body.copy()
         self.last_moment_body = moment_body.copy()
+        self.last_controlled_force_body = controlled_force.copy()
+        self.last_controlled_moment_body = controlled_moment.copy()
 
         return force_body, moment_body
 
@@ -472,15 +486,13 @@ class TrajectoryGenerator:
         return self.pitch_max_rad * (V - self._V_low) / (self.cruise - self._V_low)
 
     def _pitch_for_accel(self, V):
-        """Pitch reference during acceleration phase.
-        PI baseline: pitch = atan2(accel, g). Fx=0 in wrench.
-        WLS proposed: pitch = theta_r(V). Fx from allocator (HARD RULE 3).
+        """Unified attitude reference used by every allocator.
+
+        Paper comparisons vary only the allocation method.  Forward force is
+        requested through the common INDI Fx channel; no PI-specific pitch
+        strategy is permitted in the bench reference generator.
         """
-        if self.alloc_type == "wls":
-            return self._theta_r(V)
-        else:
-            # PI baseline: pitch-based forward flight
-            return math.atan2(self.accel, G)
+        return self._theta_r(V)
 
     def generate(self, t, yaw_start=0.0):
         """Generate reference for given time t. Returns dict with p_r, v_r, a_r, yaw_r, phase.

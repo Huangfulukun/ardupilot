@@ -17,20 +17,25 @@ Q_FRAME_CLASS    2
 Q_FRAME_TYPE     1
 Q_TILT_ENABLE    0
 
-# Disable production output functions: the SITL-only experiment driver owns
-# these channels directly.
-SERVO5_FUNCTION   0
-SERVO6_FUNCTION   0
-SERVO7_FUNCTION   0
-SERVO8_FUNCTION   0
-SERVO9_FUNCTION   0
-SERVO10_FUNCTION  0
-SERVO12_FUNCTION  0
-SERVO13_FUNCTION  0
-SERVO14_FUNCTION  0
-SERVO15_FUNCTION  0
-SERVO16_FUNCTION  0
-SERVO17_FUNCTION  0
+# Route experimental RC inputs directly to the 12 SITL actuators.
+# SERVO5..10 <- RCIN5..10 (six motor commands)
+# SERVO12..17 <- RCIN11..16 (six independent nacelle tilts)
+# The controller script continuously refreshes RC overrides; this mapping is
+# intentionally restricted to this simulation parameter file.
+SERVO5_FUNCTION   55
+SERVO6_FUNCTION   56
+SERVO7_FUNCTION   57
+SERVO8_FUNCTION   58
+SERVO9_FUNCTION   59
+SERVO10_FUNCTION  60
+SERVO12_FUNCTION  61
+SERVO13_FUNCTION  62
+SERVO14_FUNCTION  63
+SERVO15_FUNCTION  64
+SERVO16_FUNCTION  65
+SERVO17_FUNCTION  66
+
+RC_OVERRIDE_TIME  1
 
 SERVO5_MIN       1000
 SERVO5_MAX       2000

@@ -70,6 +70,8 @@ class JobyFlight:
         self.telemetry_fh = None
         self.telemetry_writer = None
         self.last_csv_wall = 0.0
+        self.rc_throttle = None
+        self.last_rc_override_wall = 0.0
 
     def log(self, text: str) -> None:
         print("JOBY_TEST:", text, flush=True)
@@ -271,6 +273,11 @@ class JobyFlight:
     def pump_once(self, timeout=0.25):
         msg = self.master.recv_match(blocking=True, timeout=timeout)
         self.handle(msg)
+        if (
+            self.rc_throttle is not None
+            and time.time() - self.last_rc_override_wall >= 0.5
+        ):
+            self._send_rc_override()
         return msg
 
     def pump_wall(self, seconds: float) -> None:
@@ -349,14 +356,19 @@ class JobyFlight:
                     return
         raise FlightFailure("Failed to enter mode %s" % name)
 
-    def rc_override(self, throttle: int) -> None:
+    def _send_rc_override(self) -> None:
         # Center roll/pitch/yaw, control throttle, leave all auxiliary inputs unchanged.
-        vals = [1500, 1500, int(throttle), 1500] + [65535] * 14
+        vals = [1500, 1500, int(self.rc_throttle), 1500] + [65535] * 14
         self.master.mav.rc_channels_override_send(
             self.master.target_system,
             self.master.target_component,
             *vals
         )
+        self.last_rc_override_wall = time.time()
+
+    def rc_override(self, throttle: int) -> None:
+        self.rc_throttle = int(throttle)
+        self._send_rc_override()
 
     def command_arm(self, arm: bool) -> None:
         self.master.mav.command_long_send(

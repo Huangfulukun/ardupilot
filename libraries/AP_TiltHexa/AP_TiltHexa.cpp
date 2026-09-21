@@ -743,7 +743,12 @@ void AP_TiltHexa::output(void)
         // else: takeoff_request stays false, pipeline stays on ground
 
         // ---- Run unified Pipeline ----
+        // Measure the complete research control pipeline with a real HAL clock.
+        // The HAL-free core cannot sample AP_HAL time internally; sensor.micros_now
+        // is a single input timestamp and must not be used as a stopwatch.
+        const uint32_t thx_t0_us = AP_HAL::micros();
         _pipeline.step(&sensor, &ref, &_pipeline_cmd, &_pipeline_telem);
+        _pipeline_telem.solver_time_us = AP_HAL::micros() - thx_t0_us;
 
         // ---- Sync Pipeline output to legacy members for PWM & logging ----
         sync_pipeline_to_legacy();

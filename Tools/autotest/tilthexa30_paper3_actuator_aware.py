@@ -11,8 +11,8 @@ contract but adds pieces needed by the physical SITL plant:
 * commanded nacelle angle and motor thrust are rate-limited below the rates used
   by SIM_Motor, so the allocator's achieved-wrench calculation and the simulated
   actuator state no longer diverge during fast differential commands;
-* the model-based attitude moment loop is bandwidth-scaled uniformly for M1/M2/M3
-  so its closed-loop bandwidth remains below the measured actuator lag.
+* the model-based attitude loop reduces proportional attitude stiffness
+  uniformly for M1/M2/M3 while preserving the full measured-rate damping.
 
 The change is intentionally confined to the paper experiment runner.  It does
 not alter ArduPilot flight-control code or the underlying SITL dynamics.
@@ -116,7 +116,7 @@ class ActuatorAwareAllocator(base.FiveDofAllocator):
 
 
 class HeadingHoldExperiment(base.TiltHexaExperiment):
-    """Hold launch heading and keep the attitude loop below actuator bandwidth.
+    """Hold launch heading with common actuator-aware attitude shaping.
 
     The Paper-3 S1-S6 references contain no commanded yaw manoeuvre.  SITL's
     estimator settles at a repeatable non-zero launch heading, while the
@@ -124,16 +124,17 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
     measured launch heading for control only; telemetry remains in the original
     absolute frame.
 
-    The previous campaign also showed a repeatable 0.2--0.5 s phase lag between
-    requested moments and measured angular acceleration during lift-off.  The
-    nominal model-based moment gains drove that delayed plant into a growing
-    attitude oscillation before the formal experiment began.  Scale the complete
-    moment loop uniformly instead of changing gains by method.  This preserves
-    the M1/M2/M3 comparison and leaves the SITL mass/inertia/actuator model
-    untouched.
+    Campaign a2480c39 scaled the complete model-based moment loop to 35 percent.
+    The resulting artifact showed substantially worse takeoff altitude tracking
+    and repeated ground impacts because rate damping was reduced together with
+    attitude stiffness.  For a delayed actuator plant the intended bandwidth
+    change is instead to lower proportional attitude stiffness while retaining
+    full angular-rate damping.  The temporary state/inertia transformation below
+    implements exactly that common P-only reduction without changing the SITL
+    mass/inertia model or giving M1/M2/M3 different gains.
     """
 
-    ATTITUDE_MOMENT_SCALE = 0.35
+    ATTITUDE_STIFFNESS_SCALE = 0.35
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -145,16 +146,27 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
 
         yaw_absolute = float(self.state["yaw"])
         inertia_nominal = self.inertia
+        rates_nominal = (
+            float(self.state["p"]),
+            float(self.state["q"]),
+            float(self.state["r"]),
+        )
+        stiffness_scale = self.ATTITUDE_STIFFNESS_SCALE
+
         self.state["yaw"] = base.wrap_pi(yaw_absolute - self._launch_yaw)
-        # base._control multiplies the attitude/rate feedback terms by the
-        # controller-side inertia vector.  Scaling this temporary copy is
-        # exactly a common moment-loop gain change; the physical model already
-        # launched in SITL retains the unmodified JSON inertia.
-        self.inertia = inertia_nominal * self.ATTITUDE_MOMENT_SCALE
+        # base._control multiplies both angle-error and angular-rate feedback
+        # by self.inertia.  Scaling inertia reduces the proportional stiffness;
+        # inversely scaling p/q/r for this controller call cancels that scale
+        # in the derivative terms, preserving the original rate damping.
+        self.inertia = inertia_nominal * stiffness_scale
+        self.state["p"] = rates_nominal[0] / stiffness_scale
+        self.state["q"] = rates_nominal[1] / stiffness_scale
+        self.state["r"] = rates_nominal[2] / stiffness_scale
         try:
             return super()._control(exp_t, dt)
         finally:
             self.inertia = inertia_nominal
+            self.state["p"], self.state["q"], self.state["r"] = rates_nominal
             self.state["yaw"] = yaw_absolute
 
 

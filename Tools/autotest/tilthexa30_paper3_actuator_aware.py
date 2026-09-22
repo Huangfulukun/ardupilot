@@ -111,9 +111,39 @@ class ActuatorAwareAllocator(base.FiveDofAllocator):
         }
 
 
-# The baseline module resolves this class dynamically when constructing both
+class HeadingHoldExperiment(base.TiltHexaExperiment):
+    """Hold the launch heading instead of imposing an artificial yaw step.
+
+    The Paper-3 S1-S6 references contain no commanded yaw manoeuvre.  SITL's
+    estimator settles at a repeatable non-zero launch heading (about 3.7 deg),
+    while the baseline runner was commanding absolute yaw=0 from the first
+    takeoff sample.  That ground-held yaw error preloaded differential rotor
+    thrust and released it at liftoff, contaminating the longitudinal study
+    with a large unnecessary yaw transient.  Express yaw relative to the
+    measured launch heading for control only; telemetry remains in the original
+    absolute frame.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._launch_yaw = None
+
+    def _control(self, exp_t: float, dt: float) -> dict:
+        if self._launch_yaw is None:
+            self._launch_yaw = float(self.state["yaw"])
+
+        yaw_absolute = float(self.state["yaw"])
+        self.state["yaw"] = base.wrap_pi(yaw_absolute - self._launch_yaw)
+        try:
+            return super()._control(exp_t, dt)
+        finally:
+            self.state["yaw"] = yaw_absolute
+
+
+# The baseline module resolves these classes dynamically when constructing both
 # the static analysis and every TiltHexaExperiment instance.
 base.FiveDofAllocator = ActuatorAwareAllocator
+base.TiltHexaExperiment = HeadingHoldExperiment
 
 
 if __name__ == "__main__":

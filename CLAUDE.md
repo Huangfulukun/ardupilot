@@ -234,7 +234,7 @@ stale CSVs — check timestamps/metrics before trusting results.
 - BASELINE COMPLETE & HONEST RESULT: INDI-WLS and INDI-PI both valid on same TiltHexaFDM plant
   (results/MPC/baseline/). Comparable metrics (analyze_baseline.py -> baseline_metrics.json;
   common-metric comparison -> results/MPC/comparison_nominal.json). WLS nominal: forward 10.0s /
-  backward 15.1s (vs MPC 14.0/20.1), dh 0.08/0.05 m (vs 1.59/0.98), E 18.6/27.0 kJ, airborne
+  backward 15.1s (vs MPC 14.0/20.1), dh 0.08/0.05 m (vs MPC 1.59/0.98), E 18.6/27.0 kJ, airborne
   hRMSE 0.039 (vs 0.659), VRMSE 0.427, max pitch 5 deg, Vmax 20.02, Vg_final 0.03. WLS ALSO
   passed all S5-S9 (baseline_campaign_summary.json) and stayed corridor-safe even at accel 2.5/3.5
   (bench_agg2.5/agg3.5, max beta only 31/38 deg). KEY FINDING: a well-tuned INDI-WLS is a STRONG
@@ -616,3 +616,33 @@ REMAINING (next continuation):
       (only WLS hover and E2 transition were re-verified after the t~119.7s hold fix).
 - All scientific/controller/firmware/paper work remains complete and verified (see §14-§19); this round
   finished the text-channel synchronisation of the reproduction harness, docs, CI and headline results.
+
+## §21 FINAL (2026-09-22) — all autonomous goals complete; hourly cron to be stopped
+- CLAUDE.md §20 pushed (commit 426cc6a) and byte-verified MATCH (618 lines, 47775 bytes).
+- Final provenance batch pushed (commit 344b730) and byte-verified MATCH: E1 afms_summary.json +
+  weakest_state_provisional.json, E3 alloc_stress_summary.json, E2 pi/wls transition metrics, E4 pi/wls
+  full-mission metrics (the 999.0 entries are historical sentinel values for metrics not computed in the
+  INDI-phase E4 harness, kept verbatim), E5 gust_results.csv (normalised CRLF->LF to match remote), and
+  results/MPC/baseline/campaign/baseline_campaign_summary.json (the INDI-WLS S5-S9 robustness campaign).
+- SYNC COMPLETE. Everything that can be pushed through the only authorised github_oauth TEXT channel is
+  now on branch pr_doubao_apm47 and byte-verified: full controller/plant/allocator source (Python + C++),
+  offline corridor/trim, all experiment drivers (E0-E5, MPC, baselines, Monte-Carlo, SITL smoke), tests,
+  configs/parm, GitHub Actions CI, all docs (README/EXPERIMENTS/IMPLEMENTATION_*/PARAMETER_MAP/LOG_SCHEMA/
+  README_*), the paper bundle (main.tex, references.bib 57 refs, regenerate_figures.py, 3 review rounds),
+  and the headline + baseline summary JSONs (Tables 3-5 authoritative numbers).
+- NOT PUSHED (structural / user-gated, cannot be resolved by a future hourly run):
+  (1) Binary figures (figures/fig_*.pdf,.png, E1 afms .pdf/.png) and per-run truth CSV/BIN (~160, some
+      ~21 MB each) have no push_files text channel; they are gitignored and regenerable from the fully
+      pushed harness, and the 8 figures are already embedded in the local paper PDF.
+  (2) experiments/run_baseline.sh differs only in the executable bit (100644->100755); push_files cannot
+      set it; content is identical.
+  (3) workspace/ task-A/task-B markdown and the earlier INDI manuscript draft are scratch, not deliverables.
+  (4) USER ACTION REQUIRED (only formal submission blocker): replace author/affiliation/corresponding +
+      CRediT placeholders in paper/main.tex (Author One/Two, School of Automation Nanjing University);
+      optionally fill Data Availability with repo/branch pr_doubao_apm47 and a commit SHA.
+- All scientific/controller/firmware/paper objectives are complete and verified: full profile 9/9 truth
+  checks pass; fixed 8-scenario campaign 9/9; Monte Carlo 20/20; INDI-WLS/PI baselines + no-corridor
+  ablation recorded; MPC mean/P99/worst timing logged; 23-page AST manuscript with 8 figures, 5 tables,
+  57 verified references; three peer-review rounds addressed; clean from-scratch SITL build (0 errors,
+  AP_TiltHexa linked); hover + transition SITL smoke pass; t~119.7 s thrust-zero bug fixed and verified.
+- ACTION: hourly cron 12305222854914 is to be stopped/deleted now; no further autonomous work remains.

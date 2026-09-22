@@ -1,0 +1,21 @@
+{
+  "seed_status": "REFERENCE_SEED_NOT_MEASURED",
+  "states": {
+    "hover": {
+      "V_mps": 0.0,
+      "sigma_min": 0.541655
+    },
+    "early": {
+      "V_mps": 8.0,
+      "sigma_min": 0.542192
+    },
+    "weakest": {
+      "V_mps": 10.0,
+      "sigma_min": 0.542961
+    },
+    "cruise": {
+      "V_mps": 25.0,
+      "sigma_min": 0.57834
+    }
+  }
+}

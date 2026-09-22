@@ -1,0 +1,20 @@
+{
+  "alloc": "pi",
+  "mission": "transition",
+  "alt_target": 60.0,
+  "cruise_target": 20.0,
+  "duration": 115.0,
+  "took_off": true,
+  "crashed": false,
+  "valid_flight": true,
+  "alt_rmse_m": 0.0,
+  "speed_rmse_ms": 6.393,
+  "transition_alt_rmse_m": 14.446,
+  "transition_speed_rmse_ms": 6.393,
+  "max_roll_deg": 0.0,
+  "max_T_N": 53.7,
+  "max_airspeed": 20.0,
+  "max_alt_m": 60.1,
+  "min_alt_m": 5.0,
+  "n_log_rows": 11500
+}

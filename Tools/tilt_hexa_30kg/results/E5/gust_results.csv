@@ -1,0 +1,7 @@
+run_id,method,gust_amp_m_s,took_off,crashed,valid_flight,peak_alt_dev_m,peak_roll_dev_deg,peak_pitch_dev_deg,recovery_time_s,max_roll_deg,max_pitch_deg,alt_rmse_m,max_airspeed,n_log_rows,elapsed_s
+gust_pi_a3,pi,3.0,True,False,True,0.014,0.38,0.0,0.0,0.4,0.0,0.0,2.5,3000,5.9
+gust_wls_a3,wls,3.0,True,False,True,0.014,0.38,0.0,0.0,0.4,0.0,0.0,2.5,3000,5.9
+gust_pi_a5,pi,5.0,True,False,True,0.014,1.04,0.0,0.0,1.0,0.0,0.0,2.5,3000,5.9
+gust_wls_a5,wls,5.0,True,False,True,0.014,1.04,0.0,0.0,1.0,0.0,0.0,2.5,3000,5.9
+gust_pi_a8,pi,8.0,True,False,True,0.014,2.61,0.0,0.0,2.6,0.0,0.0,2.5,3000,6.0
+gust_wls_a8,wls,8.0,True,False,True,0.014,2.61,0.0,0.0,2.6,0.0,0.0,2.5,3000,5.9

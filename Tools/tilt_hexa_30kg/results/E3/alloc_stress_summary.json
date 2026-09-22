@@ -1,0 +1,25 @@
+{
+  "tolerance_N_or_Nm": 2.941995,
+  "weakest_direction": [
+    0.6154574548966637,
+    -0.6154574548966637,
+    0.49236596391733095,
+    0.0,
+    0.0
+  ],
+  "lambda_scale": 184.79631811380386,
+  "boundary_lambda": {
+    "qp": 1.02,
+    "pi": 0.31
+  },
+  "boundary_Fx_N": {
+    "qp": 457.5,
+    "pi": 127.5
+  },
+  "boundary_Mx_Nm": {
+    "qp": 150.66666666666666,
+    "pi": 108.0
+  },
+  "qp_max_iters": 11,
+  "pi_max_clips": 8
+}

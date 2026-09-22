@@ -135,7 +135,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stage="${GITHUB_WORKSPACE}/.paper_summaries"
+          stage="${GITHUB_WORKSPACE}/paper_summaries"
           root="Tools/tilt_hexa_30kg/results"
           rm -rf "$stage"
           mkdir -p "$stage"
@@ -175,7 +175,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: tilt-hexa-paper-summaries-${{ env.CAMPAIGN }}-${{ github.run_id }}
-          path: .paper_summaries/**
+          path: paper_summaries/**
           if-no-files-found: warn
           retention-days: 30
 

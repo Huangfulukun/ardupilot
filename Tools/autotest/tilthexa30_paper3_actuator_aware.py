@@ -4,13 +4,15 @@
 
 The baseline experiment driver formulates the five-DOF allocation in virtual
 horizontal/vertical rotor-force coordinates.  This runner keeps that experiment
-contract but adds two pieces needed by the physical SITL plant:
+contract but adds pieces needed by the physical SITL plant:
 
 * yaw is allocated through the fast differential rotor-reaction channel instead
   of asking the much slower nacelle-tilt channel to generate differential yaw;
 * commanded nacelle angle and motor thrust are rate-limited below the rates used
   by SIM_Motor, so the allocator's achieved-wrench calculation and the simulated
-  actuator state no longer diverge during fast differential commands.
+  actuator state no longer diverge during fast differential commands;
+* the model-based attitude moment loop is bandwidth-scaled uniformly for M1/M2/M3
+  so its closed-loop bandwidth remains below the measured actuator lag.
 
 The change is intentionally confined to the paper experiment runner.  It does
 not alter ArduPilot flight-control code or the underlying SITL dynamics.
@@ -114,17 +116,24 @@ class ActuatorAwareAllocator(base.FiveDofAllocator):
 
 
 class HeadingHoldExperiment(base.TiltHexaExperiment):
-    """Hold the launch heading instead of imposing an artificial yaw step.
+    """Hold launch heading and keep the attitude loop below actuator bandwidth.
 
     The Paper-3 S1-S6 references contain no commanded yaw manoeuvre.  SITL's
-    estimator settles at a repeatable non-zero launch heading (about 3.7 deg),
-    while the baseline runner was commanding absolute yaw=0 from the first
-    takeoff sample.  That ground-held yaw error preloaded differential rotor
-    thrust and released it at liftoff, contaminating the longitudinal study
-    with a large unnecessary yaw transient.  Express yaw relative to the
+    estimator settles at a repeatable non-zero launch heading, while the
+    baseline runner commands absolute yaw=0.  Express yaw relative to the
     measured launch heading for control only; telemetry remains in the original
     absolute frame.
+
+    The previous campaign also showed a repeatable 0.2--0.5 s phase lag between
+    requested moments and measured angular acceleration during lift-off.  The
+    nominal model-based moment gains drove that delayed plant into a growing
+    attitude oscillation before the formal experiment began.  Scale the complete
+    moment loop uniformly instead of changing gains by method.  This preserves
+    the M1/M2/M3 comparison and leaves the SITL mass/inertia/actuator model
+    untouched.
     """
+
+    ATTITUDE_MOMENT_SCALE = 0.35
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -135,10 +144,17 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
             self._launch_yaw = float(self.state["yaw"])
 
         yaw_absolute = float(self.state["yaw"])
+        inertia_nominal = self.inertia
         self.state["yaw"] = base.wrap_pi(yaw_absolute - self._launch_yaw)
+        # base._control multiplies the attitude/rate feedback terms by the
+        # controller-side inertia vector.  Scaling this temporary copy is
+        # exactly a common moment-loop gain change; the physical model already
+        # launched in SITL retains the unmodified JSON inertia.
+        self.inertia = inertia_nominal * self.ATTITUDE_MOMENT_SCALE
         try:
             return super()._control(exp_t, dt)
         finally:
+            self.inertia = inertia_nominal
             self.state["yaw"] = yaw_absolute
 
 

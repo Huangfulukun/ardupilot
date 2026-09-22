@@ -60,15 +60,13 @@ class ActuatorAwareAllocator(base.FiveDofAllocator):
             b[2, uz] = -y_i
             b[3, ux] = z_i
             b[3, uz] = x_i
-            # Do not use slow differential nacelle motion as the primary yaw
-            # actuator.  With equal/common Fx this also avoids hidden yaw from
-            # servo lag while retaining the full five-DOF row rank.  The SITL
-            # reaction torque sign is opposite to the historical virtual-wrench
-            # convention: a positive allocation with YAW_SIGNS drove the measured
-            # yaw rate negative in run 35722196179.  Negate the physical yaw row
-            # so positive Mz produces positive yaw acceleration in the plant.
+            # Use the same Hexa-X yaw factors as the SITL plant.  SIM_Frame
+            # defines CW=-1 and CCW=+1 for the six motors, exactly matching
+            # YAW_SIGNS; SIM_Motor then applies that factor to the realised
+            # body-z rotor torque.  Keeping this sign aligned prevents a
+            # positive requested Mz from producing the opposite yaw response.
             b[4, ux] = 0.0
-            b[4, uz] = -base.YAW_SIGNS[i] * c_tau_incremental
+            b[4, uz] = base.YAW_SIGNS[i] * c_tau_incremental
         return b
 
     def allocate(self, wrench: np.ndarray) -> tuple[np.ndarray, dict]:

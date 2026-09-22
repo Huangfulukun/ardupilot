@@ -1,0 +1,28 @@
+{
+  "MPC": {
+    "h_rmse_all": 1.078,
+    "h_rmse_air": 0.659,
+    "V_rmse": 0.482,
+    "h_min": -0.0,
+    "h_max": 6.59,
+    "Vmax": 20.12,
+    "pitch": 11.2,
+    "roll": 0.0,
+    "h_final": 5.07,
+    "Vg_final": 0.18,
+    "E_kJ": 77.9
+  },
+  "INDI_WLS": {
+    "h_rmse_all": 1.538,
+    "h_rmse_air": 0.039,
+    "V_rmse": 0.427,
+    "h_min": -0.0,
+    "h_max": 5.13,
+    "Vmax": 20.02,
+    "pitch": 5.0,
+    "roll": 0.0,
+    "h_final": 5.0,
+    "Vg_final": 0.03,
+    "E_kJ": 81.0
+  }
+}

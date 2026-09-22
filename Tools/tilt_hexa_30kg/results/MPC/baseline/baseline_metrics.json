@@ -1,0 +1,38 @@
+[
+  {
+    "alloc": "wls",
+    "valid": true,
+    "t_forward_s": 10.04,
+    "t_backward_s": 15.05,
+    "dh_forward_m": 0.08,
+    "dh_backward_m": 0.05,
+    "E_forward_kJ": 18.59,
+    "E_backward_kJ": 27.02,
+    "h_rmse": 1.537,
+    "V_rmse": 0.427,
+    "max_pitch_deg": 5.0,
+    "max_roll_deg": 0.0,
+    "V_max": 20.02,
+    "h_final": 5.0,
+    "Vg_final": 0.31,
+    "max_T_N": 67.5
+  },
+  {
+    "alloc": "pi",
+    "valid": true,
+    "t_forward_s": 10.04,
+    "t_backward_s": 15.05,
+    "dh_forward_m": 0.08,
+    "dh_backward_m": 0.04,
+    "E_forward_kJ": 20.02,
+    "E_backward_kJ": 25.93,
+    "h_rmse": 1.537,
+    "V_rmse": 0.427,
+    "max_pitch_deg": 8.8,
+    "max_roll_deg": 0.0,
+    "V_max": 20.02,
+    "h_final": 5.0,
+    "Vg_final": 0.3,
+    "max_T_N": 67.5
+  }
+]

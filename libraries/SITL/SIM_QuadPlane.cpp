@@ -111,11 +111,11 @@ QuadPlane::QuadPlane(const char *frame_str) :
     }
 
     if (strstr(frame_str, "tilthexa30")) {
-        // SITL-only independent nacelle tilts on SERVO12..SERVO17.
+        // SITL-only independent nacelle tilts on SERVO11..SERVO16.
         // Motor::pitch is opposite the paper beta convention, hence
         // beta=-10..+90 deg maps to motor pitch=+10..-90 deg.
         for (uint8_t i = 0; i < frame->num_motors; i++) {
-            frame->motors[i].pitch_servo = 7 + i;
+            frame->motors[i].pitch_servo = 6 + i;
             frame->motors[i].pitch_min = 10.0f;
             frame->motors[i].pitch_max = -90.0f;
             // Motor::servo_rate is seconds per 60 degrees.

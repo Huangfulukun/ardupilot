@@ -37,6 +37,7 @@ QuadPlane::QuadPlane(const char *frame_str) :
         // additional pitch-tilt servo channels below.
         frame_type = "hexax";
         thrust_scale = 0;
+        tilthexa30_low_speed_aero_blend = true;
     } else if (strstr(frame_str, "jobys4")) {
         // Six tilting propulsion stations.  The model JSON provides the
         // full-scale mass, inertia, wing aerodynamics and motor positions.
@@ -172,6 +173,22 @@ void QuadPlane::update(const struct sitl_input &input)
     // first plane forces
     Vector3f rot_accel;
     calculate_forces(input, rot_accel);
+
+    if (tilthexa30_low_speed_aero_blend) {
+        /*
+         * The generic Plane model parameterises alpha/beta using body-X as
+         * the reference axis.  During a vertical TiltHexa30 takeoff body-X
+         * airspeed is near zero, so even a modest climb drives alpha towards
+         * +/-90 degrees and produces a large fixed-wing pitching moment in a
+         * regime where that coefficient model is not valid.  Fade the wing
+         * contribution out in hover and restore it smoothly as forward
+         * airspeed becomes established.  Rotor forces remain fully active.
+         */
+        const float forward_airspeed = fabsf(velocity_air_bf.x);
+        const float aero_blend = constrain_float((forward_airspeed - 1.0f) / 3.0f, 0.0f, 1.0f);
+        rot_accel *= aero_blend;
+        accel_body *= aero_blend;
+    }
 
     // now quad forces
     Vector3f quad_rot_accel;

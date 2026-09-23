@@ -45,6 +45,7 @@ public:
 
 private:
     Frame *frame;
+    bool tilthexa30_low_speed_aero_blend = false;
 };
 
 } // namespace SITL

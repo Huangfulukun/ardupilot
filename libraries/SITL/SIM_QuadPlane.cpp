@@ -31,7 +31,14 @@ QuadPlane::QuadPlane(const char *frame_str) :
 
     ground_behavior = GROUND_BEHAVIOR_NO_MOVEMENT;
 
-    if (strstr(frame_str, "jobys4")) {
+    if (strstr(frame_str, "tilthexa30")) {
+        // Paper-3 SITL-only 30 kg independently tilting HexaX model.
+        // Reuse the standard HexaX propulsion order while exposing six
+        // additional pitch-tilt servo channels below.
+        frame_type = "hexax";
+        thrust_scale = 0;
+        tilthexa30_low_speed_aero_blend = true;
+    } else if (strstr(frame_str, "jobys4")) {
         // Six tilting propulsion stations.  The model JSON provides the
         // full-scale mass, inertia, wing aerodynamics and motor positions.
         frame_type = "jobys4";
@@ -103,12 +110,39 @@ QuadPlane::QuadPlane(const char *frame_str) :
         frame->motors[1].servo_type = Motor::SERVO_RETRACT;
         frame->motors[1].servo_rate = 7*60.0/90; // 7 seconds to change
     }
-    
+
+    if (strstr(frame_str, "tilthexa30")) {
+        // SITL-only independent nacelle tilts on SERVO11..SERVO16.
+        // Motor::pitch is opposite the paper beta convention, hence
+        // beta=-10..+90 deg maps to motor pitch=+10..-90 deg.
+        for (uint8_t i = 0; i < frame->num_motors; i++) {
+            frame->motors[i].pitch_servo = 6 + i;
+            frame->motors[i].pitch_min = 10.0f;
+            frame->motors[i].pitch_max = -90.0f;
+            // Motor::servo_rate is seconds per 60 degrees.
+            frame->motors[i].servo_rate = 1.0f;
+        }
+    }
+
     // leave first 4 servos free for plane
     frame->motor_offset = motor_offset;
 
+    // SITL's POSIX filesystem deliberately maps absolute-looking paths under
+    // the process working directory.  The paper-3 harness writes its model
+    // JSON into that working directory, so pass only the basename to Frame.
+    const char *frame_init_arg = frame_str;
+    char tilthexa30_frame_str[64];
+    if (strstr(frame_str, "tilthexa30")) {
+        const char *model_name = strrchr(frame_str, '/');
+        if (model_name != nullptr) {
+            snprintf(tilthexa30_frame_str, sizeof(tilthexa30_frame_str),
+                     "quadplane-tilthexa30:%s", model_name + 1);
+            frame_init_arg = tilthexa30_frame_str;
+        }
+    }
+
     // we use zero terminal velocity to let the plane model handle the drag
-    frame->init(frame_str);
+    frame->init(frame_init_arg);
     battery.setup(frame->get_model_batt_capacity_ah(),
                   frame->get_model_batt_resistance_ohm(),
                   frame->get_model_batt_max_voltage());
@@ -116,7 +150,9 @@ QuadPlane::QuadPlane(const char *frame_str) :
     // Most legacy quadplane frame JSON files describe only the multicopter
     // portion and add 50% for the fixed-wing structure.  JobyS4.json stores
     // the complete aircraft gross mass, so do not apply that legacy factor.
-    if (strstr(frame_str, "jobys4")) {
+    if (strstr(frame_str, "jobys4") || strstr(frame_str, "tilthexa30")) {
+        // These JSON files store complete aircraft mass, not just the VTOL
+        // propulsion-frame portion used by legacy QuadPlane models.
         mass = frame->get_mass();
     } else {
         mass = frame->get_mass() * 1.5f;
@@ -137,6 +173,22 @@ void QuadPlane::update(const struct sitl_input &input)
     // first plane forces
     Vector3f rot_accel;
     calculate_forces(input, rot_accel);
+
+    if (tilthexa30_low_speed_aero_blend) {
+        /*
+         * The generic Plane model parameterises alpha/beta using body-X as
+         * the reference axis.  During a vertical TiltHexa30 takeoff body-X
+         * airspeed is near zero, so even a modest climb drives alpha towards
+         * +/-90 degrees and produces a large fixed-wing pitching moment in a
+         * regime where that coefficient model is not valid.  Fade the wing
+         * contribution out in hover and restore it smoothly as forward
+         * airspeed becomes established.  Rotor forces remain fully active.
+         */
+        const float forward_airspeed = fabsf(velocity_air_bf.x);
+        const float aero_blend = constrain_float((forward_airspeed - 1.0f) / 3.0f, 0.0f, 1.0f);
+        rot_accel *= aero_blend;
+        accel_body *= aero_blend;
+    }
 
     // now quad forces
     Vector3f quad_rot_accel;

@@ -1,0 +1,87 @@
+# 30 kg TiltHexa paper-3 SITL experiment defaults
+#
+# This configuration is intentionally SITL-only.  The experiment harness
+# drives RCIN5..10 (motor thrust) and RCIN11..16 (independent nacelle tilt)
+# through MAVLink RC_CHANNELS_OVERRIDE and maps them to SERVO outputs below.
+#
+# The nominal model assumes six 0.9 m-radius propulsion stations, 30 kg gross
+# mass, approximately 0.5 normalized hover thrust, and -10..+90 deg nacelle
+# travel.  Replace these values with measured CAD/bench data before any paper
+# result is treated as representative of the physical prototype.
+
+LOG_DISARMED     1
+ARMING_CHECK     0
+
+# The paper-3 pymavlink harness uses source_system=250.  RC override messages
+# are accepted only from MAV_GCS_SYSID, so make the experimental GCS identity
+# explicit rather than silently discarding all actuator commands.
+MAV_GCS_SYSID    250
+
+# RC5 is used as motor command input in this SITL harness, not as a mode switch.
+FLTMODE_CH       0
+
+Q_ENABLE         1
+Q_FRAME_CLASS    2
+Q_FRAME_TYPE     1
+Q_TILT_ENABLE    0
+
+# Route experimental RC inputs directly to the 12 SITL actuators.
+# SERVO5..10 <- RCIN5..10 (six motor commands)
+# SERVO11..16 <- RCIN11..16 (six independent nacelle tilts)
+# The controller script continuously refreshes RC overrides; this mapping is
+# intentionally restricted to this simulation parameter file.
+SERVO5_FUNCTION   55
+SERVO6_FUNCTION   56
+SERVO7_FUNCTION   57
+SERVO8_FUNCTION   58
+SERVO9_FUNCTION   59
+SERVO10_FUNCTION  60
+SERVO11_FUNCTION  61
+SERVO12_FUNCTION  62
+SERVO13_FUNCTION  63
+SERVO14_FUNCTION  64
+SERVO15_FUNCTION  65
+SERVO16_FUNCTION  66
+
+RC_OVERRIDE_TIME  1
+
+SERVO5_MIN       1000
+SERVO5_MAX       2000
+SERVO6_MIN       1000
+SERVO6_MAX       2000
+SERVO7_MIN       1000
+SERVO7_MAX       2000
+SERVO8_MIN       1000
+SERVO8_MAX       2000
+SERVO9_MIN       1000
+SERVO9_MAX       2000
+SERVO10_MIN      1000
+SERVO10_MAX      2000
+
+SERVO11_MIN      1000
+SERVO11_MAX      2000
+SERVO12_MIN      1000
+SERVO12_MAX      2000
+SERVO13_MIN      1000
+SERVO13_MAX      2000
+SERVO14_MIN      1000
+SERVO14_MAX      2000
+SERVO15_MIN      1000
+SERVO15_MAX      2000
+SERVO16_MIN      1000
+SERVO16_MAX      2000
+
+SIM_BATT_VOLTAGE 48
+BATT_MONITOR     0
+
+# The paper-3 experiments stay in helicopter / low-speed flight.
+AIRSPEED_MIN     8
+AIRSPEED_CRUISE  12
+AIRSPEED_MAX     25
+Q_ASSIST_SPEED   20
+
+# Wind changes are made deliberately by the experiment runner.
+SIM_WIND_SPD     0
+SIM_WIND_DIR     180
+SIM_WIND_TURB    0
+SIM_WIND_TC      0.5

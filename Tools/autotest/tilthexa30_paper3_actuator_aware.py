@@ -13,7 +13,10 @@ contract but adds pieces needed by the physical SITL plant:
   actuator state no longer diverge during fast differential commands;
 * the model-based attitude loop uses the same baseline proportional stiffness
   and measured-rate damping uniformly for M1/M2/M3 now that the hover-aero
-  mismatch has been corrected in the TiltHexa30 SITL model.
+  mismatch has been corrected in the TiltHexa30 SITL model;
+* the local vertical coordinate is made reset-continuous using its measured
+  vertical velocity, and a small common integral term rejects the remaining
+  steady hover-thrust bias.  Both mechanisms are identical for M1/M2/M3.
 
 The change is intentionally confined to the paper experiment runner.  It does
 not alter ArduPilot flight-control code or the underlying SITL dynamics.
@@ -21,7 +24,9 @@ not alter ArduPilot flight-control code or the underlying SITL dynamics.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 
 import numpy as np
 
@@ -117,7 +122,7 @@ class ActuatorAwareAllocator(base.FiveDofAllocator):
 
 
 class HeadingHoldExperiment(base.TiltHexaExperiment):
-    """Hold launch heading with common actuator-aware attitude shaping.
+    """Hold launch heading and reject local-height reset transients.
 
     The Paper-3 S1-S6 references contain no commanded yaw manoeuvre.  SITL's
     estimator settles at a repeatable non-zero launch heading, while the
@@ -125,28 +130,89 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
     measured launch heading for control only; telemetry remains in the original
     absolute frame.
 
-    Earlier campaigns reduced proportional attitude stiffness while diagnosing
-    the takeoff pitch divergence.  Run 35827914119, after the TiltHexa30 hover
-    aerodynamic fix, shows that M2's zero-pitch/direct-force path tracks cleanly
-    while the pitch-dependent M1/M3 paths lag the commanded attitude and fail
-    tracking.  The remaining 0.15 stiffness workaround is therefore removed:
-    all methods now use the same baseline proportional stiffness and measured-
-    rate damping.  This changes neither the SITL mass/inertia model nor the
-    reference task.
+    Run 35907078359 showed that all three methods pass S1/S2/S4 and fail S3
+    together because LOCAL_POSITION_NED z develops metre-scale corrections
+    during the climb while vz remains continuous.  Feeding those coordinate
+    corrections directly into the outer loop creates a false vertical wrench
+    step and an actuator-rate allocation transient.  Preserve a continuous
+    local vertical coordinate by propagating with measured vz and only blending
+    position corrections that are kinematically consistent.  A small common
+    altitude integral term rejects the repeatable steady hover-thrust bias.
+    Neither mechanism changes the reference task or differentiates M1/M2/M3.
     """
 
     ATTITUDE_STIFFNESS_SCALE = 1.0
     ATTITUDE_RATE_DAMPING_SCALE = 1.0
+    LPOS_Z_JUMP_GUARD_M = 0.15
+    LPOS_Z_CORRECTION_GAIN = 0.05
+    ALTITUDE_I_GAIN = 0.12
+    ALTITUDE_I_LIMIT_MPS2 = 1.5
+    ALTITUDE_P_GAIN = 0.70
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._launch_yaw = None
+        self._lpos_last_t = None
+        self._lpos_last_raw_z = None
+        self._lpos_last_vz = 0.0
+        self._lpos_cont_z = None
+        self._lpos_z_corrections_rejected = 0
+        self._altitude_i_mps2 = 0.0
+
+    def _handle(self, msg) -> None:
+        if msg is None or msg.get_type() != "LOCAL_POSITION_NED":
+            super()._handle(msg)
+            return
+
+        t = float(msg.time_boot_ms) * 1.0e-3
+        raw_z = float(msg.z)
+        vz = float(msg.vz)
+        if self._lpos_last_t is not None and t <= self._lpos_last_t:
+            # Never let a delayed local-position packet overwrite newer state.
+            return
+
+        if self._lpos_cont_z is None:
+            cont_z = raw_z
+        else:
+            dt = max(0.0, min(0.20, t - self._lpos_last_t))
+            dz_kinematic = 0.5 * (self._lpos_last_vz + vz) * dt
+            dz_raw = raw_z - self._lpos_last_raw_z
+            innovation = dz_raw - dz_kinematic
+            cont_z = self._lpos_cont_z + dz_kinematic
+            if abs(innovation) <= self.LPOS_Z_JUMP_GUARD_M:
+                cont_z += self.LPOS_Z_CORRECTION_GAIN * innovation
+            else:
+                self._lpos_z_corrections_rejected += 1
+                print(
+                    "PAPER3_TEST: rejected LOCAL_POSITION_NED z correction "
+                    "innovation=%.3f m t=%.3f s" % (innovation, t),
+                    flush=True,
+                )
+
+        self._lpos_last_t = t
+        self._lpos_last_raw_z = raw_z
+        self._lpos_last_vz = vz
+        self._lpos_cont_z = cont_z
+        self.state["boot_s"] = max(self.state["boot_s"], t)
+        self.state["x"] = float(msg.x)
+        self.state["y"] = float(msg.y)
+        self.state["z"] = cont_z
+        self.state["vx"] = float(msg.vx)
+        self.state["vy"] = float(msg.vy)
+        self.state["vz"] = vz
+
+    def _reference_altitude(self, exp_t: float) -> float:
+        if exp_t < 0.0:
+            takeoff_u = max(0.0, min(1.0, (exp_t + 18.0) / 15.0))
+            return 12.0 * base.smoothstep01(takeoff_u)
+        return self._scenario_reference(exp_t).alt_m
 
     def _control(self, exp_t: float, dt: float) -> dict:
         if self._launch_yaw is None:
             self._launch_yaw = float(self.state["yaw"])
 
         yaw_absolute = float(self.state["yaw"])
+        z_nominal = float(self.state["z"])
         inertia_nominal = self.inertia
         rates_nominal = (
             float(self.state["p"]),
@@ -156,6 +222,19 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
         stiffness_scale = self.ATTITUDE_STIFFNESS_SCALE
         damping_scale = self.ATTITUDE_RATE_DAMPING_SCALE
         rate_state_scale = damping_scale / stiffness_scale
+
+        # Enable integral action only after the smooth takeoff reference has
+        # reached its 12 m plateau.  This avoids integrating the commanded
+        # takeoff transient while still learning the repeatable hover bias.
+        if exp_t >= -3.0:
+            alt_error = self._reference_altitude(exp_t) - (-z_nominal)
+            self._altitude_i_mps2 += self.ALTITUDE_I_GAIN * alt_error * dt
+            self._altitude_i_mps2 = max(
+                -self.ALTITUDE_I_LIMIT_MPS2,
+                min(self.ALTITUDE_I_LIMIT_MPS2, self._altitude_i_mps2),
+            )
+        else:
+            self._altitude_i_mps2 = 0.0
 
         self.state["yaw"] = base.wrap_pi(yaw_absolute - self._launch_yaw)
         # base._control multiplies both angle-error and angular-rate feedback
@@ -167,12 +246,26 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
         self.state["p"] = rates_nominal[0] * rate_state_scale
         self.state["q"] = rates_nominal[1] * rate_state_scale
         self.state["r"] = rates_nominal[2] * rate_state_scale
+        # Inject the integral contribution through the baseline altitude-error
+        # term so the rest of the force construction remains unchanged.
+        self.state["z"] = z_nominal + self._altitude_i_mps2 / self.ALTITUDE_P_GAIN
         try:
             return super()._control(exp_t, dt)
         finally:
             self.inertia = inertia_nominal
             self.state["p"], self.state["q"], self.state["r"] = rates_nominal
             self.state["yaw"] = yaw_absolute
+            self.state["z"] = z_nominal
+
+    def run(self) -> None:
+        super().run()
+        summary_path = os.path.join(self.output_dir, "run-summary.json")
+        with open(summary_path, encoding="utf-8") as fh:
+            summary = json.load(fh)
+        summary["lpos_z_corrections_rejected"] = self._lpos_z_corrections_rejected
+        summary["altitude_i_final_mps2"] = self._altitude_i_mps2
+        with open(summary_path, "w", encoding="utf-8") as fh:
+            json.dump(summary, fh, indent=2, sort_keys=True)
 
 
 # The baseline module resolves these classes dynamically when constructing both

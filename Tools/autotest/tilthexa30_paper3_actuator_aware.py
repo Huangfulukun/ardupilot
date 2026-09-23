@@ -11,8 +11,9 @@ contract but adds pieces needed by the physical SITL plant:
 * commanded nacelle angle and motor thrust are rate-limited below the rates used
   by SIM_Motor, so the allocator's achieved-wrench calculation and the simulated
   actuator state no longer diverge during fast differential commands;
-* the model-based attitude loop reduces proportional attitude stiffness
-  uniformly for M1/M2/M3 while preserving the measured-rate damping.
+* the model-based attitude loop uses the same baseline proportional stiffness
+  and measured-rate damping uniformly for M1/M2/M3 now that the hover-aero
+  mismatch has been corrected in the TiltHexa30 SITL model.
 
 The change is intentionally confined to the paper experiment runner.  It does
 not alter ArduPilot flight-control code or the underlying SITL dynamics.
@@ -124,15 +125,17 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
     measured launch heading for control only; telemetry remains in the original
     absolute frame.
 
-    Campaign e10fef4a used 0.15 proportional attitude stiffness and 0.25 rate
-    damping.  Its artifact showed markedly larger takeoff p/q/r excursions than
-    campaign 071ef5b8, which preserved full measured-rate damping.  Keep the
-    lower common proportional stiffness but restore full common rate damping
-    for M1/M2/M3.  This changes neither the SITL mass/inertia model nor the
+    Earlier campaigns reduced proportional attitude stiffness while diagnosing
+    the takeoff pitch divergence.  Run 35827914119, after the TiltHexa30 hover
+    aerodynamic fix, shows that M2's zero-pitch/direct-force path tracks cleanly
+    while the pitch-dependent M1/M3 paths lag the commanded attitude and fail
+    tracking.  The remaining 0.15 stiffness workaround is therefore removed:
+    all methods now use the same baseline proportional stiffness and measured-
+    rate damping.  This changes neither the SITL mass/inertia model nor the
     reference task.
     """
 
-    ATTITUDE_STIFFNESS_SCALE = 0.15
+    ATTITUDE_STIFFNESS_SCALE = 1.0
     ATTITUDE_RATE_DAMPING_SCALE = 1.0
 
     def __init__(self, *args, **kwargs):

@@ -11,8 +11,8 @@ contract but adds pieces needed by the physical SITL plant:
 * commanded nacelle angle and motor thrust are rate-limited below the rates used
   by SIM_Motor, so the allocator's achieved-wrench calculation and the simulated
   actuator state no longer diverge during fast differential commands;
-* the model-based attitude loop reduces proportional attitude stiffness
-  uniformly for M1/M2/M3 while preserving the full measured-rate damping.
+* the model-based attitude loop uses one common reduced bandwidth for M1/M2/M3
+  so commanded moments remain compatible with the slew-limited actuator plant.
 
 The change is intentionally confined to the paper experiment runner.  It does
 not alter ArduPilot flight-control code or the underlying SITL dynamics.
@@ -124,17 +124,16 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
     measured launch heading for control only; telemetry remains in the original
     absolute frame.
 
-    Campaign a2480c39 scaled the complete model-based moment loop to 35 percent.
-    The resulting artifact showed substantially worse takeoff altitude tracking
-    and repeated ground impacts because rate damping was reduced together with
-    attitude stiffness.  For a delayed actuator plant the intended bandwidth
-    change is instead to lower proportional attitude stiffness while retaining
-    full angular-rate damping.  The temporary state/inertia transformation below
-    implements exactly that common P-only reduction without changing the SITL
-    mass/inertia model or giving M1/M2/M3 different gains.
+    Campaigns a2480c39 and 071ef5b8 bracketed the actuator-bandwidth problem:
+    scaling both attitude stiffness and rate damping to 35 percent left the
+    takeoff weakly damped, while restoring full rate damping drove repeated
+    moment reversals into the slew-limited motor plant.  Use a lower common
+    attitude stiffness and intermediate common rate damping for all M1/M2/M3.
+    This changes neither the SITL mass/inertia model nor the reference task.
     """
 
-    ATTITUDE_STIFFNESS_SCALE = 0.35
+    ATTITUDE_STIFFNESS_SCALE = 0.15
+    ATTITUDE_RATE_DAMPING_SCALE = 0.25
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -152,16 +151,19 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
             float(self.state["r"]),
         )
         stiffness_scale = self.ATTITUDE_STIFFNESS_SCALE
+        damping_scale = self.ATTITUDE_RATE_DAMPING_SCALE
+        rate_state_scale = damping_scale / stiffness_scale
 
         self.state["yaw"] = base.wrap_pi(yaw_absolute - self._launch_yaw)
         # base._control multiplies both angle-error and angular-rate feedback
-        # by self.inertia.  Scaling inertia reduces the proportional stiffness;
-        # inversely scaling p/q/r for this controller call cancels that scale
-        # in the derivative terms, preserving the original rate damping.
+        # by self.inertia.  Scale the temporary inertia for the proportional
+        # term, then scale p/q/r so the derivative term receives its separately
+        # specified common damping factor.  The physical SITL inertia is never
+        # changed; this is only an algebraic controller-gain transformation.
         self.inertia = inertia_nominal * stiffness_scale
-        self.state["p"] = rates_nominal[0] / stiffness_scale
-        self.state["q"] = rates_nominal[1] / stiffness_scale
-        self.state["r"] = rates_nominal[2] / stiffness_scale
+        self.state["p"] = rates_nominal[0] * rate_state_scale
+        self.state["q"] = rates_nominal[1] * rate_state_scale
+        self.state["r"] = rates_nominal[2] * rate_state_scale
         try:
             return super()._control(exp_t, dt)
         finally:

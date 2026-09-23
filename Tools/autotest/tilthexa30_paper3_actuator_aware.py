@@ -11,8 +11,8 @@ contract but adds pieces needed by the physical SITL plant:
 * commanded nacelle angle and motor thrust are rate-limited below the rates used
   by SIM_Motor, so the allocator's achieved-wrench calculation and the simulated
   actuator state no longer diverge during fast differential commands;
-* the model-based attitude loop uses one common reduced bandwidth for M1/M2/M3
-  so commanded moments remain compatible with the slew-limited actuator plant.
+* the model-based attitude loop reduces proportional attitude stiffness
+  uniformly for M1/M2/M3 while preserving the measured-rate damping.
 
 The change is intentionally confined to the paper experiment runner.  It does
 not alter ArduPilot flight-control code or the underlying SITL dynamics.
@@ -124,16 +124,16 @@ class HeadingHoldExperiment(base.TiltHexaExperiment):
     measured launch heading for control only; telemetry remains in the original
     absolute frame.
 
-    Campaigns a2480c39 and 071ef5b8 bracketed the actuator-bandwidth problem:
-    scaling both attitude stiffness and rate damping to 35 percent left the
-    takeoff weakly damped, while restoring full rate damping drove repeated
-    moment reversals into the slew-limited motor plant.  Use a lower common
-    attitude stiffness and intermediate common rate damping for all M1/M2/M3.
-    This changes neither the SITL mass/inertia model nor the reference task.
+    Campaign e10fef4a used 0.15 proportional attitude stiffness and 0.25 rate
+    damping.  Its artifact showed markedly larger takeoff p/q/r excursions than
+    campaign 071ef5b8, which preserved full measured-rate damping.  Keep the
+    lower common proportional stiffness but restore full common rate damping
+    for M1/M2/M3.  This changes neither the SITL mass/inertia model nor the
+    reference task.
     """
 
     ATTITUDE_STIFFNESS_SCALE = 0.15
-    ATTITUDE_RATE_DAMPING_SCALE = 0.25
+    ATTITUDE_RATE_DAMPING_SCALE = 1.0
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

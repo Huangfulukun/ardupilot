@@ -1,0 +1,21 @@
+{
+  "label": "fw_fix2",
+  "scenario": "transition",
+  "valid": true,
+  "crashed": false,
+  "duration": 58.91,
+  "max_roll_deg": 0.0,
+  "max_pitch_deg": 16.7,
+  "h_final": -0.0,
+  "V_final": 0.0,
+  "h_rmse": 2.693,
+  "V_rmse": 0.922,
+  "h_min": -0.0,
+  "V_max": 19.97,
+  "mpc_mean_ms": 0.808,
+  "mpc_p99_ms": 2.65,
+  "mpc_worst_ms": 6.218,
+  "alloc_mean_us": 57.5,
+  "mpc_status0": 0,
+  "mpc_n": 1964
+}

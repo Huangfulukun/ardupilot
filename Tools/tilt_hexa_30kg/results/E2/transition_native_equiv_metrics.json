@@ -1,0 +1,21 @@
+{
+  "label": "native_equiv",
+  "valid": false,
+  "crashed": true,
+  "duration": 57.5,
+  "max_roll_deg": 180.0,
+  "max_pitch_deg": 90.0,
+  "h_final": 4.89,
+  "V_final": 7.01,
+  "h_rmse": 3.694,
+  "V_rmse": 14.648,
+  "fwd_t_f": 18.0,
+  "fwd_h_loss": 5.0,
+  "fwd_energy_kJ": 75.3,
+  "bwd_t_f": 22.0,
+  "bwd_h_loss": 5.0,
+  "bwd_energy_kJ": 67.8,
+  "cruise_beta_deg": 76.7,
+  "mode_switches": 3,
+  "tilt_max_deg": 80.0
+}

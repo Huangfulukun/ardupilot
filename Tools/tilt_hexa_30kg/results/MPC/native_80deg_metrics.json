@@ -1,0 +1,21 @@
+{
+  "label": "native_80deg",
+  "scenario": "transition",
+  "valid": true,
+  "crashed": false,
+  "duration": 63.95,
+  "max_roll_deg": 0.4,
+  "max_pitch_deg": 16.1,
+  "h_final": 4.99,
+  "V_final": 0.86,
+  "h_rmse": 0.876,
+  "V_rmse": 2.36,
+  "h_min": -0.0,
+  "V_max": 21.58,
+  "mpc_mean_ms": 0.626,
+  "mpc_p99_ms": 2.207,
+  "mpc_worst_ms": 3.955,
+  "alloc_mean_us": 50.2,
+  "mpc_status0": 0,
+  "mpc_n": 2132
+}

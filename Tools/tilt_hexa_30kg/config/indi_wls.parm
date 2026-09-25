@@ -66,4 +66,4 @@ THX_TRN_RATE 8            # 8 deg/s coordinated turn (bank ~16 deg at 20 m/s)
 THX_HOVER_DUR_S 5
 THX_CRUISE_DUR_S 10
 THX_DECEL_M_S2 1.0       # braking authority at beta_min=-10 deg is ~1.7 m/s2 without drag
-THX_PITCH_MAX 5          # pitch-attitude reference at cruise (deg); tilt still comes from the allocator
+THX_PITCH_MAX 5          # pitch-attitude reference at cruise (deg)

@@ -90,6 +90,8 @@ private:
     AP_Float _arm_l;         // THX_ARM_L
     AP_Float _rotor_z;       // THX_ROTOR_Z
     AP_Int8  _test_mode;     // THX_TEST_MODE
+    AP_Float _fw_thresh_m_s; // THX_FW_SPD
+    AP_Float _fw_target_beta;// THX_FW_BETA
 
     // ---- Internal state ----
     bool _initialised;

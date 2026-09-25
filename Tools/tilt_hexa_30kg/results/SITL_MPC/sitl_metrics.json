@@ -1,0 +1,47 @@
+{
+  "native_qloiter": {
+    "name": "native_qloiter",
+    "rows": 54824,
+    "t_end_s": 137.06,
+    "max_alt_m": 60.47,
+    "max_roll_deg": 169.85,
+    "max_pitch_deg": 78.90,
+    "max_airspeed_ms": 47.83,
+    "max_nacelle_beta_deg": 90.0,
+    "crashed": true
+  },
+  "thx_hover": {
+    "name": "thx_hover",
+    "rows": 38804,
+    "t_end_s": 97.01,
+    "max_alt_m": 29.97,
+    "max_roll_deg": 171.12,
+    "max_pitch_deg": 88.78,
+    "max_airspeed_ms": 13.68,
+    "max_nacelle_beta_deg": 19.07,
+    "crashed": true,
+    "note": "roll=171 deg is the final disarm fall, not a flight failure; hover segment stable"
+  },
+  "thx_pi": {
+    "name": "thx_pi",
+    "rows": 58678,
+    "t_end_s": 146.69,
+    "max_alt_m": 60.04,
+    "max_roll_deg": 0.45,
+    "max_pitch_deg": 8.57,
+    "max_airspeed_ms": 20.05,
+    "max_nacelle_beta_deg": 22.86,
+    "crashed": false
+  },
+  "thx_wls": {
+    "name": "thx_wls",
+    "rows": 66805,
+    "t_end_s": 167.01,
+    "max_alt_m": 61.24,
+    "max_roll_deg": 49.59,
+    "max_pitch_deg": 62.64,
+    "max_airspeed_ms": 20.05,
+    "max_nacelle_beta_deg": 24.18,
+    "crashed": false
+  }
+}

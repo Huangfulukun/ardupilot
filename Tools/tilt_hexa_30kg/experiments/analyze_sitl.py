@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-analyze_sitl.py -- 从真实 SITL truth CSV 计算指标并生成论文对比图（SVG）。
+alyze_sitl.py -- 从真实 SITL truth CSV 计算指标并生成论文对比图（SVG）。
 
 输入（全部为真实 arduplane SITL 飞行，非离线编造）：
   results/SITL_native/native_sitl_truth.csv   stock arduplane QLOITER 爬升 + FBWA 尝试
   results/SITL_MPC/thx_hover_truth.csv        THX/INDI 30m 悬停
   results/SITL_MPC/thx_trans_truth.csv        THX PI alloc 完整过渡任务
-  results/SITL_MPC/thx_wls_truth.csv          THX WLS alloc 完整过渡任务
-  results/SITL_MPC/thx_stable_truth.csv       THX WLS 稳定 compound 配平（FW blend 关闭）
+  results/SITL_MPC/thx_wls_truth.csv          THX WLS alloc 完整任务
 
 输出：
   results/SITL_MPC/sitl_metrics.json          指标汇总
@@ -65,7 +64,7 @@ def summarize(tr, name):
         "max_airspeed_ms": float(aspd.max()),
         "max_nacelle_beta_deg": float(np.abs(beta1).max()),
     }
-    # 坠毁判定：飞起来之后 |roll|>80 或坠地
+    # 坠毁判定：飞起来之后 |roll|>80° 或坠地（alt<1m 且曾经高度>10m）
     if flying.sum() > 0:
         crashed = bool((np.abs(roll) > 80).any())
         out["crashed"] = crashed
@@ -76,7 +75,7 @@ def fig_sitl_overview():
     """THX WLS 完整任务：as / alt / nacelle beta 三段时间线。"""
     tr = load(os.path.join(MPC, "thx_stable_truth.csv"))
     if tr is None:
-        print("skip thx_stable"); return
+        print("skip thx_wls"); return
     t = tr.t.values
     fig, ax = plt.subplots(3, 1, figsize=(6.6, 5.2), sharex=True)
     ax[0].plot(t, -tr.pz.values, color=C_MPC)
@@ -95,7 +94,7 @@ def fig_sitl_overview():
 
 
 def fig_native_vs_thx():
-    """同场景对比：stock native（前向过渡发散）vs THX（完成）。"""
+    """同场景对比：stock native（前向过渡发散）vs THX（完成）。用 roll 角展示稳定性。"""
     nat = load(os.path.join(NAT, "native_sitl_truth.csv"))
     thx = load(os.path.join(MPC, "thx_stable_truth.csv"))
     fig, ax = plt.subplots(2, 1, figsize=(6.6, 4.4), sharex=True)
@@ -132,7 +131,8 @@ def main():
         if tr is not None:
             metrics[name] = summarize(tr, name)
             print(name, json.dumps(metrics[name], indent=2))
-    with open(os.path.join(MPC, "sitl_metrics.json"), "w") as f:
+    with open(os.path.join(MPC, "sitl_metrics.json"),
+              "w") as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
     print("wrote sitl_metrics.json")
     fig_sitl_overview()

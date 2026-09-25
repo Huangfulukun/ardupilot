@@ -71,6 +71,7 @@ def main():
         C.wait_for_gps_fix(mav,timeout=60.0)
         time.sleep(6.0)
 
+        # set mission params
         C.set_param(mav,"THX_ALT_M",a.alt)
         C.set_param(mav,"THX_CRUISE_M_S",a.cruise)
         C.set_param(mav,"THX_ACCEL_M_S2",1.5)
@@ -116,6 +117,7 @@ def main():
             print(f"rows={len(tr)} t_end={tr.t.iloc[-1]:.1f}")
             print(f"max_alt={alt.max():.1f} max_roll={math.degrees(np.abs(tr.roll).max()):.1f} "
                   f"max_pitch={math.degrees(np.abs(tr.pitch).max()):.1f} max_as={tr.airspeed.max():.1f}")
+            # cruise beta
             if len(tr)>100:
                 print(f"beta1 max={math.degrees(tr.beta1.max()):.1f} mean(last200)={math.degrees(tr.beta1.iloc[-200:].mean()):.1f}")
     return 0

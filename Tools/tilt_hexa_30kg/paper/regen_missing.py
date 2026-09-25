@@ -61,6 +61,7 @@ def fig_mc():
     fig.tight_layout(); save(fig,"fig_mc")
 
 def fig_ablation():
+    # corridor (fw_fix4) vs fixed-schedule equivalent (native_equiv) speed/alt
     a = pd.read_csv(os.path.join(MPC,"fw_fix4_truth.csv"))
     b = pd.read_csv(os.path.join(MPC,"native_equiv_truth.csv"))
     fig,ax=plt.subplots(1,2,figsize=(7.0,2.5))
@@ -68,7 +69,7 @@ def fig_ablation():
     ax[0].plot(b.t, b.airspeed, color=C_NC, label="Fixed schedule")
     ax[0].axhline(20,color=C_REF,ls="--",lw=0.8); ax[0].set_xlabel("Time (s)"); ax[0].set_ylabel("Airspeed (m/s)"); ax[0].legend(framealpha=0.9)
     ax[1].plot(a.t, -a.pz, color=C_MPC, label="Corridor MPC")
-    ax[1].plot(b.t, -b.pz, color=C_NC, label="Fixed schedule")
+    ax[1].plot(b.t, -a.pz, color=C_NC, label="Fixed schedule")
     ax[1].set_xlabel("Time (s)"); ax[1].set_ylabel("Altitude (m)"); ax[1].legend(framealpha=0.9)
     fig.tight_layout(); save(fig,"fig_ablation_corridor")
 

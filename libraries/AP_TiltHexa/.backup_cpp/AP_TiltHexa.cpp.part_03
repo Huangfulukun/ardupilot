@@ -1,0 +1,250 @@
+            ref.v_r[1] = _traj_ref.v_E_m_s;
+            ref.v_r[2] = _traj_ref.v_D_m_s;
+            ref.a_r[0] = _traj_ref.a_N_m_s2;
+            ref.a_r[1] = _traj_ref.a_E_m_s2;
+            ref.a_r[2] = _traj_ref.a_D_m_s2;
+            ref.yaw_r     = _traj_ref.yaw_rad;
+            ref.yaw_rate_r = _traj_ref.yaw_rate_rad_s;
+            ref.pitch_r   = _traj_ref.pitch_r_rad;
+            ref.phase     = _traj_phase;
+            ref.takeoff_request = true;
+            ref.land_request = (_traj_phase == THX_PHASE_LAND) ||
+                               (_mission.get() == 3 && _traj_phase == THX_PHASE_COMPLETE);
+        }
+        // else: takeoff_request stays false, pipeline stays on ground
+
+        // ---- Run unified Pipeline ----
+        // Measure the complete research control pipeline with a real HAL clock.
+        // The HAL-free core cannot sample AP_HAL time internally; sensor.micros_now
+        // is a single input timestamp and must not be used as a stopwatch.
+        const uint32_t thx_t0_us = AP_HAL::micros();
+        _pipeline.step(&sensor, &ref, &_pipeline_cmd, &_pipeline_telem);
+        _pipeline_telem.solver_time_us = AP_HAL::micros() - thx_t0_us;
+
+        // ---- Sync Pipeline output to legacy members for PWM & logging ----
+        sync_pipeline_to_legacy();
+    }
+
+    // 7. Apply actuator outputs EVERY iteration to prevent native
+    //    overrides from clearing have_pwm_mask between pipeline runs.
+    if (run_pipeline || _pipeline_cmd.T_N[0] > 0.0f) {
+        apply_actuator_outputs();
+    }
+
+    // Write research logs
+    if (_log_en.get() > 0 && run_pipeline) {
+        uint8_t log_rate = (uint8_t)constrain_int16(_log_rate.get(), 1, 100);
+        _log_counter++;
+        if (_log_counter >= (_indi_rate.get() / log_rate)) {
+            _log_counter = 0;
+            write_logs();
+        }
+    }
+}
+
+// ============================================================
+// 1. GATHER SENSORS
+// ============================================================
+
+bool AP_TiltHexa::gather_sensors(float dt)
+{
+    // Accelerometer: specific force (body frame, includes gravity)
+    Vector3f accel = AP::ins().get_accel();
+    _accel_f[0] = accel.x;  // raw, will be filtered in form_estimates
+    _accel_f[1] = accel.y;
+    _accel_f[2] = accel.z;
+
+    // Gyro
+    Vector3f gyro = AP::ahrs().get_gyro();
+    _gyro_f[0] = gyro.x;
+    _gyro_f[1] = gyro.y;
+    _gyro_f[2] = gyro.z;
+
+    // DCM: body-to-NED, computed from quaternion
+    Quaternion quat;
+    bool qok = AP::ahrs().get_quaternion(quat);
+    (void)qok;
+    float q0 = quat[0], q1 = quat[1], q2 = quat[2], q3 = quat[3];
+    Matrix3f R;
+    R.a.x = 1.0f - 2.0f*(q2*q2 + q3*q3);
+    R.a.y = 2.0f*(q1*q2 - q0*q3);
+    R.a.z = 2.0f*(q1*q3 + q0*q2);
+    R.b.x = 2.0f*(q1*q2 + q0*q3);
+    R.b.y = 1.0f - 2.0f*(q1*q1 + q3*q3);
+    R.b.z = 2.0f*(q2*q3 - q0*q1);
+    R.c.x = 2.0f*(q1*q3 - q0*q2);
+    R.c.y = 2.0f*(q2*q3 + q0*q1);
+    R.c.z = 1.0f - 2.0f*(q1*q1 + q2*q2);
+    _R_bn[0] = R.a.x; _R_bn[1] = R.a.y; _R_bn[2] = R.a.z;
+    _R_bn[3] = R.b.x; _R_bn[4] = R.b.y; _R_bn[5] = R.b.z;
+    _R_bn[6] = R.c.x; _R_bn[7] = R.c.y; _R_bn[8] = R.c.z;
+
+    // Velocity (NED)
+    Vector3f vel_ned;
+    if (!AP::ahrs().get_velocity_NED(vel_ned)) {
+        vel_ned.zero();
+    }
+    _vel_actual[0] = vel_ned.x;
+    _vel_actual[1] = vel_ned.y;
+    _vel_actual[2] = vel_ned.z;
+
+    // Position (NED, relative to origin)
+    Vector3f pos_ned;
+    if (AP::ahrs().get_relative_position_NED_origin_float(pos_ned)) {
+        _pos_actual[0] = pos_ned.x;
+        _pos_actual[1] = pos_ned.y;
+        _pos_actual[2] = pos_ned.z;
+    } else {
+        // Fallback: use home-relative position
+        _pos_actual[0] = 0.0f;
+        _pos_actual[1] = 0.0f;
+        _pos_actual[2] = 0.0f;
+    }
+    // Rotate to body frame for alpha/V computation
+    float v_body_x = R.a.x * vel_ned.x + R.b.x * vel_ned.y + R.c.x * vel_ned.z;
+    float v_body_y = R.a.y * vel_ned.x + R.b.y * vel_ned.y + R.c.y * vel_ned.z;
+    float v_body_z = R.a.z * vel_ned.x + R.b.z * vel_ned.y + R.c.z * vel_ned.z;
+
+    // Airspeed. In the JSON-SITL setup the custom airspeed backend may report
+    // "healthy" but a zero value (it is not wired to the FDM airspeed), so we
+    // only trust it when it is both healthy AND above a small floor; otherwise
+    // fall back to the projected body (ground-relative) speed.
+    float V;
+    float V_airspeed = 0.0f;
+    if (AP::airspeed() != nullptr && AP::airspeed()->healthy()) {
+        V_airspeed = AP::airspeed()->get_airspeed();
+    }
+    const float V_gnd = sqrtf(v_body_x*v_body_x + v_body_y*v_body_y + v_body_z*v_body_z);
+    if (V_airspeed > 0.5f) {
+        V = V_airspeed;
+    } else {
+        V = V_gnd;
+    }
+
+    // Alpha
+    float alpha;
+    if (V > 0.5f) {
+        alpha = atan2f(v_body_z, v_body_x);  // body frame x forward, z down
+    } else {
+        alpha = 0.0f;
+    }
+
+    // Beta_bar from actuator estimate (average tilt)
+    float beta_bar = 0.0f;
+    for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
+        beta_bar += _u_prev.rotors[i].tilt_rad;
+    }
+    beta_bar /= AP_TILTHEXA_N_ROTORS;
+
+    _V_f = V;
+    _alpha_f = alpha;
+    _beta_bar_f = beta_bar;
+
+    return true;
+}
+
+// ============================================================
+// 2. FORM ESTIMATES (filter signals, actuator model)
+// ============================================================
+
+void AP_TiltHexa::form_estimates(void)
+{
+    float filt_hz = _filt_hz.get();
+    float indi_hz = (float)_indi_rate.get();
+
+    // Guard against zero INDI rate (would cause division by zero / FPE)
+    if (indi_hz <= 0.0f) {
+        return;
+    }
+
+    // Init filters on first call
+    static bool filters_inited = false;
+    if (!filters_inited) {
+        for (int i = 0; i < 3; i++) {
+            _accel_lpf[i].set_cutoff_frequency(filt_hz, indi_hz);
+            _accel_lpf[i].reset(_accel_f[i]);
+            _gyro_lpf[i].set_cutoff_frequency(filt_hz, indi_hz);
+            _gyro_lpf[i].reset(0.0f);
+            _gyro_deriv[i].set_cutoff_frequency(filt_hz, indi_hz);
+            _gyro_deriv[i].reset(0.0f);
+            _vel_lpf[i].set_cutoff_frequency(filt_hz, indi_hz);
+        }
+        filters_inited = true;
+    }
+
+    float dt = 1.0f / indi_hz;
+
+    // Filter accelerometer
+    for (int i = 0; i < 3; i++) {
+        _accel_f[i] = _accel_lpf[i].apply(_accel_f[i], dt);
+        _gyro_f[i]  = _gyro_lpf[i].apply(_gyro_f[i], dt);
+        _gyro_dot_f[i] = _gyro_deriv[i].apply(_gyro_f[i], dt);
+    }
+
+    // Filter airspeed
+    _V_f = _vel_lpf[0].apply(_V_f, dt);
+
+    // Build actuator estimate u_f via actuator model
+    // This is the filtered commanded actuator - NEVER from plant truth
+    if (_act_model.get() == 1) {
+        for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
+            float T_est = _thrust_model[i].apply(_u_prev.rotors[i].thrust_N, dt);
+            float beta_est = _tilt_model[i].apply(_u_prev.rotors[i].tilt_rad, dt);
+            _u_prev.rotors[i].thrust_N = T_est;
+            _u_prev.rotors[i].tilt_rad = beta_est;
+            _u_prev.rotors[i].u_x = T_est * sinf(beta_est);
+            _u_prev.rotors[i].u_z = T_est * cosf(beta_est);
+        }
+        for (int i = 0; i < AP_TILTHEXA_N_SURF; i++) {
+            _u_prev.surfaces_rad[i] = _surf_model[i].apply(_u_prev.surfaces_rad[i], dt);
+        }
+    }
+    // else: u_f = u_prev (command-only, already in _u_prev from previous cycle)
+
+    // Build flat array from actuator state
+    for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
+        _u_f_flat[2*i]   = _u_prev.rotors[i].u_x;
+        _u_f_flat[2*i+1] = _u_prev.rotors[i].u_z;
+    }
+    for (int i = 0; i < AP_TILTHEXA_N_SURF; i++) {
+        _u_f_flat[12 + i] = _u_prev.surfaces_rad[i];
+    }
+
+    // Filter actuator estimate through same LPF2 as sensors
+    // (Actuator model + LPF2 matching per Section 0.5)
+    // The same second-order Butterworth at THX_ACT_FILT_HZ is applied to each u_f element
+    // to match the phase lag of the accelerometer and gyro filter chains.
+    float act_dt = 1.0f / indi_hz;
+    for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+        _u_f_flat[i] = _uf_lpf[i].apply(_u_f_flat[i], act_dt);
+    }
+}
+
+// ============================================================
+// 3. BUILD EFFECTIVENESS B(x_f)
+// ============================================================
+
+void AP_TiltHexa::build_effectiveness(void)
+{
+    float rho    = THX_SEED_RHO_KG_M3;
+    float S_ref  = THX_SEED_WING_AREA_M2;
+    float b_span = THX_SEED_WING_SPAN_M;
+    float c_bar  = THX_SEED_MAC_M;
+
+    thx_effectiveness_build(&_B, &_geom, _V_f, rho, S_ref, b_span, c_bar, _BA_params);
+}
+
+// ============================================================
+// 4. FORM ACHIEVED WRENCH w_f = B(x_f) * u_f
+// ============================================================
+
+void AP_TiltHexa::form_achieved_wrench(void)
+{
+    thx_form_wf(&_B, _u_f_flat, &_w_f_prev);
+}
+
+// ============================================================
+// 5. RUN INDI CONTROLLER -- DEPRECATED (dead code, never called from output())
+// Active path uses _pipeline.step() -> TiltHexa_Pipeline::run_full_pipeline().
+// Kept under #if 0 for reference; remove when Pipeline integration is stable.
+// ============================================================

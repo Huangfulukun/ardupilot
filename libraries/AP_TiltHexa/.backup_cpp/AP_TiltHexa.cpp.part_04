@@ -1,0 +1,250 @@
+
+#if 0
+
+void AP_TiltHexa::run_indi_controller(void)
+{
+    memset(&_indi_in, 0, sizeof(_indi_in));
+    memset(&_indi_out, 0, sizeof(_indi_out));
+
+    // Filtered sensor signals
+    _indi_in.accel_f[0] = _accel_f[0];
+    _indi_in.accel_f[1] = _accel_f[1];
+    _indi_in.accel_f[2] = _accel_f[2];
+    _indi_in.gyro_f[0]  = _gyro_f[0];
+    _indi_in.gyro_f[1]  = _gyro_f[1];
+    _indi_in.gyro_f[2]  = _gyro_f[2];
+    _indi_in.gyro_dot_f[0] = _gyro_dot_f[0];
+    _indi_in.gyro_dot_f[1] = _gyro_dot_f[1];
+    _indi_in.gyro_dot_f[2] = _gyro_dot_f[2];
+    _indi_in.V_f       = _V_f;
+    _indi_in.alpha_f   = _alpha_f;
+    _indi_in.beta_bar_f = _beta_bar_f;
+
+    // DCM
+    memcpy(_indi_in.R_body_to_ned, _R_bn, 9 * sizeof(float));
+
+    // References from trajectory WITH feedback error
+    // The INDI expects p_r, v_r to contain the POSITION/Velocity ERRORS (ref - actual)
+    // per the plan's nu_v = a_r + K_v*(v_r - v) + K_p*(p_r - p) formulation
+    _indi_in.p_r[0] = _traj_ref.p_N_m - _pos_actual[0];
+    _indi_in.p_r[1] = _traj_ref.p_E_m - _pos_actual[1];
+    _indi_in.p_r[2] = _traj_ref.p_D_m - _pos_actual[2];
+    _indi_in.v_r[0] = _traj_ref.v_N_m_s - _vel_actual[0];
+    _indi_in.v_r[1] = _traj_ref.v_E_m_s - _vel_actual[1];
+    _indi_in.v_r[2] = _traj_ref.v_D_m_s - _vel_actual[2];
+    _indi_in.a_r[0] = _traj_ref.a_N_m_s2;
+    _indi_in.a_r[1] = _traj_ref.a_E_m_s2;
+    _indi_in.a_r[2] = _traj_ref.a_D_m_s2;
+    _indi_in.yaw_r  = _traj_ref.yaw_rad;
+
+    // Pitch reference: 0 in hover, linearly scheduled to THX_PITCH_MAX at cruise speed
+    {
+        float V_cruise = _cruise_m_s.get();
+        float V_actual = _V_f;  // filtered airspeed
+        if (V_actual < 10.0f) {
+            _indi_in.pitch_r = 0.0f;
+        } else if (V_actual >= V_cruise) {
+            _indi_in.pitch_r = deg2rad(_pitch_max.get());
+        } else {
+            float frac = (V_actual - 10.0f) / (V_cruise - 10.0f);
+            _indi_in.pitch_r = frac * deg2rad(_pitch_max.get());
+        }
+    }
+
+    // Vehicle params
+    _indi_in.mass_kg = _mass.get();
+    _indi_in.J_diag[0] = _jxx.get();
+    _indi_in.J_diag[1] = _jyy.get();
+    _indi_in.J_diag[2] = _jzz.get();
+    _indi_in.w_f_prev = _w_f_prev;
+
+    // Gains
+    _indi_in.Kp = _indi_kp.get();
+    _indi_in.Kv = _indi_kv.get();
+    _indi_in.Kw = _indi_kw.get();
+    _indi_in.KR = _indi_kr.get();
+
+    // Run INDI
+    thx_indi_compute(&_indi_in, &_indi_out);
+
+    // ---- POST-PROCESSING: clamp w_d to physically achievable bounds ----
+    // The INDI incremental update w_d = w_f_prev + Delta_F can demand
+    // impossible forces when w_f_prev is not yet tracking the system state
+    // (e.g. on the ground before first actuator output).
+    // Clamp to what 6 thrusters at T_max can produce in the body-z direction.
+    {
+        const float G = 9.80665f;
+        float mass = _mass.get();
+        float T_max = _thr_max.get();
+
+        // Maximum achievable Fz (all 6 thrusters vertical, cos(0)=1)
+        float Fz_max_up   = 6.0f * T_max;        // upward force magnitude
+        float Fz_static_hover = mass * G;          // force to hover
+
+        // If w_f_prev is near zero (first cycle or vehicle on ground),
+        // pre-load gravity compensation so the INDI increment starts from
+        // the right baseline.  The incremental update w_d = 0 + Delta_Fz
+        // cannot accumulate the ~294 N hover force fast enough when the
+        // trajectory error is small.  Add -m*g as the baseline plus the
+        // INDI correction so the allocator always produces hover-level
+        // thrust when the wrench estimate has not yet built up.
+        if (fabsf(_w_f_prev.Fz) < 0.5f) {
+            // Clamp the INDI increment: w_d.Fz must stay within [-Fz_max_up, Fz_max_up]
+            float clamped = constrain_float(_indi_out.w_d.Fz - Fz_static_hover,
+                                            -Fz_max_up, Fz_max_up);
+            _indi_out.w_d.Fz = clamped;
+        }
+
+        // Hard clamp Fz to what the 6 thrusters can deliver (upward negative)
+        if (_indi_out.w_d.Fz < -Fz_max_up) {
+            _indi_out.w_d.Fz = -Fz_max_up;
+        }
+        if (_indi_out.w_d.Fz > Fz_max_up) {
+            _indi_out.w_d.Fz = Fz_max_up;
+        }
+
+        // Clamp Fx (all thrusters at beta=90 produce 6*T_max forward)
+        float Fx_max = 6.0f * T_max;
+        _indi_out.w_d.Fx = constrain_float(_indi_out.w_d.Fx, -Fx_max, Fx_max);
+
+        // Clamp moments
+        float L = _arm_l.get();
+        float M_max = 3.0f * T_max * L;  // rough estimate
+        _indi_out.w_d.Mx = constrain_float(_indi_out.w_d.Mx, -M_max, M_max);
+        _indi_out.w_d.My = constrain_float(_indi_out.w_d.My, -M_max, M_max);
+        _indi_out.w_d.Mz = constrain_float(_indi_out.w_d.Mz, -M_max, M_max);
+    }
+
+    // E3 stress injection: for mission 2, add lambda * d to w_d
+    if (_mission.get() == 2 && _e3_lambda.get() > 0.0f) {
+        float lam = _e3_lambda.get();
+        _indi_out.w_d.Fx += lam * _e3_dfx.get();
+        _indi_out.w_d.Fz += lam * _e3_dfz.get();
+        _indi_out.w_d.Mx += lam * _e3_dmx.get();
+    }
+}
+
+#endif // 0 -- end of deprecated run_indi_controller()
+
+// ============================================================
+// 6. RUN ALLOCATOR
+// ============================================================
+
+void AP_TiltHexa::run_allocator(void)
+{
+    memset(&_alloc_in, 0, sizeof(_alloc_in));
+    memset(&_alloc_out, 0, sizeof(_alloc_out));
+
+    // Desired wrench from INDI
+    _alloc_in.w_d = _indi_out.w_d;
+    _alloc_in.w_f = _w_f_prev;
+    _alloc_in.u_prev = _u_prev;
+    _alloc_in.B = _B;
+
+    float _indi_hz = (float)_indi_rate.get();
+    if (_indi_hz <= 0.0f) {
+        _alloc_out.solver_status = THX_SOLVER_NUMERICAL;
+        return;
+    }
+    float dt = 1.0f / _indi_hz;
+
+    _alloc_in.dt = dt;
+    _alloc_in.T_max = _thr_max.get();
+    _alloc_in.beta_min_rad = deg2rad(_tilt_min.get());
+    _alloc_in.beta_max_rad = deg2rad(_tilt_max.get());
+    _alloc_in.beta_dot_max_rad_s = deg2rad(_tilt_rate.get());
+    _alloc_in.delta_max_rad[0] = deg2rad(THX_SEED_AIL_MAX_DEG);
+    _alloc_in.delta_max_rad[1] = deg2rad(THX_SEED_AIL_MAX_DEG);
+    _alloc_in.delta_max_rad[2] = deg2rad(THX_SEED_RV_MAX_DEG);
+    _alloc_in.delta_max_rad[3] = deg2rad(THX_SEED_RV_MAX_DEG);
+    for (int i = 0; i < AP_TILTHEXA_N_SURF; i++) {
+        _alloc_in.delta_dot_max_rad_s[i] = deg2rad(THX_SEED_SURF_RATE_DEG_S);
+    }
+    _alloc_in.T_off_N = _thr_off.get();
+    _alloc_in.T_on_N  = _thr_on.get();
+    _alloc_in.poly_N  = _poly_n.get();
+
+    _alloc_in.W_s[0] = _ws_fx.get();
+    _alloc_in.W_s[1] = _ws_fz.get();
+    _alloc_in.W_s[2] = _ws_mx.get();
+    _alloc_in.W_s[3] = _ws_my.get();
+    _alloc_in.W_s[4] = _ws_mz.get();
+    _alloc_in.W_delta_u = _w_du.get();
+    _alloc_in.W_u = _w_u.get();
+
+    int mode = _alloc_mode.get();
+    _alloc_out.alloc_mode = mode;
+
+    uint32_t t_start = AP_HAL::micros();
+
+    if (mode == 1) {
+        // Constrained WLS via QP
+
+        // Assemble constraint sets
+        TiltHexa_ConstraintSet cs_pos;
+        TiltHexa_RateConstraintSet cs_rate;
+        cs_pos.clear();
+        cs_rate.clear();
+
+        cs_pos.assemble(&_alloc_in);
+        cs_rate.assemble(&_alloc_in);
+
+        // Combine rate constraints into position constraints
+        TiltHexa_ConstraintSet cs_combined;
+        cs_combined.clear();
+        thx_combine_rate_constraints(&cs_combined, &cs_pos, &cs_rate, _u_prev_vec);
+
+        // Build QP Hessian and gradient
+        _qp_solver.build_hessian_gradient(&_alloc_in);
+
+        // Warm-start the QP solver from u_prev (not u=0) so that
+        // tilt rate constraints (which are relative to u_prev) function correctly.
+        _qp_solver.set_warm_start_point(_u_prev_vec);
+
+        _qp_solver.load_constraints(&cs_combined);
+
+        // Solve
+        TiltHexa_QPResult qp_res = _qp_solver.solve(_qp_max_iter.get());
+        _alloc_out.solver_status = qp_res.status;
+        _alloc_out.solver_iterations = qp_res.iterations;
+        _alloc_out.n_active_constraints = qp_res.n_active;
+
+        // DIAGNOSTIC: report QP solve result and u_z[0] (only every 200 pipeline cycles ~ 2s)
+        static uint32_t qp_diag_counter = 0;
+        if (++qp_diag_counter >= 200) {
+            qp_diag_counter = 0;
+            float total_T = 0.0f;
+            for (int i = 0; i < AP_TILTHEXA_N_U; i++) total_T += fabsf(qp_res.u_opt[i]);
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "QP: sz=%d it=%d T=%.0f uz=%.0f",
+                          qp_res.status, qp_res.iterations,
+                          (double)total_T, (double)qp_res.u_opt[1]);
+        }
+
+        if (qp_res.status == THX_SOLVER_OK) {
+            // Success: copy solution
+            for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+                _u_prev_vec[i] = qp_res.u_opt[i];
+            }
+            float *wa = (float*)&_alloc_out.w_achieved;
+            for (int i = 0; i < AP_TILTHEXA_N_W; i++) {
+                wa[i] = qp_res.w_achieved[i];
+            }
+            _has_feasible_solution = true;
+        } else {
+            // QP failure: fallback
+            // Preserve the QP's raw failure status; log both original and effective status
+            int qp_raw_status = qp_res.status;
+            if (qp_raw_status != (int)THX_SOLVER_OK) {
+                _alloc_out.solver_status = qp_raw_status;
+            } else {
+                _alloc_out.solver_status = (int)THX_SOLVER_NUMERICAL;
+            }
+            if (_has_feasible_solution) {
+                // Keep previous feasible solution; solver_status already reflects QP failure
+                // n_active_constraints from previous solve is stale; set to -1 to signal fallback
+                _alloc_out.n_active_constraints = -1;
+            } else {
+                // Fallback to PI
+                TiltHexa_PIResult pi_res = _pi_solver.solve(&_alloc_in);
+                for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+                    _u_prev_vec[i] = pi_res.u[i];

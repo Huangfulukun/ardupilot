@@ -294,8 +294,8 @@ deterministic form rather than a free-time collocation solver (a CasADi/IPOPT
 formulation~\cite{andersson2019casadi} was implemented and discarded because it
 is singular at
 $V=0$ and produces bang--bang tilt activity). A smoothstep speed S-curve
-$V(s)=V_0+(V_f-V_0)(3s^2-2s^3)$, $s=t/T_f$, with zero end jerk, prescribes the
-corridor traversal in a fixed conversion time $T_f$. At each node the
+$V(s)=V_0+(V_f-V_0)(3s^2-2s^3)$, $s=t/T_f$, with zero end jerk, prescribes
+the corridor traversal in a fixed conversion time $T_f$. At each node the
 \emph{minimum-thrust level trim} is solved from the exact longitudinal
 force-and-moment equilibrium
 \begin{equation}

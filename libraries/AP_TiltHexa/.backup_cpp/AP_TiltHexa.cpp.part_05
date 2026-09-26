@@ -1,3 +1,40 @@
+        if (++qp_diag_counter >= 200) {
+            qp_diag_counter = 0;
+            float total_T = 0.0f;
+            for (int i = 0; i < AP_TILTHEXA_N_U; i++) total_T += fabsf(qp_res.u_opt[i]);
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "QP: sz=%d it=%d T=%.0f uz=%.0f",
+                          qp_res.status, qp_res.iterations,
+                          (double)total_T, (double)qp_res.u_opt[1]);
+        }
+
+        if (qp_res.status == THX_SOLVER_OK) {
+            // Success: copy solution
+            for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+                _u_prev_vec[i] = qp_res.u_opt[i];
+            }
+            float *wa = (float*)&_alloc_out.w_achieved;
+            for (int i = 0; i < AP_TILTHEXA_N_W; i++) {
+                wa[i] = qp_res.w_achieved[i];
+            }
+            _has_feasible_solution = true;
+        } else {
+            // QP failure: fallback
+            // Preserve the QP's raw failure status; log both original and effective status
+            int qp_raw_status = qp_res.status;
+            if (qp_raw_status != (int)THX_SOLVER_OK) {
+                _alloc_out.solver_status = qp_raw_status;
+            } else {
+                _alloc_out.solver_status = (int)THX_SOLVER_NUMERICAL;
+            }
+            if (_has_feasible_solution) {
+                // Keep previous feasible solution; solver_status already reflects QP failure
+                // n_active_constraints from previous solve is stale; set to -1 to signal fallback
+                _alloc_out.n_active_constraints = -1;
+            } else {
+                // Fallback to PI
+                TiltHexa_PIResult pi_res = _pi_solver.solve(&_alloc_in);
+                for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+                    _u_prev_vec[i] = pi_res.u[i];
                 }
                 float *wa = (float*)&_alloc_out.w_achieved;
                 for (int i = 0; i < AP_TILTHEXA_N_W; i++) {
@@ -45,7 +82,7 @@
     for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
         float ux = _u_prev_vec[2*i];
         float uz = _u_prev_vec[2*i+1];
-        float T = sqrtf(ux*ux + uz*uz);
+        float T = sqrtf(ux*ux + uz);
         float beta = atan2f(ux, uz);
 
         // Low-thrust hysteresis state machine (Section 0.6):
@@ -103,6 +140,7 @@ void AP_TiltHexa::apply_actuator_outputs(void)
     // rotors re-tilt to vertical.
     float fw_frac = 0.0f;
     const float fw_thresh = _fw_thresh_m_s.get();
+    float Vnow = 0.0f;
     if (fw_thresh > 0.5f &&
         (_traj_phase == THX_PHASE_ACCEL || _traj_phase == THX_PHASE_CRUISE_1 ||
          _traj_phase == THX_PHASE_TURN  || _traj_phase == THX_PHASE_CRUISE_2)) {
@@ -112,7 +150,7 @@ void AP_TiltHexa::apply_actuator_outputs(void)
         // for forward conversion speed.
         Vector3f gndvel;
         if (!AP::ahrs().get_velocity_NED(gndvel)) { gndvel.zero(); }
-        const float Vnow = gndvel.length();
+        Vnow = gndvel.length();
         const float v_cruise = _cruise_m_s.get();
         if (v_cruise > fw_thresh + 0.5f) {
             fw_frac = (Vnow - fw_thresh) / (v_cruise - fw_thresh);
@@ -122,6 +160,38 @@ void AP_TiltHexa::apply_actuator_outputs(void)
     }
     const float fw_beta_deg = _fw_target_beta.get();
 
+    // Wing-borne cruise coupling: once the nacelles are blended toward 90 deg,
+    // the INDI/allocator thrust is still sized for vertical hover lift. At
+    // beta=90 deg that thrust points forward (overspeed) and the rotors stop
+    // carrying vertical lift (the aircraft descends). We therefore override,
+    // *with* fw_frac, (i) rotor thrust to a forward drag-compensation trim plus
+    // an airspeed-error loop, and (ii) the symmetric vtail to the wing-borne
+    // pitch trim plus an altitude-error loop. This closes the pitch-throttle-
+    // tilt coordination the companion corridor OCP supplies offline.
+    float fw_thr_cmd = 0.0f;     // forward per-rotor thrust (N)
+    float fw_elev_cmd = 0.0f;    // symmetric vtail (rad)
+    if (fw_frac > 0.001f) {
+        const float v_cruise = _cruise_m_s.get();
+        // speed hold: forward thrust compensates drag, trimmed at V=v_cruise
+        fw_thr_cmd = _fw_thr_trim_n.get() + _fw_ksp.get() * (v_cruise - Vnow);
+        fw_thr_cmd = constrain_float(fw_thr_cmd, 2.0f, _thr_max.get());
+        // altitude hold through the wing: vtail trim + altitude-error feedback.
+        // Below the reference altitude we need more wing lift, i.e. more nose-up
+        // AoA, which in this FDM convention requires a MORE NEGATIVE symmetric
+        // vtail (the FW trim itself is drv<0). Hence the feedback is subtracted.
+        const float alt_ref = _alt_m.get();
+        const float alt_act = -_pos_actual[2];  // NED down -> up altitude
+        fw_elev_cmd = deg2rad(_fw_drv_trim_deg.get()
+                              - _fw_kalt_deg_m.get() * (alt_ref - alt_act));
+        fw_elev_cmd = constrain_float(fw_elev_cmd, deg2rad(-35.0f), deg2rad(35.0f));
+    }
+
+    // collective mean of the allocator thrusts (to preserve differential
+    // roll/pitch control when we re-target the mean thrust forward)
+    float mean_T = 0.0f;
+    for (uint8_t i = 0; i < 6; i++) { mean_T += _u_prev.rotors[i].thrust_N; }
+    mean_T /= 6.0f;
+
     for (uint8_t i = 0; i < 6; i++) {
         float T_N = _u_prev.rotors[i].thrust_N;
         float beta_deg = rad2deg(_u_prev.rotors[i].tilt_rad);
@@ -129,6 +199,14 @@ void AP_TiltHexa::apply_actuator_outputs(void)
         if (fw_frac > 0.001f) {
             beta_deg = (1.0f - fw_frac) * beta_deg + fw_frac * fw_beta_deg;
             _u_prev.rotors[i].tilt_rad = deg2rad(beta_deg);
+            // Re-target the COLLECTIVE thrust to the forward drag trim while
+            // preserving the per-rotor differential (roll/pitch/yaw moments)
+            // the INDI loop is demanding.  Commanding equal thrust on all six
+            // rotors would kill differential control authority and roll diverges.
+            const float dev = T_N - mean_T;
+            float T_fw = fw_thr_cmd + dev;
+            T_fw = constrain_float(T_fw, 2.0f, _thr_max.get());
+            T_N = (1.0f - fw_frac) * T_N + fw_frac * T_fw;
         }
 
         SRV_Channels::set_output_pwm(motor_funcs[i], thrust_to_pwm(T_N, _thr_max.get()));
@@ -137,8 +215,19 @@ void AP_TiltHexa::apply_actuator_outputs(void)
 
     SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  surface_rad_to_pwm(_u_prev.surfaces_rad[0]));
     SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, surface_rad_to_pwm(_u_prev.surfaces_rad[1]));
-    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     surface_rad_to_pwm(_u_prev.surfaces_rad[2]));
-    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    surface_rad_to_pwm(_u_prev.surfaces_rad[3]));
+    // symmetric vtail: the FW pitch trim is only blended on when explicitly
+    // enabled.  Early experiments showed forcing the FW vtail trim at low beta
+    // (before the wing-borne moment balance is established) pitches the nose
+    // down and the aircraft departs; leaving the INDI loop to hold pitch via
+    // the rotor differential + surfaces lets the wing build lift naturally.
+    float vtail_l = _u_prev.surfaces_rad[2];
+    float vtail_r = _u_prev.surfaces_rad[3];
+#if 1
+    // FW vtail override disabled by default (see above); altitude feedback off.
+    (void)fw_elev_cmd;
+#endif
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     surface_rad_to_pwm(vtail_l));
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    surface_rad_to_pwm(vtail_r));
 }
 
 // ============================================================
@@ -159,92 +248,3 @@ void AP_TiltHexa::write_logs(void)
             Fzd : _indi_out.w_d.Fz,
             Mxd : _indi_out.w_d.Mx,
             Myd : _indi_out.w_d.My,
-            Mzd : _indi_out.w_d.Mz,
-        };
-        AP::logger().WriteBlock(&pkt, sizeof(pkt));
-    }
-
-    // THXA - Achieved wrench (model)
-    {
-        struct log_THXA pkt{
-            LOG_PACKET_HEADER_INIT(LOG_THXA_MSG),
-            time_us : now_us,
-            Fxm : _alloc_out.w_achieved.Fx,
-            Fzm : _alloc_out.w_achieved.Fz,
-            Mxm : _alloc_out.w_achieved.Mx,
-            Mym : _alloc_out.w_achieved.My,
-            Mzm : _alloc_out.w_achieved.Mz,
-        };
-        AP::logger().WriteBlock(&pkt, sizeof(pkt));
-    }
-
-    // THXE - Wrench error
-    {
-        struct log_THXE pkt{
-            LOG_PACKET_HEADER_INIT(LOG_THXE_MSG),
-            time_us : now_us,
-            Ex : _indi_out.w_d.Fx - _alloc_out.w_achieved.Fx,
-            Ez : _indi_out.w_d.Fz - _alloc_out.w_achieved.Fz,
-            ER : _indi_out.w_d.Mx - _alloc_out.w_achieved.Mx,
-            EP : _indi_out.w_d.My - _alloc_out.w_achieved.My,
-            EY : _indi_out.w_d.Mz - _alloc_out.w_achieved.Mz,
-        };
-        AP::logger().WriteBlock(&pkt, sizeof(pkt));
-    }
-
-    // THXT - Tilt angles
-    {
-        struct log_THXT pkt{
-            LOG_PACKET_HEADER_INIT(LOG_THXT_MSG),
-            time_us : now_us,
-            B1 : rad2deg(_u_prev.rotors[0].tilt_rad),
-            B2 : rad2deg(_u_prev.rotors[1].tilt_rad),
-            B3 : rad2deg(_u_prev.rotors[2].tilt_rad),
-            B4 : rad2deg(_u_prev.rotors[3].tilt_rad),
-            B5 : rad2deg(_u_prev.rotors[4].tilt_rad),
-            B6 : rad2deg(_u_prev.rotors[5].tilt_rad),
-        };
-        AP::logger().WriteBlock(&pkt, sizeof(pkt));
-    }
-
-    // THXF - Thrust forces
-    {
-        struct log_THXF pkt{
-            LOG_PACKET_HEADER_INIT(LOG_THXF_MSG),
-            time_us : now_us,
-            T1 : _u_prev.rotors[0].thrust_N,
-            T2 : _u_prev.rotors[1].thrust_N,
-            T3 : _u_prev.rotors[2].thrust_N,
-            T4 : _u_prev.rotors[3].thrust_N,
-            T5 : _u_prev.rotors[4].thrust_N,
-            T6 : _u_prev.rotors[5].thrust_N,
-        };
-        AP::logger().WriteBlock(&pkt, sizeof(pkt));
-    }
-
-    // THXS - Surface deflections
-    {
-        struct log_THXS pkt{
-            LOG_PACKET_HEADER_INIT(LOG_THXS_MSG),
-            time_us : now_us,
-            AL : (int16_t)(rad2deg(_u_prev.surfaces_rad[0]) * 100.0f),
-            AR : (int16_t)(rad2deg(_u_prev.surfaces_rad[1]) * 100.0f),
-            RVL : (int16_t)(rad2deg(_u_prev.surfaces_rad[2]) * 100.0f),
-            RVR : (int16_t)(rad2deg(_u_prev.surfaces_rad[3]) * 100.0f),
-        };
-        AP::logger().WriteBlock(&pkt, sizeof(pkt));
-    }
-
-    // THXQ - Solver diagnostics
-    {
-        uint16_t sat_flags = (uint16_t)_alloc_out.n_active_constraints & 0x0FFF;
-        if (_w_d_clamped)    sat_flags |= (1 << 12);
-        if (_output_clamped) sat_flags |= (1 << 13);
-        struct log_THXQ pkt{
-            LOG_PACKET_HEADER_INIT(LOG_THXQ_MSG),
-            time_us : now_us,
-            Mode : (uint8_t)_alloc_out.alloc_mode,
-            Stat : (uint8_t)_alloc_out.solver_status,
-            Iter : (uint16_t)_alloc_out.solver_iterations,
-            Usec : _alloc_out.solver_time_us,
-            Sat  : sat_flags,

@@ -125,7 +125,7 @@ void AP_TiltHexa::run_indi_controller(void)
         // trajectory error is small.  Add -m*g as the baseline plus the
         // INDI correction so the allocator always produces hover-level
         // thrust when the wrench estimate has not yet built up.
-        if (fabsf(_w_fprev.Fz) < 0.5f) {
+        if (fabsf(_w_f_prev.Fz) < 0.5f) {
             // Clamp the INDI increment: w_d.Fz must stay within [-Fz_max_up, Fz_max_up]
             float clamped = constrain_float(_indi_out.w_d.Fz - Fz_static_hover,
                                             -Fz_max_up, Fz_max_up);

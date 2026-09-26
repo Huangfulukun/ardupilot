@@ -188,7 +188,7 @@
 - REMAINING (next continuation): (1) push the three changed C++ files
   (AP_TiltHexa.cpp/.h/AP_TiltHexa_CAPI_QP.cpp) + this CLAUDE.md via github_oauth;
   (2) optionally run pi-allocator and E3 stress smoke to confirm the hold fix there too;
-  (3) push remaining local code not on remote (experiments/make_figures.py is identical
+  (3) push remaining local code not yet on remote (experiments/make_figures.py is identical
   to pushed paper/regenerate_figures.py; AP_TiltHexa C++ core/Makefile); (4) user fills the
   author/affiliation/corresponding placeholders in main.tex before submission;
   (5) when all goals are met, disable/delete cron 12305222854914 and report completion.

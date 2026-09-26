@@ -221,8 +221,8 @@ stall boundary, and without an explicit fixed-wing threshold it cannot achieve
 a pure wing-borne cruise. The proposed controller, by contrast, runs a single
 optimization over the entire profile (zero explicit mode switches),
 constructs the conversion reference from the offline corridor OCP with an
-explicit fixed-wing conversion threshold, and enforces feasibility against the
-stall boundary and actuator limits at every step through the constrained
+explicit fixed-wing conversion threshold, and enforces feasibility against
+the stall boundary and actuator limits at every step through the constrained
 QP. The decisive controlled experiment is the corridor ablation: replacing
 the feasibility-aware reference with a fixed tilt schedule causes the same
 MPC to overshoot cruise speed to 24.5\,m/s and lose $7.0$~m on the backward

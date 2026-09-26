@@ -266,6 +266,28 @@ $\beta\!\approx\!20$--$24^\circ$ trim; a proper wing-borne cruise trim
 firmware-side future work. No flight curve in this paper is retouched to show a
 90$^\circ$ steady cruise that the real binary did not sustain.
 
+We further attempted a firmware-side wing-borne cruise inner loop
+(parameters \texttt{THX\_FW\_T\_N}, \texttt{THX\_FW\_DRV\_DEG},
+\texttt{THX\_FW\_KSP}, \texttt{THX\_FW\_KALT}): once the blend reached
+$\beta\approx90^\circ$, the per-rotor collective thrust was re-targeted from the
+hover-level vertical budget to the offline drag-compensation trim
+($\approx17.5$\,N forward per rotor, with an airspeed-error loop), while the
+symmetric vtail was driven toward the offline pitch trim with an altitude-error
+loop. Across four committed SITL flights the nacelles always reached
+$\beta=90^\circ$ on command, but the vehicle departed attitude control every
+time, at the instant the conversion completed: roll diverged to
+$\approx170$--$180^\circ$ within 2--3\,s (logs \texttt{fw90\_v2}--\texttt{v4}).
+The root cause is structural, not a gain tuning issue: at $\beta=90^\circ$ the
+six rotors deliver only forward thrust, so the rotor-differential channels that
+the INDI loop uses for roll/pitch/yaw moment lose the vertical-arm geometry they
+are tuned for, and the aerodynamic surfaces have not yet taken over. A
+post-hoc thrust re-target plus a vtail trim cannot substitute for a dedicated
+fixed-wing mode (elevator for pitch, ailerons for roll, throttle for speed) that
+replaces, rather than overlays, the rotor-borne INDI loop. The blend and its
+associated cruise override are therefore shipped disabled
+(\texttt{THX\_FW\_SPD}=0); the stable real-binary cruise remains the
+$\beta\approx16$--$24^\circ$ compound trim reported above.
+
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_sitl_overview.pdf}
 \caption{Real \texttt{arduplane} SITL flight of the proposed controller:
@@ -296,25 +318,3 @@ forward- and backward-transition case; the remaining scenarios are robustness
 variations: (S4) the nominal mission with a gentle coordinated turn
 ($5^\circ$/s yaw rate, $\approx 10^\circ$ bank); (S5) a 5\,m/s discrete gust;
 (S6) a 4\,m/s steady crosswind; (S7) mass $+15\%$; (S8) a forward
-centre-of-gravity offset of 0.025\,m; and (S9) a control-model mismatch sweep:
-(S9a) thrust $-10\%$, (S9b) control-surface effectiveness $-20\%$, and (S9c)
-inertia $+20\%$. A dedicated hover and attitude-step case is not part of the
-reported campaign and is left to future work. A 20-run Monte-Carlo campaign
-randomises the same parameters jointly (seeds 1000--1019). A run is accepted
-only on nine plant-truth checks (altitude and cruise reached, attitude below
-$60^\circ$, no post-climb altitude loss, inside the corridor, non-negative
-allocation residual, symmetric conversions, monotonic phasing with zero mode
-switch, and terminal hover judged by ground speed).
-
-\subsection{Metrics}\label{sec:metrics}
-Performance is measured by: transition time $t_f$; maximum altitude loss
-$\Delta h_{\max}$; peak and RMS attitude error; total control energy
-$\int u^\top R_u u\,\mathrm dt$; path tracking RMS; number of mode switches;
-and the AWS margin minimum $\rho_{\min}$ along the transition. Real-time
-performance is measured by the MPC solve-time mean, 99th percentile, and
-worst case, and by the deadline-miss rate.
-
-\subsection{Results protocol}\label{sec:results}
-All quantitative results are recomputed from the plant-truth logs by the
-evaluation script; the controller never reads the truth. The corridor and
-trim schedules are shown in Figs.~\ref{fig:corridor}--\ref{fig:trim}, the

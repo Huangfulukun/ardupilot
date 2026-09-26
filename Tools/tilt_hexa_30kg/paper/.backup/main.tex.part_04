@@ -1,0 +1,18 @@
+  \item ArduPilot parameter files (stock baseline and proposed configuration),
+  including \texttt{Q\_FRAME\_CLASS}, \texttt{Q\_TILT\_MASK}, tilt rates, and
+  limits;
+  \item the nonlinear SITL plant for the \SI{30}{\kilogram} fully-tilting
+  hexacopter and the Python companion controller (with a C ABI to the C++
+  allocation library);
+  \item the corridor/trim optimization and the error-space LTV-MPC source
+  (Python with \texttt{scipy} and \texttt{quadprog}), together with the C++
+  AWS allocation routine and its unit tests;
+  \item the scenario scripts (nominal plus S4--S9), Monte-Carlo seeds, and plotting code;
+  \item a step-by-step build/run guide and, for mode~(b), the public firmware
+  diff exposing the six independent tilt servos.
+\end{itemize}
+
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+
+\end{document}

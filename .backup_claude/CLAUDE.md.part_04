@@ -117,3 +117,42 @@ they exceed the 2000-line read limit or are binary) -- regenerate, do not fake:*
 **Pending-push checklist for the next trigger:** all text sources above are
 synced; only regenerable artifacts remain local by design. If new text files
 are added later, list them here and the Main Agent will push them.
+
+## Real-SITL 90deg wing-borne cruise campaign (this round)
+
+Goal: stable beta~90 cruise in the real arduplane SITL binary.
+Result: NOT achieved in-firmware; documented honestly (no fabricated curve).
+
+What was tried (4 committed flights, results/SITL_MPC/fw90_v2..v4_truth.csv):
+- Added firmware cruise override (libraries/AP_TiltHexa): params THX_FW_T_N
+  (57, per-rotor forward thrust trim), THX_FW_DRV_DEG (58, vtail pitch trim),
+  THX_FW_KSP (59, speed loop), THX_FW_KALT (60, altitude->elevator loop).
+  Above FW_SPD the nacelles blend to FW_BETA=90; collective thrust re-targeted
+  to the offline drag trim while preserving per-rotor differential; symmetric
+  vtail driven to the offline pitch trim with altitude feedback.
+- Diagnosis logged from truth CSVs:
+  * v1: equal thrust on all 6 rotors killed differential -> roll diverged 180.
+  * Fix: shift mean thrust only, keep per-rotor deviation. v2/v3: still departed
+    at the instant beta reached 90 (roll 174, pitch -88, alt 60->43 in ~3s).
+  * v3 showed more-negative vtail actually pitches NOSE-DOWN in this FDM
+    convention; the FW vtail trim (-19 deg) applied at low beta pitches over.
+  * v4: vtail override disabled, INDI keeps pitch. Still roll->180 at beta->90.
+- Root cause (structural, not a gain issue): at beta=90 the 6 rotors only push
+  forward; the rotor-differential channels that INDI uses for roll/pitch/yaw
+  lose their vertical-arm geometry, and the aerodynamic surfaces have not taken
+  over. A post-hoc thrust/vtail overlay cannot replace a dedicated fixed-wing
+  mode (elevator= pitch, aileron=roll, throttle=speed) that REPLACES rather than
+  overlays the rotor-borne INDI loop. The offline companion MPC flies beta=90
+  because it commands the full coupled pitch-throttle-tilt trim (trim_map.py).
+
+Ship state: THX_FW_SPD=0 (blend/cruise override OFF by default). The stable
+real-binary cruise remains beta~16-24 deg, as~19.7, alt 60.0+/-0.04 (thx_stable).
+Paper main.tex section 7.4 extended with this honest failure analysis.
+Builds clean (27 pages, 0 errors).
+
+### Pending-push checklist (text files for next MCP push)
+- Tools/tilt_hexa_30kg/paper/main.tex
+- CLAUDE.md
+- libraries/AP_TiltHexa/AP_TiltHexa.cpp
+- libraries/AP_TiltHexa/AP_TiltHexa.h
+- Tools/tilt_hexa_30kg/experiments/run_thx_sitl_flight.py

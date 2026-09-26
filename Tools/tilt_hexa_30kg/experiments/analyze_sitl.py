@@ -73,9 +73,9 @@ def summarize(tr, name):
 
 def fig_sitl_overview():
     """FW-mode full mission: as / alt / nacelle beta 三段时间线（β=90 巡航）。"""
-    tr = load(os.path.join(MPC, "fwmode_v3_truth.csv"))
+    tr = load(os.path.join(MPC, "fwmode_final_truth.csv"))
     if tr is None:
-        print("skip fwmode_v3"); return
+        print("skip fwmode_final"); return
     t = tr.t.values
     fig, ax = plt.subplots(3, 1, figsize=(6.6, 5.2), sharex=True)
     ax[0].plot(t, -tr.pz.values, color=C_MPC)
@@ -129,6 +129,7 @@ def main():
         ("thx_wls", os.path.join(MPC, "thx_wls_truth.csv")),
         ("thx_stable", os.path.join(MPC, "thx_stable_truth.csv")),
         ("fwmode_v3", os.path.join(MPC, "fwmode_v3_truth.csv")),
+        ("fwmode_v9", os.path.join(MPC, "fwmode_v9_truth.csv")),
     ]:
         tr = load(path)
         if tr is not None:

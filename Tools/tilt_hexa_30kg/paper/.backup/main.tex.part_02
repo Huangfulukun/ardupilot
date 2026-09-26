@@ -1,0 +1,320 @@
+the wing incidence, rotor thrust, and V-tail deflection adjusted for the
+three-axis equilibrium (the thrust-line nose-down moment from the rotors above
+the CG is balanced by the V-tail).  In a blend zone
+$V\in[17,20]$~m/s the minimum-thrust conversion trim is smoothly interpolated
+toward the fixed-wing trim with a smoothstep weight, so the feed-forward wrench
+and the reference nacelle angle are $C^0$-continuous across the
+conversion/cruise boundary.  Physically this matches real tilt-rotor operation:
+the aircraft accelerates on partially-tilted rotors, and once the wing is
+fully supporting the weight it completes the tilt to horizontal and cruises
+wing-borne rather than holding an intermediate 60--80$^\circ$ tilt.
+
+\subsection{Backward transition}\label{sec:backward}
+Backward transition is treated symmetrically but is the more sensitive
+manoeuvre, because premature wing unloading at intermediate speed produces a
+pitch-up and a sink~\cite{may2025backward}. Starting from the fixed-wing cruise
+trim ($\beta=90^\circ$), the backward leg uses a monotonic, time-scheduled
+rotor-borne incidence profile (cruise incidence easing to $0^\circ$ as the
+nacelles tilt back from $90^\circ$ to $0^\circ$) over a $25$~s conversion,
+which keeps the rotors dominant as speed falls and removes the near-stall
+pitch-up.  The current-node trim is indexed on the \emph{achieved} airspeed
+(as in the forward leg): while the aircraft is still fast the nacelles stay
+tilted forward (maintaining wing lift and forward thrust), and they only tilt
+back as the speed genuinely falls---this prevents the over-tilt and sink that
+occur with pure time-based indexing from a $90^\circ$ start.  Braking is
+obtained by reducing forward thrust (drag and thrust removal); an aft-thrust
+feed-forward is clamped to zero, since it drives the nacelles aft at low speed
+and is destabilising.
+
+\subsection{Trajectory library and online re-planning}\label{sec:library}
+The trim map and the two traversals are computed once offline over a grid of
+mass, cruise speed, and wind conditions, producing a library of references
+$(x^\star,V^\star,h^\star,\theta^\star)$ together with the feed-forward
+wrench and surface force. The online layer indexes the forward leg by the
+reference speed and holds the fixed-wing cruise node's trim
+($\beta=90^\circ$, wing-borne) at the entry to the backward leg so that the
+reference is $C^0$-continuous across the cruise/backward boundary; re-planning
+inside the corridor is requested when the feasibility feedback of
+Section~\ref{sec:hedge} falls below its threshold.
+
+% =====================================================================
+\section{Unified MPC and two-layer integration}\label{sec:nmpc}
+
+\subsection{Unified error-space LTV-MPC formulation}\label{sec:nmpcform}
+A single controller covers hover, transition, and cruise without mode
+switching. The nonlinear plant is linearized, at each control step, in error
+coordinates about the speed-dependent nonlinear trim reference of
+Section~\ref{sec:corridor}; the resulting linear time-varying (LTV) problem is
+then discretized and solved as a quadratic program. This is an error-space
+LTV-MPC about a nonlinear reference rather than a fully nonlinear programming
+NMPC; we retain the shorthand MPC throughout. Over horizon $N$ and period
+$\Delta t$ it minimizes
+\begin{equation}
+\min_{\{u_k\}}\ \sum_{k=0}^{N-1}
+\!\left[\|x_k-x_k^\star\|_{Q}^{2}+\|u_k-u_k^\star\|_{R}^{2}\right]
++\|x_N-x_N^\star\|_{Q_f}^{2}
+\label{eq:nmpc}
+\end{equation}
+subject to the discrete prediction model, the actuator
+limits~\eqref{eq:actlim}, and a feasibility constraint
+$\rho(\delta_k,V_k)\ge\rho_{\min}$. The reference $x_k^\star,u_k^\star$ is
+provided by the corridor trim map of Section~\ref{sec:corridor}. The
+12-state NED model is linearised in error coordinates about the
+speed-dependent reference and discretised exactly by zero-order hold with a
+matrix exponential (\texttt{scipy.linalg.expm}); the horizon is
+$N=20$ at $\Delta t=0.03$~s ($\approx 33$~Hz). The resulting equality
+constraints are condensed into a small dense quadratic program in the
+five virtual-wrench increments, which is solved by the active-set
+\texttt{quadprog} solver (an embedded condensed QP such as
+acados~\cite{verschueren2022acados} would be the natural flight-hardware
+target); on infeasibility the attitude soft constraints are
+relaxed first, and a zero-wrench fallback is used only as a last resort.
+The virtual wrench is then passed to the time-varying AWS allocator of
+Section~\ref{sec:aws}. A bounded, model-free position-error integral
+augments the wrench to reject constant plant mismatch (Section~\ref{sec:campaign}).
+
+\subsection{Model-free position-error integral for constant mismatch}\label{sec:integral}
+An acceleration-residual disturbance observer was first implemented on the
+internal prediction model, but it proved unsafe during the dynamic backward
+conversion: because the internal model omits the realised V-tail download and
+motor dynamics, the observer mistakes the time-varying, predictable
+model--plant aerodynamic difference for a disturbance and cancels the trim
+feed-forward, reproducing a stall/crash at intermediate speed. We instead use
+a bounded, model-free integral of the \emph{position} error
+$e_p=p^\star-p$ in the NED frame,
+\begin{equation}
+\mathcal I_k = \operatorname{sat}\!\bigl(\mathcal I_{k-1}+K_i\,e_p\,\Delta t\bigr),
+\qquad
+w_k = w_k^{\mathrm{MPC}}+R_b^\top\mathcal I_k ,
+\label{eq:integral}
+\end{equation}
+which is rotated into the body frame and added to the virtual wrench before
+allocation. The vertical channel integrates only during cruise, backward
+conversion, and terminal hover ($K_{i,z}=4$, $\pm70$~N) so that a thrust or
+mass deficit is corrected as the wing unloads; the horizontal channels
+integrate only in terminal hover ($K_{i,h}=7$, $\pm80$~N) to trim a steady
+crosswind, and are frozen in climb and conversion to avoid wind-up against a
+moving reference. The integral is frozen whenever the allocator reports
+saturation. This adds no model knowledge and is the mechanism that recovers
+the constant-mismatch robustness cases of Table~\ref{tab:robust}.
+
+\subsection{Two-layer architecture and feasibility coupling}\label{sec:twolayer}
+The two layers are separated by time scale and coupled through feasibility:
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item \emph{Outer layer (1--10\,Hz):} corridor OCP, using the nominal
+  corridor and a nominal AWS, outputs the conversion reference.
+  \item \emph{Inner layer (20--50\,Hz):} unified MPC plus the time-varying
+  AWS allocation of Section~\ref{sec:aws}, tracking the reference against the
+  real (disturbed) plant and evaluating the true $\rho$.
+  \item \emph{Coupling (designed):} when $\rho<\rho_{\mathrm{th}}$ (due to a
+  gust, mass error, or saturation), the inner layer is designed to hedge
+  immediately and request a slower, more conservative outer reference, which
+  the outer layer would re-plan inside the corridor. In the campaign reported
+  here the threshold was never crossed (the realised $\rho$ stayed positive),
+  so the closed-loop re-planning is a designed but not exercised path; the
+  feasibility that was actually demonstrated online is provided by the
+  constrained QP at every step and by the feasible-by-construction corridor
+  reference. Triggering and validating the re-planning path under deliberately
+  infeasible commands is left to future work.
+\end{itemize}
+
+\subsection{Single-stick velocity command}\label{sec:stick}
+A uniform command mapping is used across the envelope: pitch stick to
+$v_x$, roll stick to $v_y$, throttle to $v_z$, and rudder to $\dot\psi$.
+Following the simplified-operation motivation of~\cite{milz2026taming} and the
+reference-model idea of~\cite{bhardwaj2018integrated}, this is treated as a
+design property rather than a novelty claim. The evaluated objective metric is
+the number of explicit mode switches required to complete a full mission: the
+stock switched architecture enters and leaves the fixed-wing controller
+several times, whereas the unified controller switches zero times
+(Table~\ref{tab:main}). A quantitative stick-to-velocity transfer-function
+identification across the envelope is a planned extension and is not claimed
+here.
+
+\subsection{Real-time implementation}\label{sec:realtime}
+The inner MPC is warm-started from the previous solution and the dense QP
+uses a fixed iteration cap; the solve time, deadline misses, and the fallback
+path (infeasible $\rightarrow$ relaxed attitude constraints $\rightarrow$
+zero-wrench hold) are logged at every step. Because the condensed problem has
+only $5N$ decision variables, the mean/P99/worst-case solve time over the
+whole campaign is $0.5$/$2.1$/$5.5$~ms on a single desktop core, against a
+$30$~ms control period (Section~\ref{sec:campaign}), i.e.\ the controller is
+two orders of magnitude away from its deadline. The outer trim map is
+computed offline and is a table lookup online, so it has negligible runtime.
+
+% =====================================================================
+\section{ArduPilot SITL implementation}\label{sec:sitl}
+
+\subsection{Stock tilt-rotor architecture and its limitation}\label{sec:stock}
+ArduPilot models tilt-rotors as a special QuadPlane: a six-rotor frame is
+selected with \texttt{Q\_FRAME\_CLASS=2}, the tilting motors are declared with
+\texttt{Q\_TILT\_MASK}, and the tilt type is set to continuous
+(\texttt{Q\_TILT\_TYPE=0}) with \texttt{Q\_TILT\_MAX},
+\texttt{Q\_TILT\_RATE\_UP}, and \texttt{Q\_TILT\_RATE\_DN} defining the
+schedule~\cite{ardupilot2024tilt,ardupilot2024transitions}. In this mode the
+multirotor and fixed-wing controllers are switched, and the tilt servos are
+commanded as a single synchronized logical tilt following a fixed rate. This
+stock behaviour is the baseline controller \emph{and} it exposes a genuine
+limitation: independent per-rotor tilt angles are not represented by the
+stock continuous-tilt scheduler.
+
+\subsection{Companion-layer integration}\label{sec:companion}
+To exploit six independent tilts, the proposed controller is implemented as a
+Python companion that closes the loop around a high-rate nonlinear plant
+that reproduces the ArduPilot SITL sensor/actuator interfaces: the plant
+advances at 400~Hz with a 4th-order Runge--Kutta integrator (two substeps),
+while the MPC and allocator run at 33~Hz. The proposed-MPC quantitative
+results in Section~\ref{sec:campaign} are generated by this companion plant
+against the same physics model used by the ArduPilot JSON SITL backend. The
+native-firmware baseline (Section~\ref{sec:baseline}) is run on the actual
+\texttt{arduplane} SITL binary with the same JSON physics backend, and its
+results are parsed from the binary flight log. The
+control-effectiveness, constraints, and active-set logic are written in C++
+as a reusable library (\texttt{AP\_TiltHexa}); the same C++ core is compiled
+directly into the \texttt{arduplane} SITL binary and flown end-to-end through
+the real sensor/actuator stack (Section~\ref{sec:realsitl}), in addition to
+being called from the companion through a small C ABI (\texttt{ctypes}). The companion plant exposes the 16 actuator channels (six
+throttles, six independent tilt servos, and the four V-tail/aileron
+surfaces) and logs the full truth state, but the controller receives only
+the sensed state; truth columns are used exclusively for post-processing.
+The 16-channel V-tail configuration is declared explicitly. A small,
+publicly diffed firmware hook exposes the six tilt servos and the surfaces
+for the native \texttt{arduplane} SITL target.
+
+\subsection{Baseline and fairness}\label{sec:baseline}
+The comparison baseline has two layers, kept deliberately separate. (i) The
+\emph{offline native-equivalent} row in Table~\ref{tab:main} replicates the
+stock QuadPlane tilt-rotor control logic---a switched QLOITER/FBWA/QLOITER mode
+sequence with an open-loop, fixed-rate nacelle tilt schedule, capped at the
+ArduPilot-enforced \texttt{Q\_TILT\_MAX=80$^\circ$} limit---executed on the same
+SITL-class companion plant and physics model as the proposed controller, using
+the identical mission, disturbance, and atmosphere; neither controller reads
+the truth state. (ii) Separately, we flew the \emph{unmodified stock
+\texttt{arduplane} SITL binary} itself against the project's JSON physics
+backend (Section~\ref{sec:realsitl}) to expose what a real stock user actually
+gets today. The two layers answer different questions: the offline equivalent
+gives a like-for-like numerical transition comparison on the shared plant,
+while the real-binary flight exposes the implementation-level limitation of the
+stock continuous-tilt mode (Section~\ref{sec:stock}). A second ablation,
+\emph{proposed without the corridor}, uses the same MPC but a fixed-rate tilt
+schedule, isolating the contribution of the corridor reference. All companion
+results are SITL-derived: the proposed-MPC truth CSV and the native-equivalent
+truth CSV both come from the same nonlinear 400\,Hz plant, while the
+real-binary results are parsed from the \texttt{.BIN} flight log and the FDM
+truth stream.
+
+% =====================================================================
+\subsection{Real-binary SITL verification}\label{sec:realsitl}
+Beyond the companion-plant campaign, both the stock controller and the
+proposed \texttt{AP\_TiltHexa} law were flown in the actual
+\texttt{arduplane} SITL binary against the project's JSON-UDP physics backend
+(the FDM advances at 400\,Hz and streams the full truth over UDP; the binary
+and the FDM truth CSV are the artifacts under \texttt{results/SITL\_MPC/} and
+\texttt{results/SITL\_native/}). The vehicle arming, EKF/GPS health, and mode
+logic are therefore the unmodified ArduPilot stack, not a Python replica.
+
+\paragraph{Stock baseline on the real binary.}
+With the continuous-tilt profile (\texttt{Q\_TILT\_TYPE=0},
+\texttt{Q\_FRAME\_CLASS=2} HEXA), the stock controller holds a stable
+QLOITER hover: it climbs to 60\,m and tracks altitude to within $<0.5$\,m
+with $|\phi|<0.5^\circ$. On the commanded QLOITER$\to$FBWA forward
+conversion, however, the vehicle diverges: because
+\texttt{is\_vectored} is false for a non-\texttt{VECTORED\_YAW} tiltrotor,
+the multirotor attitude controller does not take over during
+\texttt{AIRSPEED\_WAIT}/\texttt{TIMER} conversion, and at low speed the
+aerodynamic surfaces have no authority. Within $2$--$3$\,s of the switch the
+roll angle diverges to $\approx 170^\circ$ and the run terminates (Fig.~\ref{fig:sitl_native_vs_thx}, top). The tilt servos do drive to
+$90^\circ$ and the airspeed spikes to $\approx 48$\,m/s before departure, so
+this is a control-law instability rather than an actuator or interlink
+failure. We report this as a genuine limitation of the stock continuous-tilt
+mode on this platform, not as a tuned-away result.
+
+\paragraph{Proposed controller on the real binary.}
+With \texttt{AP\_TiltHexa} enabled (\texttt{THX\_ENABLE=1}, WLS/QP allocator),
+the same binary flies the complete hover$\to$cruise$\to$hover mission
+end-to-end: climb to 60\,m, forward conversion to the 20\,m/s cruise target
+(reached exactly), reverse conversion, and a stable terminal hover
+(Fig.~\ref{fig:sitl_overview}). The pitch-allocator variant holds
+$|\phi|<0.5^\circ$ and $|\theta|<8.6^\circ$ over the whole profile; the WLS
+variant completes the same mission with a brief $50^\circ$ roll excursion on
+the forward leg. In the real binary the allocator settles the cruise nacelle
+at $\approx 20$--$24^\circ$ rather than the $88.7^\circ$ wing-borne cruise of
+the companion campaign: once the wing carries lift at 20\,m/s the in-firmware
+allocator chooses a minimum-thrust trim that keeps the rotors nearly vertical,
+whereas the companion corridor reference actively commands the full
+$\beta=90^\circ$ conversion. This gap is a trim-schedule difference between
+the two integrations, not a physics discrepancy.
+
+\paragraph{Firmware-side conversion blend (attempted).}
+To close the above gap we added an optional in-firmware conversion blend
+(\texttt{THX\_FW\_SPD}/\texttt{THX\_FW\_BETA}): above a threshold speed in the
+accel/cruise phases each nacelle command is linearly swept from the
+allocator value to a target $\beta$. With the blend enabled the FDM truth
+confirms the servos reach $\beta=90^\circ$ on command (peak nacelle
+$\beta_1=90.0^\circ$), so the actuator interlink and the conversion scheduling
+are physically capable of the full wing-borne posture. However, holding that
+posture as a steady cruise trim is not possible with the present companion
+controller: the INDI outer loop still budgets vertical rotor thrust to hold
+altitude, and at $\beta\approx90^\circ$ that budget is delivered almost entirely
+as forward thrust. Without the coupled fixed-wing pitch/throttle coordination
+that the corridor OCP supplies, the vehicle either accelerates away from the
+20\,m/s target (un-derated thrust) or descends (thrust derated to approximate
+wing-borne lift). We therefore ship the blend behind a disabled-by-default
+parameter and report the stable real-binary result as the compound
+$\beta\!\approx\!20$--$24^\circ$ trim; a proper wing-borne cruise trim
+(pitch--throttle--tilt coordination inside the firmware loop) is identified as
+firmware-side future work. No flight curve in this paper is retouched to show a
+90$^\circ$ steady cruise that the real binary did not sustain.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_sitl_overview.pdf}
+\caption{Real \texttt{arduplane} SITL flight of the proposed controller:
+altitude (top), airspeed tracking the 20\,m/s cruise reference (middle), and
+nacelle angle (bottom). Full hover--cruise--hover mission, parsed from the
+FDM truth stream.}
+\label{fig:sitl_overview}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_sitl_native_vs_thx.pdf}
+\caption{Real SITL attitude comparison, same mission. Top: stock
+QLOITER$\to$FBWA diverges to $|\phi|\approx170^\circ$ on the forward
+conversion (the $\pm60^\circ$ limit is dashed). Bottom: the proposed
+controller completes the same profile within the attitude envelope.}
+\label{fig:sitl_native_vs_thx}
+\end{figure}
+
+% =====================================================================
+\section{Simulation campaign}\label{sec:campaign}
+
+\subsection{Scenario matrix}\label{sec:scenarios}
+The same scenarios are flown by the baseline and the proposed controller,
+against the identical plant, disturbance, and mission. The primary scenario is
+a complete hover--cruise--hover mission at nominal mass, which contains both
+the forward and backward conversion legs and therefore serves as the nominal
+forward- and backward-transition case; the remaining scenarios are robustness
+variations: (S4) the nominal mission with a gentle coordinated turn
+($5^\circ$/s yaw rate, $\approx 10^\circ$ bank); (S5) a 5\,m/s discrete gust;
+(S6) a 4\,m/s steady crosswind; (S7) mass $+15\%$; (S8) a forward
+centre-of-gravity offset of 0.025\,m; and (S9) a control-model mismatch sweep:
+(S9a) thrust $-10\%$, (S9b) control-surface effectiveness $-20\%$, and (S9c)
+inertia $+20\%$. A dedicated hover and attitude-step case is not part of the
+reported campaign and is left to future work. A 20-run Monte-Carlo campaign
+randomises the same parameters jointly (seeds 1000--1019). A run is accepted
+only on nine plant-truth checks (altitude and cruise reached, attitude below
+$60^\circ$, no post-climb altitude loss, inside the corridor, non-negative
+allocation residual, symmetric conversions, monotonic phasing with zero mode
+switch, and terminal hover judged by ground speed).
+
+\subsection{Metrics}\label{sec:metrics}
+Performance is measured by: transition time $t_f$; maximum altitude loss
+$\Delta h_{\max}$; peak and RMS attitude error; total control energy
+$\int u^\top R_u u\,\mathrm dt$; path tracking RMS; number of mode switches;
+and the AWS margin minimum $\rho_{\min}$ along the transition. Real-time
+performance is measured by the MPC solve-time mean, 99th percentile, and
+worst case, and by the deadline-miss rate.
+
+\subsection{Results protocol}\label{sec:results}
+All quantitative results are recomputed from the plant-truth logs by the
+evaluation script; the controller never reads the truth. The corridor and
+trim schedules are shown in Figs.~\ref{fig:corridor}--\ref{fig:trim}, the

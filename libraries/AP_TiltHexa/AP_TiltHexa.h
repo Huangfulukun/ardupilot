@@ -90,8 +90,8 @@ private:
     AP_Float _arm_l;         // THX_ARM_L
     AP_Float _rotor_z;       // THX_ROTOR_Z
     AP_Int8  _test_mode;     // THX_TEST_MODE
-    AP_Float _fw_thresh_m_s; // THX_FW_SPD
-    AP_Float _fw_target_beta;// THX_FW_BETA
+    AP_Float _fw_thresh_m_s; // THX_FW_THRESH_M_S
+    AP_Float _fw_target_beta;// THX_FW_TARGET_BETA
 
     // ---- Internal state ----
     bool _initialised;
@@ -159,7 +159,7 @@ private:
 
     // ---- Utility methods ----
     static float deg2rad(float deg) { return deg * 0.01745329252f; }
-    static float rad2deg(float rad) { return rad * 57.29577951f; }
+    static float rad2deg(float rad) { return 57.29577951f; }
 
     // Conversion functions
     float thrust_to_throttle(float thrust_N, float T_max);

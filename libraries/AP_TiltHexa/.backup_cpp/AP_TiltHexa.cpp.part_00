@@ -1,0 +1,250 @@
+// AP_TiltHexa.cpp -- ArduPlane-facing wrapper implementation
+// Stage 2: Full INDI + WLS/PI pipeline wired into output()
+
+#include "AP_TiltHexa.h"
+
+#if AP_TILTHEXA_ENABLED
+
+#include <AP_HAL/AP_HAL.h>
+#include <SRV_Channel/SRV_Channel.h>
+#include <AP_AHRS/AP_AHRS.h>
+#include <AP_Airspeed/AP_Airspeed.h>
+#include <AP_Logger/AP_Logger.h>
+#include <AP_Common/Location.h>
+#include <GCS_MAVLink/GCS.h>
+#include "AP_TiltHexa_Trajectory.h"
+#include "AP_TiltHexa_SeedDefaults.h"
+
+extern const AP_HAL::HAL& hal;
+
+// ---- Parameter table ----
+// All defaults REFERENCE_SEED_NOT_MEASURED; use THX_SEED_* from generated header
+const AP_Param::GroupInfo AP_TiltHexa::var_info[] = {
+
+    // @Param: ENABLE
+    // @DisplayName: TiltHexa enable
+    // @Description: Enable TiltHexa research module. When 1, overrides all servo outputs.
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("ENABLE", 1, AP_TiltHexa, _enable, 0),
+
+    // @Param: ALLOC_MODE
+    // @DisplayName: Allocation mode
+    // @Description: 0=weighted pseudoinverse + clipping, 1=constrained WLS/QP
+    // @Values: 0:WeightedPI,1:ConstrainedWLS
+    // @User: Advanced
+    AP_GROUPINFO("ALLOC_MODE", 2, AP_TiltHexa, _alloc_mode, 0),
+
+    // @Param: INDI_RATE
+    // @DisplayName: INDI loop rate
+    // @Description: INDI controller update rate in Hz
+    // @Units: Hz
+    // @Range: 10 300
+    // @User: Advanced
+    AP_GROUPINFO("INDI_RATE", 3, AP_TiltHexa, _indi_rate, 100),
+
+    // @Param: ALLOC_RATE
+    // @DisplayName: Allocator rate
+    // @Description: Control allocation update rate in Hz
+    // @Units: Hz
+    // @Range: 10 300
+    // @User: Advanced
+    AP_GROUPINFO("ALLOC_RATE", 4, AP_TiltHexa, _alloc_rate, 100),
+
+    // @Param: TILT_MIN
+    // @DisplayName: Minimum tilt angle
+    // @Description: Minimum tilt angle in degrees (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: deg
+    // @Range: -20 20
+    // @User: Advanced
+    AP_GROUPINFO("TILT_MIN", 5, AP_TiltHexa, _tilt_min, THX_SEED_TILT_MIN_DEG),
+
+    // @Param: TILT_MAX
+    // @DisplayName: Maximum tilt angle
+    // @Description: Maximum tilt angle in degrees (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: deg
+    // @Range: 0 95
+    // @User: Advanced
+    AP_GROUPINFO("TILT_MAX", 6, AP_TiltHexa, _tilt_max, THX_SEED_TILT_MAX_DEG),
+
+    // @Param: TILT_RATE
+    // @DisplayName: Maximum tilt rate
+    // @Description: Maximum tilt rate in degrees per second (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: deg/s
+    // @Range: 10 180
+    // @User: Advanced
+    AP_GROUPINFO("TILT_RATE", 7, AP_TiltHexa, _tilt_rate, THX_SEED_TILT_RATE_DEG_S),
+
+    // @Param: THR_MAX
+    // @DisplayName: Maximum thrust per motor
+    // @Description: Maximum static thrust per motor in N (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: N
+    // @Range: 10 200
+    // @User: Advanced
+    AP_GROUPINFO("THR_MAX", 8, AP_TiltHexa, _thr_max, THX_SEED_T_MAX_N),
+
+    // @Param: THR_OFF
+    // @DisplayName: Low-thrust off threshold
+    // @Description: Thrust below which tilt is frozen (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: N
+    // @Range: 0 20
+    // @User: Advanced
+    AP_GROUPINFO("THR_OFF", 9, AP_TiltHexa, _thr_off, THX_SEED_THR_OFF_N),
+
+    // @Param: THR_ON
+    // @DisplayName: Low-thrust on threshold
+    // @Description: Thrust above which tilt unfreezes (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: N
+    // @Range: 0 20
+    // @User: Advanced
+    AP_GROUPINFO("THR_ON", 10, AP_TiltHexa, _thr_on, THX_SEED_THR_ON_N),
+
+    // @Param: POLY_N
+    // @DisplayName: Thrust polygon facets
+    // @Description: Number of facets for inscribed thrust polygon approximation
+    // @Range: 4 24
+    // @User: Advanced
+    AP_GROUPINFO("POLY_N", 11, AP_TiltHexa, _poly_n, THX_SEED_POLY_N),
+
+    // @Param: WS_FX
+    // @DisplayName: Wrench weight Fx
+    // @Description: Tracking weight for Fx channel (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 20
+    // @User: Advanced
+    AP_GROUPINFO("WS_FX", 12, AP_TiltHexa, _ws_fx, THX_SEED_WS_FX),
+
+    // @Param: WS_FZ
+    // @DisplayName: Wrench weight Fz
+    // @Description: Tracking weight for Fz channel (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 20
+    // @User: Advanced
+    AP_GROUPINFO("WS_FZ", 13, AP_TiltHexa, _ws_fz, THX_SEED_WS_FZ),
+
+    // @Param: WS_MX
+    // @DisplayName: Wrench weight Mx
+    // @Description: Tracking weight for roll moment channel (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 20
+    // @User: Advanced
+    AP_GROUPINFO("WS_MX", 14, AP_TiltHexa, _ws_mx, THX_SEED_WS_MX),
+
+    // @Param: WS_MY
+    // @DisplayName: Wrench weight My
+    // @Description: Tracking weight for pitch moment channel (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 20
+    // @User: Advanced
+    AP_GROUPINFO("WS_MY", 15, AP_TiltHexa, _ws_my, THX_SEED_WS_MY),
+
+    // @Param: WS_MZ
+    // @DisplayName: Wrench weight Mz
+    // @Description: Tracking weight for yaw moment channel (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 20
+    // @User: Advanced
+    AP_GROUPINFO("WS_MZ", 16, AP_TiltHexa, _ws_mz, THX_SEED_WS_MZ),
+
+    // @Param: W_DU
+    // @DisplayName: Actuator change penalty
+    // @Description: Penalty on actuator deltas (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.01 1.0
+    // @User: Advanced
+    AP_GROUPINFO("W_DU", 17, AP_TiltHexa, _w_du, THX_SEED_W_DELTA_U),
+
+    // @Param: W_U
+    // @DisplayName: Actuator use penalty
+    // @Description: Penalty on actuator magnitude (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.001 0.5
+    // @User: Advanced
+    AP_GROUPINFO("W_U", 18, AP_TiltHexa, _w_u, THX_SEED_W_U),
+
+    // @Param: LOG_EN
+    // @DisplayName: Log enable
+    // @Description: Enable TiltHexa research logging messages
+    // @Values: 0:Disabled,1:Enabled
+    // @User: Advanced
+    AP_GROUPINFO("LOG_EN", 19, AP_TiltHexa, _log_en, 0),
+
+    // @Param: LOG_RATE
+    // @DisplayName: Log rate
+    // @Description: TiltHexa research log rate in Hz
+    // @Units: Hz
+    // @Range: 1 100
+    // @User: Advanced
+    AP_GROUPINFO("LOG_RATE", 20, AP_TiltHexa, _log_rate, 50),
+
+    // @Param: QP_MAX_ITER
+    // @DisplayName: QP max iterations
+    // @Description: Maximum QP active-set iterations
+    // @Range: 5 50
+    // @User: Advanced
+    AP_GROUPINFO("QP_MAX_ITER", 21, AP_TiltHexa, _qp_max_iter, 20),
+
+    // @Param: FILT_HZ
+    // @DisplayName: Filter cutoff frequency
+    // @Description: Cutoff frequency for INDI filters (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: Hz
+    // @Range: 2 50
+    // @User: Advanced
+    AP_GROUPINFO("FILT_HZ", 22, AP_TiltHexa, _filt_hz, THX_SEED_ACCEL_FILT_HZ),
+
+    // @Param: ACT_MODEL
+    // @DisplayName: Actuator model mode
+    // @Description: 0=command-only, 1=first-order actuator model
+    // @Values: 0:CommandOnly,1:ActuatorModel
+    // @User: Advanced
+    AP_GROUPINFO("ACT_MODEL", 23, AP_TiltHexa, _act_model, 0),
+
+    // @Param: ACT_FILT_HZ
+    // @DisplayName: Actuator estimate filter cutoff
+    // @Description: LPF2 cutoff for actuator estimate u_f, matching sensor path (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: Hz
+    // @Range: 2 50
+    // @User: Advanced
+    AP_GROUPINFO("ACT_FILT_HZ", 52, AP_TiltHexa, _act_filt_hz, THX_SEED_ACT_FILT_HZ),
+
+    // @Param: PITCH_MAX
+    // @DisplayName: Max pitch reference in cruise
+    // @Description: Maximum pitch reference at cruise speed. 0 in hover, linearly ramps to this at cruise. (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: deg
+    // @Range: -15 5
+    // @User: Advanced
+    AP_GROUPINFO("PITCH_MAX", 53, AP_TiltHexa, _pitch_max, 0.0f),
+
+    // @Param: DECEL_M_S2
+    // @DisplayName: Trajectory deceleration
+    // @Description: Peak along-track deceleration of the reference trajectory. Kept below the braking authority at beta_min=-10 deg (about 1.7 m/s2 at hover thrust without drag). (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: m/s/s
+    // @Range: 0.2 3.0
+    // @User: Advanced
+    AP_GROUPINFO("DECEL_M_S2", 54, AP_TiltHexa, _decel_m_s2, 1.0f),
+
+    // @Param: INDI_KP
+    // @DisplayName: INDI position gain
+    // @Description: Position loop proportional gain (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 10
+    // @User: Advanced
+    AP_GROUPINFO("INDI_KP", 24, AP_TiltHexa, _indi_kp, 1.5f),
+
+    // @Param: INDI_KV
+    // @DisplayName: INDI velocity gain
+    // @Description: Velocity loop proportional gain (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 10
+    // @User: Advanced
+    AP_GROUPINFO("INDI_KV", 25, AP_TiltHexa, _indi_kv, 2.2f),
+
+    // @Param: INDI_KW
+    // @DisplayName: INDI angular rate gain
+    // @Description: Angular rate loop gain (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 1 30
+    // @User: Advanced
+    AP_GROUPINFO("INDI_KW", 26, AP_TiltHexa, _indi_kw, 8.0f),
+
+    // @Param: INDI_KR
+    // @DisplayName: INDI attitude gain
+    // @Description: Attitude error gain (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 1 30
+    // @User: Advanced
+    AP_GROUPINFO("INDI_KR", 27, AP_TiltHexa, _indi_kr, 16.0f),
+
+    // @Param: MISSION
+    // @DisplayName: Mission selector
+    // @Description: 0=IDLE, 1=E2 transition, 2=E3 stress, 3=E4 full mission, 4=HOVER_TEST
+    // @Values: 0:IDLE,1:E2Transition,2:E3Stress,3:E4FullMission,4:HoverTest

@@ -1,0 +1,249 @@
+// ---- Initialization ----
+
+void AP_TiltHexa::init(void)
+{
+    if (_initialised) {
+        return;
+    }
+    compute_motor_geometry();
+
+    // Log message structures are registered via the static LOG_STRUCTURE_FROM_TILTHEXA
+    // macro in libraries/AP_Logger/LogStructure.h, included at compile time.
+    // No runtime action needed.
+
+    _initialised = true;
+}
+
+void AP_TiltHexa::compute_motor_geometry(void) {
+    float L  = _arm_l.get();
+    float zr = _rotor_z.get();
+    float kQ = _kq.get();
+    _geom.init_hexa_x(L, zr, kQ);
+
+    // Init actuator model filters
+    float tau_T = THX_SEED_TAU_T_S;
+    float tau_B = THX_SEED_TAU_BETA_S;
+    float tau_S = THX_SEED_TAU_SURF_S;
+
+    for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
+        _thrust_model[i].set_params(tau_T, 1e6f, false);
+        _thrust_model[i].reset(0.0f);
+        _tilt_model[i].set_params(tau_B, deg2rad(THX_SEED_TILT_RATE_DEG_S), true);
+        _tilt_model[i].reset(deg2rad(0.0f));
+    }
+    for (int i = 0; i < AP_TILTHEXA_N_SURF; i++) {
+        _surf_model[i].set_params(tau_S, deg2rad(THX_SEED_SURF_RATE_DEG_S), true);
+        _surf_model[i].reset(0.0f);
+    }
+
+    // Init actuator estimate LPF2 filters (same cutoff as sensor path)
+    float act_filt_hz = _act_filt_hz.get();
+    for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+        _uf_lpf[i].set_cutoff_frequency(act_filt_hz, (float)_indi_rate.get());
+        _uf_lpf[i].reset(0.0f);
+    }
+}
+
+// ---- Conversion utilities ----
+
+float AP_TiltHexa::thrust_to_throttle(float thrust_N, float T_max)
+{
+    if (thrust_N <= 0.0f) return 0.0f;
+    if (thrust_N >= T_max) return 1.0f;
+    float ratio = thrust_N / T_max;
+    const float e = THX_SEED_THRUST_EXPO;
+    float a = e;
+    float b = 1.0f - e;
+    float c = -ratio;
+    float disc = b*b - 4.0f*a*c;
+    if (disc < 0.0f) return ratio;
+    float thr = (-b + sqrtf(disc)) / (2.0f * a);
+    return constrain_float(thr, 0.0f, 1.0f);
+}
+
+uint16_t AP_TiltHexa::thrust_to_pwm(float thrust_N, float T_max)
+{
+    float thr = thrust_to_throttle(thrust_N, T_max);
+    return throttle_to_pwm(thr);
+}
+
+uint16_t AP_TiltHexa::throttle_to_pwm(float throttle)
+{
+    throttle = constrain_float(throttle, 0.0f, 1.0f);
+    return (uint16_t)(THX_SEED_MOTOR_PWM_MIN_US + throttle *
+                      (THX_SEED_MOTOR_PWM_MAX_US - THX_SEED_MOTOR_PWM_MIN_US));
+}
+
+uint16_t AP_TiltHexa::tilt_deg_to_pwm(float beta_deg)
+{
+    // set_angle(5000): -10 deg = -5000 sc, +90 deg = +5000 sc
+    // Center = 40 deg at 1500 us
+    beta_deg = constrain_float(beta_deg, -10.0f, 90.0f);
+    float scaled = (beta_deg - 40.0f) * 100.0f;  // centideg from center
+    return (uint16_t)(1500.0f + scaled * 0.1f);
+}
+
+uint16_t AP_TiltHexa::surface_rad_to_pwm(float delta_rad)
+{
+    float delta_deg = rad2deg(delta_rad);
+    delta_deg = constrain_float(delta_deg, -45.0f, 45.0f);
+    float scaled = delta_deg * 100.0f;  // centidegrees
+    return (uint16_t)(1500.0f + scaled * (500.0f / 4500.0f));
+}
+
+// ============================================================
+// MAIN OUTPUT HOOK
+// ============================================================
+
+void AP_TiltHexa::output(void)
+{
+    if (!_initialised) {
+        init();
+    }
+
+    // Fast return when disabled
+    if (_enable.get() == 0) {
+        return;
+    }
+
+    // Guard: skip if SRV_Channels not ready (before servo init in ArduPlane startup)
+    if (SRV_Channels::get_channel_for(SRV_Channel::k_motor1) == nullptr) {
+        return;
+    }
+
+    // Guard: skip if EKF not initialised yet (prevents crash during early boot)
+    if (!AP::ahrs().initialised()) {
+        return;
+    }
+
+    // Test mode: bypass pipeline, direct PWM output
+    if (_test_mode.get() > 0) {
+        run_test_mode();
+        return;
+    }
+
+    uint32_t now_us = AP_HAL::micros();
+
+    // Compute dt
+    float dt = 0.0f;
+    if (_last_output_us > 0) {
+        dt = (now_us - _last_output_us) * 1.0e-6f;
+    }
+    _last_output_us = now_us;
+    if (dt > 0.05f || dt <= 0.0f) {
+        dt = 0.01f;
+    }
+
+    // Guard: skip if INDI rate is invalid (prevents SIGFPE on division)
+    int16_t indi_rate = _indi_rate.get();
+    if (indi_rate <= 0) {
+        return;
+    }
+
+    // Decimate to INDI rate (100 Hz in 300 Hz loop)
+    _loop_counter++;
+    uint8_t decimation = 300 / indi_rate;
+    if (decimation < 1) decimation = 1;
+    if (decimation > 10) decimation = 10;
+
+    bool run_pipeline = (_loop_counter % decimation == 0);
+
+    // Update trajectory FIRST so the INDI controller sees the
+    // correct reference on the same cycle the mission is activated.
+    if (_mission.get() > 0) {
+        update_trajectory(dt);
+    } else {
+        _traj_active = false;
+    }
+
+    if (run_pipeline) {
+        _indi_cycle_us = AP_HAL::micros();
+
+        // Ensure pipeline parameters are up to date
+        update_pipeline_params();
+
+        // ---- Gather sensor input for Pipeline ----
+        TiltHexa_SensorInput sensor;
+        memset(&sensor, 0, sizeof(sensor));
+        sensor.dt = dt * decimation;
+
+        // Accelerometer
+        {
+            Vector3f accel = AP::ins().get_accel();
+            sensor.f_body[0] = accel.x;
+            sensor.f_body[1] = accel.y;
+            sensor.f_body[2] = accel.z;
+        }
+
+        // Gyro
+        {
+            Vector3f gyro = AP::ahrs().get_gyro();
+            sensor.gyro[0] = gyro.x;
+            sensor.gyro[1] = gyro.y;
+            sensor.gyro[2] = gyro.z;
+        }
+
+        // DCM
+        {
+            Quaternion quat;
+            bool qok = AP::ahrs().get_quaternion(quat);
+            (void)qok;
+            float q0 = quat[0], q1 = quat[1], q2 = quat[2], q3 = quat[3];
+            sensor.R_body_to_ned[0] = 1.0f - 2.0f*(q2*q2 + q3*q3);
+            sensor.R_body_to_ned[1] = 2.0f*(q1*q2 - q0*q3);
+            sensor.R_body_to_ned[2] = 2.0f*(q1*q3 + q0*q2);
+            sensor.R_body_to_ned[3] = 2.0f*(q1*q2 + q0*q3);
+            sensor.R_body_to_ned[4] = 1.0f - 2.0f*(q1*q1 + q3*q3);
+            sensor.R_body_to_ned[5] = 2.0f*(q2*q3 - q0*q1);
+            sensor.R_body_to_ned[6] = 2.0f*(q1*q3 - q0*q2);
+            sensor.R_body_to_ned[7] = 2.0f*(q2*q3 + q0*q1);
+            sensor.R_body_to_ned[8] = 1.0f - 2.0f*(q1*q1 + q2*q2);
+        }
+
+        // Velocity (NED)
+        {
+            Vector3f vel_ned;
+            if (AP::ahrs().get_velocity_NED(vel_ned)) {
+                sensor.v_ned[0] = vel_ned.x;
+                sensor.v_ned[1] = vel_ned.y;
+                sensor.v_ned[2] = vel_ned.z;
+            }
+        }
+
+        // Position (NED)
+        {
+            Vector3f pos_ned;
+            if (AP::ahrs().get_relative_position_NED_origin_float(pos_ned)) {
+                sensor.p_ned[0] = pos_ned.x;
+                sensor.p_ned[1] = pos_ned.y;
+                sensor.p_ned[2] = pos_ned.z;
+            }
+        }
+
+        // Airspeed
+        {
+            float airspeed = 0.0f;
+            bool airspeed_valid = false;
+            if (AP::airspeed() && AP::airspeed()->use()) {
+                airspeed = AP::airspeed()->get_airspeed();
+                airspeed_valid = true;
+            }
+            sensor.airspeed = airspeed;
+            sensor.airspeed_valid = airspeed_valid;
+        }
+
+        // Timestamp for Pipeline solve-time measurement
+        sensor.micros_now = AP_HAL::micros();
+
+        sensor.armed = hal.util->get_soft_armed();
+
+        // ---- Build reference from trajectory ----
+        TiltHexa_Reference ref;
+        memset(&ref, 0, sizeof(ref));
+
+        if (_traj_active && _mission.get() > 0 && _traj_phase >= THX_PHASE_TAKEOFF) {
+            // Use trajectory-generated absolute reference
+            ref.p_r[0] = _traj_ref.p_N_m;
+            ref.p_r[1] = _traj_ref.p_E_m;
+            ref.p_r[2] = _traj_ref.p_D_m;
+            ref.v_r[0] = _traj_ref.v_N_m_s;

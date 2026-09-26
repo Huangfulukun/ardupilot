@@ -189,7 +189,6 @@ void AP_TiltHexa::apply_actuator_outputs(void)
     // collective mean of the allocator thrusts (to preserve differential
     // roll/pitch control when we re-target the mean thrust forward)
     float mean_T = 0.0f;
-    float mean_T = 0.0f;
     for (uint8_t i = 0; i < 6; i++) { mean_T += _u_prev.rotors[i].thrust_N; }
     mean_T /= 6.0f;
 

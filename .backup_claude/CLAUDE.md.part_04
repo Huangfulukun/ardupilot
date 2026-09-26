@@ -27,7 +27,7 @@ stable 90° wing-borne cruise, and document the result honestly.
   β=90° (peak β1=90.0°) — the actuator interlink is physically capable.
 - BUT a stable 20 m/s wing-borne cruise at β≈90° could NOT be sustained with
   the present INDI companion controller. The outer loop still budgets vertical
-  rotor thrust; at β≈90° that budget is delivered as forward thrust. Under-derated
+  rotor thrust; at β≈90° that budget is delivered as forward thrust. Un-derated
   → speed runaway (as up to 90–113 m/s, departure); thrust-derated to
   approximate wing-borne lift → descent/sink. The offline MPC sustains 90°
   cruise only because it solves the coupled pitch–throttle–tilt OCP.

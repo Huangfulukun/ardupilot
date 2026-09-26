@@ -1,0 +1,16 @@
+[MAVLink] Connecting to tcp:127.0.0.1:5760 ...
+[MAVLink] Connected to SITL instance 0 (sysid=1, compid=1)
+[MAVLink] Waiting for EKF health ...
+[MAVLink] EKF healthy: flags=0x033f
+[MAVLink] Waiting for GPS 3D fix ...
+[MAVLink] GPS OK: lat=-353632621, lon=1491652374
+  [MODE] -> 18 armed=False
+[MAVLink] Sending arm command ...
+[MAVLink] Vehicle ARMED
+[THX] enabling mission=1 alloc=pi
+  [t+ 86.5] TiltHexa: Profile complete, holding final hover
+BIN -> /home/user/Doubao/chats/38443086470788354/ardupilot/Tools/tilt_hexa_30kg/results/SITL_MPC/fw90_test.bin
+truth -> /home/user/Doubao/chats/38443086470788354/ardupilot/Tools/tilt_hexa_30kg/results/SITL_MPC/fw90_test_truth.csv exists: True
+rows=54805 t_end=137.0
+max_alt=624.6 max_roll=179.8 max_pitch=89.8 max_as=90.9
+beta1 max=90.0 mean(last200)=-10.0

@@ -1,0 +1,251 @@
+    // @User: Advanced
+    AP_GROUPINFO("MISSION", 28, AP_TiltHexa, _mission, 0),
+
+    // @Param: ALT_M
+    // @DisplayName: Cruise altitude
+    // @Description: Target cruise altitude in meters
+    // @Units: m
+    // @Range: 10 200
+    // @User: Advanced
+    AP_GROUPINFO("ALT_M", 29, AP_TiltHexa, _alt_m, 60.0f),
+
+    // @Param: CRUISE_M_S
+    // @DisplayName: Cruise airspeed
+    // @Description: Target cruise airspeed in m/s (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: m/s
+    // @Range: 5 40
+    // @User: Advanced
+    AP_GROUPINFO("CRUISE_M_S", 30, AP_TiltHexa, _cruise_m_s, 25.0f),
+
+    // @Param: ACCEL_M_S2
+    // @DisplayName: Forward acceleration
+    // @Description: Forward acceleration during transition in m/s^2
+    // @Units: m/s/s
+    // @Range: 0.5 5
+    // @User: Advanced
+    AP_GROUPINFO("ACCEL_M_S2", 31, AP_TiltHexa, _accel_m_s2, 1.5f),
+
+    // @Param: TRN_RATE
+    // @DisplayName: Turn rate
+    // @Description: Turn rate for coordinated turn in deg/s
+    // @Units: deg/s
+    // @Range: 5 60
+    // @User: Advanced
+    AP_GROUPINFO("TRN_RATE", 32, AP_TiltHexa, _turn_rate_dps, 8.0f),
+
+    // @Param: HOVER_DUR_S
+    // @DisplayName: Hover duration
+    // @Description: Hover hold duration at each end of transition
+    // @Units: s
+    // @Range: 1 30
+    // @User: Advanced
+    AP_GROUPINFO("HOVER_DUR_S", 33, AP_TiltHexa, _hover_dur_s, 5.0f),
+
+    // @Param: CRUISE_DUR_S
+    // @DisplayName: Cruise duration
+    // @Description: Cruise duration during transition
+    // @Units: s
+    // @Range: 1 60
+    // @User: Advanced
+    AP_GROUPINFO("CRUISE_DUR_S", 34, AP_TiltHexa, _cruise_dur_s, 10.0f),
+
+    // @Param: E3_V
+    // @DisplayName: E3 stress airspeed
+    // @Description: Airspeed for E3 stress injection (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: m/s
+    // @Range: 0 40
+    // @User: Advanced
+    AP_GROUPINFO("E3_V", 35, AP_TiltHexa, _e3_v, 20.0f),
+
+    // @Param: E3_DFX
+    // @DisplayName: E3 delta Fx
+    // @Description: E3 stress wrench delta Fx component
+    // @Range: -500 500
+    // @User: Advanced
+    AP_GROUPINFO("E3_DFX", 36, AP_TiltHexa, _e3_dfx, 0.0f),
+
+    // @Param: E3_DFZ
+    // @DisplayName: E3 delta Fz
+    // @Description: E3 stress wrench delta Fz component
+    // @Range: -500 500
+    // @User: Advanced
+    AP_GROUPINFO("E3_DFZ", 37, AP_TiltHexa, _e3_dfz, 0.0f),
+
+    // @Param: E3_DMX
+    // @DisplayName: E3 delta Mx
+    // @Description: E3 stress wrench delta Mx component
+    // @Range: -500 500
+    // @User: Advanced
+    AP_GROUPINFO("E3_DMX", 38, AP_TiltHexa, _e3_dmx, 0.0f),
+
+    // @Param: E3_LAMBDA
+    // @DisplayName: E3 lambda multiplier
+    // @Description: E3 stress wrench multiplier
+    // @Range: 0 2
+    // @User: Advanced
+    AP_GROUPINFO("E3_LAMBDA", 39, AP_TiltHexa, _e3_lambda, 0.0f),
+
+    // @Param: E3_DUR
+    // @DisplayName: E3 hold duration
+    // @Description: E3 stress injection hold duration
+    // @Units: s
+    // @Range: 1 10
+    // @User: Advanced
+    AP_GROUPINFO("E3_DUR", 40, AP_TiltHexa, _e3_dur, 3.0f),
+
+    // @Param: GUST_N
+    // @DisplayName: Gust velocity north
+    // @Description: Gust velocity north component (reserved)
+    // @Units: m/s
+    // @Range: -20 20
+    // @User: Advanced
+    AP_GROUPINFO("GUST_N", 41, AP_TiltHexa, _gust_n, 0.0f),
+
+    // @Param: GUST_E
+    // @DisplayName: Gust velocity east
+    // @Description: Gust velocity east component (reserved)
+    // @Units: m/s
+    // @Range: -20 20
+    // @User: Advanced
+    AP_GROUPINFO("GUST_E", 42, AP_TiltHexa, _gust_e, 0.0f),
+
+    // @Param: GUST_D
+    // @DisplayName: Gust velocity down
+    // @Description: Gust velocity down component (reserved)
+    // @Units: m/s
+    // @Range: -20 20
+    // @User: Advanced
+    AP_GROUPINFO("GUST_D", 43, AP_TiltHexa, _gust_d, 0.0f),
+
+    // @Param: MASS
+    // @DisplayName: Vehicle mass
+    // @Description: Vehicle mass in kg (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: kg
+    // @Range: 1 100
+    // @User: Advanced
+    AP_GROUPINFO("MASS", 44, AP_TiltHexa, _mass, THX_SEED_MASS_KG),
+
+    // @Param: JXX
+    // @DisplayName: Inertia Jxx
+    // @Description: Roll moment of inertia (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 100
+    // @User: Advanced
+    AP_GROUPINFO("JXX", 45, AP_TiltHexa, _jxx, THX_SEED_JXX),
+
+    // @Param: JYY
+    // @DisplayName: Inertia Jyy
+    // @Description: Pitch moment of inertia (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 100
+    // @User: Advanced
+    AP_GROUPINFO("JYY", 46, AP_TiltHexa, _jyy, THX_SEED_JYY),
+
+    // @Param: JZZ
+    // @DisplayName: Inertia Jzz
+    // @Description: Yaw moment of inertia (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.1 100
+    // @User: Advanced
+    AP_GROUPINFO("JZZ", 47, AP_TiltHexa, _jzz, THX_SEED_JZZ),
+
+    // @Param: KQ
+    // @DisplayName: Torque-to-thrust ratio
+    // @Description: Torque-to-thrust ratio (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Range: 0.001 0.2
+    // @User: Advanced
+    AP_GROUPINFO("KQ", 48, AP_TiltHexa, _kq, THX_SEED_KAPPA_Q),
+
+    // @Param: ARM_L
+    // @DisplayName: Arm radius
+    // @Description: Arm radius (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: m
+    // @Range: 0.1 3
+    // @User: Advanced
+    AP_GROUPINFO("ARM_L", 49, AP_TiltHexa, _arm_l, THX_SEED_ARM_RADIUS_M),
+
+    // @Param: ROTOR_Z
+    // @DisplayName: Rotor Z coordinate
+    // @Description: Rotor Z coordinate in body frame (seed; REFERENCE_SEED_NOT_MEASURED)
+    // @Units: m
+    // @Range: -1 1
+    // @User: Advanced
+    AP_GROUPINFO("ROTOR_Z", 50, AP_TiltHexa, _rotor_z, THX_SEED_ROTOR_Z_M),
+
+    // @Param: TEST_MODE
+    // @DisplayName: Test mode
+    // @Description: 0=safe outputs, 1=hover thrust, 2=tilt sweep test
+    // @Values: 0:SafeOutputs,1:HoverThrust,2:TiltSweep
+    // @User: Advanced
+    AP_GROUPINFO("TEST_MODE", 51, AP_TiltHexa, _test_mode, 0),
+
+    // @Param: FW_SPD
+    // @DisplayName: Fixed-wing conversion threshold speed
+    // @Description: Above this airspeed in the cruise/accel phases the nacelle
+    // is smoothly blended toward FW_BETA (pure wing-borne cruise). The
+    // blend runs from FW_SPD to CRUISE_M_S. 0 disables the blend and the
+    // allocator's minimum-norm tilt is used.
+    // @Units: m/s
+    // @Range: 0 30
+    // @User: Advanced
+    AP_GROUPINFO("FW_SPD", 55, AP_TiltHexa, _fw_thresh_m_s, 0.0f),
+
+    // @Param: FW_BETA
+    // @DisplayName: Fixed-wing cruise nacelle angle
+    // @Description: Target nacelle tilt (deg) reached at the top of the
+    // conversion blend zone. 90 deg = pure wing-borne cruise.
+    // @Units: deg
+    // @Range: 0 90
+    // @User: Advanced
+    AP_GROUPINFO("FW_BETA", 56, AP_TiltHexa, _fw_target_beta, 90.0f),
+
+    AP_GROUPEND
+};
+
+// ---- Constructor ----
+
+AP_TiltHexa::AP_TiltHexa() :
+    _initialised(false),
+    _last_output_us(0),
+    _loop_counter(0),
+    _has_feasible_solution(false),
+    _log_counter(0),
+    _traj_active(false),
+    _traj_phase(0),
+    _traj_t(0.0f),
+    _traj_yaw_start_rad(0.0f),
+    _traj_hold_latched(false),
+    _indi_cycle_us(0)
+{
+    AP_Param::setup_object_defaults(this, var_info);
+
+    memset(&_geom, 0, sizeof(_geom));
+    memset(&_B, 0, sizeof(_B));
+    memset(_accel_f, 0, sizeof(_accel_f));
+    memset(_gyro_f, 0, sizeof(_gyro_f));
+    memset(_gyro_dot_f, 0, sizeof(_gyro_dot_f));
+    memset(_u_f_flat, 0, sizeof(_u_f_flat));
+    memset(_pos_actual, 0, sizeof(_pos_actual));
+    memset(_vel_actual, 0, sizeof(_vel_actual));
+    memset(&_w_f_prev, 0, sizeof(_w_f_prev));
+    memset(&_w_f_est, 0, sizeof(_w_f_est));
+    memset(&_u_prev, 0, sizeof(_u_prev));
+    memset(_u_prev_vec, 0, sizeof(_u_prev_vec));
+    memset(_R_bn, 0, sizeof(_R_bn));
+    memset(&_traj_ref, 0, sizeof(_traj_ref));
+    memset(&_indi_in, 0, sizeof(_indi_in));
+    memset(&_indi_out, 0, sizeof(_indi_out));
+    memset(&_alloc_in, 0, sizeof(_alloc_in));
+    memset(&_alloc_out, 0, sizeof(_alloc_out));
+
+    _R_bn[0] = 1.0f; _R_bn[4] = 1.0f; _R_bn[8] = 1.0f; // identity DCM
+
+    // Init BA surface derivatives from seed
+    _BA_params[THX_BA_CL_DA]    = THX_SEED_CL_DA;
+    _BA_params[THX_BA_CL_DA_I]  = THX_SEED_CL_DA_ROLL;
+    _BA_params[THX_BA_CM_DA]    = THX_SEED_CM_DA;
+    _BA_params[THX_BA_CN_DA]    = THX_SEED_CN_DA;
+    _BA_params[THX_BA_CL_DRV]   = THX_SEED_CL_DRV;
+    _BA_params[THX_BA_CL_DRV_I] = THX_SEED_CL_DRV_ROLL;
+    _BA_params[THX_BA_CM_DRV]   = THX_SEED_CM_DRV;
+    _BA_params[THX_BA_CN_DRV]   = THX_SEED_CN_DRV;
+}
+
+

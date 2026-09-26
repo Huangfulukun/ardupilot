@@ -76,7 +76,7 @@ def main():
         C.set_param(mav,"THX_CRUISE_M_S",a.cruise)
         C.set_param(mav,"THX_ACCEL_M_S2",1.5)
         C.set_param(mav,"THX_HOVER_DUR_S",5.0)
-        C.set_param(mav,"THX_FW_SPD",0.0)      # FW blend OFF by default (beta=90 cruise not stable in current INDI; see CLAUDE.md)
+        C.set_param(mav,"THX_FW_SPD",17.0)      # FW mode crossfade 17->20 m/s
         C.set_param(mav,"THX_FW_BETA",90.0)
         set_mode(mav, MODE_QLOITER); time.sleep(1.0)
         if not C.arm_vehicle(mav,timeout=30.0): raise RuntimeError("arm failed")

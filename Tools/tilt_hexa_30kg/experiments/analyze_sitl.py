@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-alyze_sitl.py -- 从真实 SITL truth CSV 计算指标并生成论文对比图（SVG）。
+analyze_sitl.py -- 从真实 SITL truth CSV 计算指标并生成论文对比图（SVG）。
 
 输入（全部为真实 arduplane SITL 飞行，非离线编造）：
   results/SITL_native/native_sitl_truth.csv   stock arduplane QLOITER 爬升 + FBWA 尝试
   results/SITL_MPC/thx_hover_truth.csv        THX/INDI 30m 悬停
   results/SITL_MPC/thx_trans_truth.csv        THX PI alloc 完整过渡任务
-  results/SITL_MPC/thx_wls_truth.csv          THX WLS alloc 完整任务
+  results/SITL_MPC/thx_wls_truth.csv          THX WLS alloc 完整过渡任务
 
 输出：
   results/SITL_MPC/sitl_metrics.json          指标汇总
@@ -72,21 +72,23 @@ def summarize(tr, name):
 
 
 def fig_sitl_overview():
-    """THX WLS 完整任务：as / alt / nacelle beta 三段时间线。"""
-    tr = load(os.path.join(MPC, "thx_stable_truth.csv"))
+    """FW-mode full mission: as / alt / nacelle beta 三段时间线（β=90 巡航）。"""
+    tr = load(os.path.join(MPC, "fwmode_v3_truth.csv"))
     if tr is None:
-        print("skip thx_wls"); return
+        print("skip fwmode_v3"); return
     t = tr.t.values
     fig, ax = plt.subplots(3, 1, figsize=(6.6, 5.2), sharex=True)
     ax[0].plot(t, -tr.pz.values, color=C_MPC)
-    ax[0].set_ylabel("Altitude (m)")
-    ax[0].set_title("Real arduplane SITL: proposed-controller full mission (hover$\\to$cruise$\\to$hover)")
+    ax[0].axhline(60, color=C_REF, ls="--", lw=0.8, label="alt ref 60 m")
+    ax[0].set_ylabel("Altitude (m)"); ax[0].legend(framealpha=0.9, loc="upper right")
     ax[1].plot(t, tr.airspeed.values, color=C_MPC)
     ax[1].axhline(20, color=C_REF, ls="--", lw=0.8, label="cruise ref 20 m/s")
     ax[1].set_ylabel("Airspeed (m/s)"); ax[1].legend(framealpha=0.9, loc="lower right")
     ax[2].plot(t, np.degrees(tr.beta1.values), color=C_NAT, label="nacelle $\\beta_1$")
+    ax[2].axhline(90, color=C_REF, ls="--", lw=0.8, label="$\\beta$=90$^\\circ$ wing-borne")
     ax[2].set_ylabel("Nacelle angle (deg)"); ax[2].set_xlabel("Time (s)")
     ax[2].legend(framealpha=0.9, loc="lower right")
+    ax[0].set_title("Real arduplane SITL: proposed FW-mode law achieves wing-borne $\\beta=90^\\circ$ cruise")
     fig.tight_layout()
     for ext in ("svg", "pdf"):
         fig.savefig(os.path.join(FIG, f"fig_sitl_overview.{ext}"), bbox_inches="tight")
@@ -126,13 +128,13 @@ def main():
         ("thx_pi", os.path.join(MPC, "thx_trans_truth.csv")),
         ("thx_wls", os.path.join(MPC, "thx_wls_truth.csv")),
         ("thx_stable", os.path.join(MPC, "thx_stable_truth.csv")),
+        ("fwmode_v3", os.path.join(MPC, "fwmode_v3_truth.csv")),
     ]:
         tr = load(path)
         if tr is not None:
             metrics[name] = summarize(tr, name)
             print(name, json.dumps(metrics[name], indent=2))
-    with open(os.path.join(MPC, "sitl_metrics.json"),
-              "w") as f:
+    with open(os.path.join(MPC, "sitl_metrics.json"), "w") as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
     print("wrote sitl_metrics.json")
     fig_sitl_overview()

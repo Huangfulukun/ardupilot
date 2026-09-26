@@ -103,7 +103,7 @@ def main():
         print("[CMP] smoke test: hover PWM (49N, beta=0, neutral surfaces)")
         hover_pwm = thr_to_pwm(49.0)
         for _ in range(50):  # 50 x 0.02s = 1s
-            pwms = [hover_pwm]*6 + [tilt_to_pwm(0)]*6 + [1500, 1500 1500, 1500]
+            pwms = [hover_pwm]*6 + [tilt_to_pwm(0)]*6 + [1500, 1500, 1500, 1500]
             set_rc_override(mav, pwms)
             time.sleep(0.02)
         time.sleep(2.0)

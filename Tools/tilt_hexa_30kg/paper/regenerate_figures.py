@@ -21,7 +21,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 from corridor_ocp import CorridorOCP  # noqa: E402
 
-FIG = os.path.join(ROOT, "figures")
+FIG = os.path.join(ROOT, "paper", "figures")
 os.makedirs(FIG, exist_ok=True)
 MPC = os.path.join(ROOT, "results", "MPC")
 
@@ -36,7 +36,7 @@ C_MPC, C_REF, C_NC = "#1f4e79", "#c0392b", "#7f8c8d"
 
 
 def save(fig, name):
-    for ext in ("pdf", "png"):
+    for ext in ("pdf", "png", "svg"):
         fig.savefig(os.path.join(FIG, f"{name}.{ext}"), bbox_inches="tight")
     plt.close(fig)
     print(f"wrote {name}")
@@ -91,7 +91,7 @@ def fig_trim_schedule():
     save(fig, "fig_trim_schedule")
 
 
-def fig_full_profile(truth="int_fresh_truth.csv", ctrl="int_fresh_ctrl.csv",
+def fig_full_profile(truth="fw_fix4_truth.csv", ctrl="fw_fix4_ctrl.csv",
                      name="fig_profile"):
     df = pd.read_csv(os.path.join(MPC, truth))
     c = pd.read_csv(os.path.join(MPC, ctrl))
@@ -134,17 +134,20 @@ def fig_full_profile(truth="int_fresh_truth.csv", ctrl="int_fresh_ctrl.csv",
 
 def fig_corridor_vs_nocorridor():
     """Speed tracking: corridor vs no-corridor ablation."""
-    a = pd.read_csv(os.path.join(MPC, "int_fresh_ctrl.csv"))
-    b = pd.read_csv(os.path.join(MPC, "fresh_nocorridor_ctrl.csv"))
+    a = pd.read_csv(os.path.join(MPC, "fw_fix4_ctrl.csv"))
+    b_path = os.path.join(MPC, "fresh_nocorridor_ctrl.csv")
+    b = pd.read_csv(b_path) if os.path.exists(b_path) else None
     fig, ax = plt.subplots(1, 2, figsize=(7.0, 2.5))
     ax[0].plot(a["t"], a["V"], color=C_MPC, label="Corridor MPC")
     ax[0].plot(a["t"], a["V_ref"], color=C_REF, ls="--", label="Reference")
-    ax[0].plot(b["t"], b["V"], color=C_NC, label="Fixed-schedule (no corridor)")
+    if b is not None:
+        ax[0].plot(b["t"], b["V"], color=C_NC, label="Fixed-schedule (no corridor)")
     ax[0].set_xlabel("Time (s)"); ax[0].set_ylabel("Airspeed (m/s)")
     ax[0].legend(framealpha=0.9)
     ax[1].plot(a["t"], a["h"], color=C_MPC, label="Corridor MPC")
     ax[1].plot(a["t"], a["h_ref"], color=C_REF, ls="--", label="Reference")
-    ax[1].plot(b["t"], b["h"], color=C_NC, label="Fixed-schedule")
+    if b is not None:
+        ax[1].plot(b["t"], b["h"], color=C_NC, label="Fixed-schedule")
     ax[1].set_xlabel("Time (s)"); ax[1].set_ylabel("Altitude (m)")
     ax[1].legend(framealpha=0.9)
     fig.tight_layout()
@@ -185,7 +188,7 @@ def fig_aws():
         eps = 1e-4
         for i in range(6):
             Btilt[:, i] = (thrust_col(beta + eps, spin[i], r[i])
-                           - thrust_col(beta - eps, spin[i], r[i])) / (2 * eps) * T
+                           - thrust_col(beta - eps, spin[i])) / (2 * eps) * T
         # four aerodynamic surfaces (two ailerons, two ruddervators), scaled qS
         qS = 0.5 * rho_air * V * V * S_ref
         Bsurf = np.zeros((5, 4))
@@ -237,7 +240,7 @@ def fig_robustness():
 def fig_solve_time():
     """MPC solve-time distribution over the nominal profile (mean/P99/worst)."""
     import json
-    m = json.load(open(os.path.join(MPC, "int_fresh_metrics.json")))
+    m = json.load(open(os.path.join(MPC, "fw_fix4_metrics.json")))
     # per-case timing from the fixed campaign
     summ = os.path.join(MPC, "campaign", "fixed_summary.json")
     s = json.load(open(summ))

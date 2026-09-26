@@ -103,7 +103,7 @@ def main():
         print("[CMP] smoke test: hover PWM (49N, beta=0, neutral surfaces)")
         hover_pwm = thr_to_pwm(49.0)
         for _ in range(50):  # 50 x 0.02s = 1s
-            pwms = [hover_pwm]*6 + [tilt_to_pwm(0)]*6 + [1500, 1500, 1500, 1500]
+            pwms = [hover_pwm]*6 + [tilt_to_pwm(0)]*6 + [1500, 1500 1500, 1500]
             set_rc_override(mav, pwms)
             time.sleep(0.02)
         time.sleep(2.0)
@@ -122,7 +122,7 @@ def main():
         rt = rdf.t.values
         Tc = rdf[["T1","T2","T3","T4","T5","T6"]].values
         bc = rdf[["beta1","beta2","beta3","beta4","beta5","beta6"]].values
-        daL = rdf.d_aL.values; daR = rdf.draR.values if False else rdf.d_aR.values
+        daL = rdf.d_aL.values; daR = rdf.d_aR.values
         drvL = rdf.d_rvL.values; drvR = rdf.d_rvR.values
         n = len(rt)
         t0 = time.time()
@@ -133,7 +133,7 @@ def main():
                 i += 1
             pwms = [thr_to_pwm(Tc[i,k]) for k in range(6)]
             pwms += [tilt_to_pwm(math.degrees(bc[i,k])) for k in range(6)]
-            pwms += [surf_to_pwm(daL[i]), surf_to_pwm(draR if False else daR[i]),
+            pwms += [surf_to_pwm(daL[i]), surf_to_pwm(daR[i]),
                      surf_to_pwm(drvL[i]), surf_to_pwm(drvR[i])]
             set_rc_override(mav, pwms)
             time.sleep(0.01)

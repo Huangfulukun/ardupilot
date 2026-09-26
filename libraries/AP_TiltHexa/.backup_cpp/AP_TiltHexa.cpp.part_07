@@ -1,0 +1,129 @@
+    float beta_deg;
+    if (cycle < 2.0f) {
+        beta_deg = cycle * 20.0f;  // 0 -> 40 deg
+    } else {
+        beta_deg = (4.0f - cycle) * 20.0f;  // 40 -> 0 deg
+    }
+
+    for (uint8_t i = 0; i < 6; i++) {
+        SRV_Channels::set_output_pwm(motor_funcs[i], (uint16_t)hover_pwm);
+        SRV_Channels::set_output_pwm(tilt_funcs[i], tilt_deg_to_pwm(beta_deg));
+    }
+    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, 1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    1500);
+}
+
+// ============================================================
+// PIPELINE PARAMETER TRANSFER
+// ============================================================
+
+void AP_TiltHexa::update_pipeline_params(void)
+{
+    _pipeline_params.mass_kg     = _mass.get();
+    _pipeline_params.Jxx         = _jxx.get();
+    _pipeline_params.Jyy         = _jyy.get();
+    _pipeline_params.Jzz         = _jzz.get();
+    _pipeline_params.arm_l       = _arm_l.get();
+    _pipeline_params.rotor_z     = _rotor_z.get();
+    _pipeline_params.kq          = _kq.get();
+    _pipeline_params.T_max       = _thr_max.get();
+    _pipeline_params.beta_min_rad = deg2rad(_tilt_min.get());
+    _pipeline_params.beta_max_rad = deg2rad(_tilt_max.get());
+    _pipeline_params.beta_dot_max_rad_s = deg2rad(_tilt_rate.get());
+    _pipeline_params.delta_max_rad[0]   = deg2rad(THX_SEED_AIL_MAX_DEG);
+    _pipeline_params.delta_max_rad[1]   = deg2rad(THX_SEED_AIL_MAX_DEG);
+    _pipeline_params.delta_max_rad[2]   = deg2rad(THX_SEED_RV_MAX_DEG);
+    _pipeline_params.delta_max_rad[3]   = deg2rad(THX_SEED_RV_MAX_DEG);
+    for (int i = 0; i < 4; i++) {
+        _pipeline_params.delta_dot_max_rad_s[i] = deg2rad(THX_SEED_SURF_RATE_DEG_S);
+    }
+    _pipeline_params.T_off_N      = _thr_off.get();
+    _pipeline_params.T_on_N       = _thr_on.get();
+    _pipeline_params.Kp           = _indi_kp.get();
+    _pipeline_params.Kv           = _indi_kv.get();
+    _pipeline_params.Kw           = _indi_kw.get();
+    _pipeline_params.KR           = _indi_kr.get();
+    _pipeline_params.filt_hz      = _filt_hz.get();
+    _pipeline_params.act_filt_hz  = _act_filt_hz.get();
+    _pipeline_params.indi_rate_hz = (float)_indi_rate.get();
+    _pipeline_params.alloc_mode   = _alloc_mode.get();
+    _pipeline_params.W_s[0]       = _ws_fx.get();
+    _pipeline_params.W_s[1]       = _ws_fz.get();
+    _pipeline_params.W_s[2]       = _ws_mx.get();
+    _pipeline_params.W_s[3]       = _ws_my.get();
+    _pipeline_params.W_s[4]       = _ws_mz.get();
+    _pipeline_params.W_delta_u    = _w_du.get();
+    _pipeline_params.W_u          = _w_u.get();
+    _pipeline_params.poly_N       = _poly_n.get();
+    _pipeline_params.qp_max_iter  = _qp_max_iter.get();
+    _pipeline_params.use_act_model = (_act_model.get() != 0);
+    _pipeline_params.tau_T_s      = THX_SEED_TAU_T_S;
+    _pipeline_params.tau_beta_s   = THX_SEED_TAU_BETA_S;
+    _pipeline_params.tau_surf_s   = THX_SEED_TAU_SURF_S;
+    _pipeline_params.rho          = THX_SEED_RHO_KG_M3;
+    _pipeline_params.g            = 9.80665f;
+    memcpy(_pipeline_params.BA_params, _BA_params, sizeof(_BA_params));
+
+    // set_params() re-initialises the actuator models and filters, so it must only be
+    // applied when a parameter actually changed (a THX_ parameter set over MAVLink) --
+    // calling it every cycle would wipe the INDI's actuator estimate u_f each step.
+    if (!_pipeline_params_initialized ||
+        memcmp(&_pipeline_params, &_pipeline_params_applied, sizeof(_pipeline_params)) != 0) {
+        _pipeline.set_params(&_pipeline_params);
+        memcpy(&_pipeline_params_applied, &_pipeline_params, sizeof(_pipeline_params));
+    }
+    _pipeline_params_initialized = true;
+}
+
+// ============================================================
+// SYNC PIPELINE -> LEGACY MEMBERS (for apply_actuator_outputs + write_logs)
+// ============================================================
+
+void AP_TiltHexa::sync_pipeline_to_legacy(void)
+{
+    // Sync _u_prev from Pipeline command (for write_logs and apply_actuator_outputs)
+    for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
+        _u_prev.rotors[i].thrust_N = _pipeline_cmd.T_N[i];
+        _u_prev.rotors[i].tilt_rad = _pipeline_cmd.beta_rad[i];
+        _u_prev.rotors[i].u_x = _pipeline_cmd.T_N[i] * sinf(_pipeline_cmd.beta_rad[i]);
+        _u_prev.rotors[i].u_z = _pipeline_cmd.T_N[i] * cosf(_pipeline_cmd.beta_rad[i]);
+        _u_prev_vec[2*i]   = _u_prev.rotors[i].u_x;
+        _u_prev_vec[2*i+1] = _u_prev.rotors[i].u_z;
+    }
+    for (int i = 0; i < AP_TILTHEXA_N_SURF; i++) {
+        _u_prev.surfaces_rad[i] = _pipeline_cmd.delta_rad[i];
+        _u_prev_vec[12 + i] = _u_prev.surfaces_rad[i];
+    }
+
+    // Sync _indi_out (for write_logs THXC)
+    _indi_out.w_d.Fx = _pipeline_telem.w_d[0];
+    _indi_out.w_d.Fz = _pipeline_telem.w_d[1];
+    _indi_out.w_d.Mx = _pipeline_telem.w_d[2];
+    _indi_out.w_d.My = _pipeline_telem.w_d[3];
+    _indi_out.w_d.Mz = _pipeline_telem.w_d[4];
+
+    // Sync _alloc_out (for write_logs THXA, THXE, THXQ, THXI)
+    _alloc_out.w_achieved.Fx   = _pipeline_telem.w_a[0];
+    _alloc_out.w_achieved.Fz   = _pipeline_telem.w_a[1];
+    _alloc_out.w_achieved.Mx   = _pipeline_telem.w_a[2];
+    _alloc_out.w_achieved.My   = _pipeline_telem.w_a[3];
+    _alloc_out.w_achieved.Mz   = _pipeline_telem.w_a[4];
+    _alloc_out.alloc_mode      = _pipeline_telem.alloc_mode;
+    _alloc_out.solver_status   = _pipeline_telem.solver_status;
+    _alloc_out.solver_iterations = _pipeline_telem.solver_iterations;
+    _alloc_out.solver_time_us  = _pipeline_telem.solver_time_us;
+    _alloc_out.n_active_constraints = _pipeline_telem.n_active_constraints;
+    _alloc_out.sig_min         = _pipeline_telem.sig_min;
+
+    // Sync safety-net clamp flags
+    _w_d_clamped     = _pipeline_telem.w_d_clamped;
+    _output_clamped  = _pipeline_telem.output_clamped;
+
+    // Sync _has_feasible_solution (for apply_actuator_outputs condition)
+    _has_feasible_solution = _pipeline_telem.airborne ||
+        (_pipeline_telem.phase == THX_PPL_PHASE_SPOOL);
+}
+
+#endif  // AP_TILTHEXA_ENABLED

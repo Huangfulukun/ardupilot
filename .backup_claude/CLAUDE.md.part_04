@@ -81,3 +81,39 @@ committed CSV/JSON with no missing files.
 
 **Compile:** pdflatex -> bibtex -> pdflatex -> pdflatex = 27 pages, 0 errors,
 0 undefined references, 0 citation warnings.
+
+## Remote sync status (GitHub fork Huangfulukun/ardupilot @ pr_doubao_apm47)
+
+Pushing is done by the Main Agent through the GitHub text connector; the VM
+has no HTTPS/SSH git credentials. Binary files cannot be transported (the text
+endpoint double-encodes them), so only text sources are pushed and every
+binary/large artifact is regenerated from those sources.
+
+**Fully synced to the remote (byte-verified where noted):**
+- Paper source `paper/main.tex`, split into 4 x 320-line blocks under
+  `paper/.backup/main.tex.part_00..03`; concatenation reconstructs blob
+  aa787d08 (verified identical to the final main.tex).
+- This file `CLAUDE.md`, split into 5 x 200-line blocks under
+  `.backup_claude/CLAUDE.md.part_00..04`; concatenation reconstructs the
+  final file (verified identical).
+- Firmware `libraries/AP_TiltHexa/AP_TiltHexa.cpp`, split into 8 x 250-line
+  blocks under `libraries/AP_TiltHexa/.backup_cpp/AP_TiltHexa.cpp.part_00..07`;
+  concatenation reconstructs blob c9a215f0 (verified identical). Blocks
+  03-07 match the target blob SHA exactly; blocks 00-02 have identical decoded
+  text and differ only by the endpoint's trailing-newline SHA normalisation.
+- `AP_TiltHexa.h`, all Python controllers/tools/analysis scripts, parameter
+  files (.parm), metrics JSON, and the SITL flight/analysis scripts.
+
+**Deliberately kept local (regenerable; NOT manually transcribable because
+they exceed the 2000-line read limit or are binary) -- regenerate, do not fake:**
+- Raw trace CSVs `results/MPC/*_ctrl.csv` and `results/MPC/*_truth.csv`
+  (~1-2 MB): regenerate by re-running the controller bench
+  (`tools/closed_loop_bench.py`, see commands in earlier sections).
+- All figure binaries/SVGs under `paper/figures/`: regenerate with
+  `paper/rebuild_figures.sh` (calls regenerate_figures.py + analyze_sitl.py).
+- `paper/main.pdf`: regenerate with the pdflatex sequence above.
+- `paper/elsarticle.cls` / `.bst`: standard CTAN files; fetch from CTAN.
+
+**Pending-push checklist for the next trigger:** all text sources above are
+synced; only regenerable artifacts remain local by design. If new text files
+are added later, list them here and the Main Agent will push them.

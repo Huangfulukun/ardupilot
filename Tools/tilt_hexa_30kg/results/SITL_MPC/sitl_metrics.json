@@ -26,7 +26,7 @@
   "thx_pi": {
     "name": "thx_pi",
     "rows": 58678,
-    "t_end_s": 146.69499999890285,
+    "t_end_s": 146.69499999990285,
     "max_alt_m": 60.03732400897323,
     "min_alt_m": -0.0,
     "max_roll_deg": 0.44528491736120573,
@@ -38,11 +38,11 @@
   "thx_wls": {
     "name": "thx_wls",
     "rows": 66805,
-    "t_end_s": 167.01249999988437,
+    "t_end_s": 167.012499999988437,
     "max_alt_m": 61.23566253026252,
     "min_alt_m": -0.0,
     "max_roll_deg": 49.58840479417204,
-    "max_pitch_deg": 62.638427987889074,
+    "max_pitch_deg": 62.63842798788074,
     "max_airspeed_ms": 20.051159884446218,
     "max_nacelle_beta_deg": 24.18110738137821,
     "crashed": false
@@ -50,7 +50,7 @@
   "thx_stable": {
     "name": "thx_stable",
     "rows": 66805,
-    "t_end_s": 167.01249999988437,
+    "t_end_s": 167.012499999988437,
     "max_alt_m": 60.62286976288033,
     "min_alt_m": -0.0,
     "max_roll_deg": 69.66246983624573,
@@ -58,5 +58,29 @@
     "max_airspeed_ms": 20.051480687880623,
     "max_nacelle_beta_deg": 24.186410845988785,
     "crashed": false
+  },
+  "fwmode_v3": {
+    "name": "fwmode_v3",
+    "rows": 54805,
+    "t_end_s": 137.01249999991165,
+    "max_alt_m": 60.03272601694048,
+    "min_alt_m": -0.0,
+    "max_roll_deg": 179.9693205393634,
+    "max_pitch_deg": 88.78163939637079,
+    "max_airspeed_ms": 36.677977611216136,
+    "max_nacelle_beta_deg": 89.99999999999962,
+    "crashed": true
+  },
+  "fwmode_v9": {
+    "name": "fwmode_v9",
+    "rows": 54805,
+    "t_end_s": 137.01249999991165,
+    "max_alt_m": 60.53643779483734,
+    "min_alt_m": -0.0,
+    "max_roll_deg": 179.935670335684,
+    "max_pitch_deg": 88.82074878603099,
+    "max_airspeed_ms": 55.24771957977672,
+    "max_nacelle_beta_deg": 89.99972425275115,
+    "crashed": true
   }
 }

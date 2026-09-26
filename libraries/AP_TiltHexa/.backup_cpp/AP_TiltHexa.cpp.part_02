@@ -14,8 +14,8 @@
     memset(&_w_f_prev, 0, sizeof(_w_f_prev));
     memset(&_w_f_est, 0, sizeof(_w_f_est));
     memset(&_u_prev, 0, sizeof(_u_prev));
-    memset(&_u_prev_vec, 0, sizeof(_u_prev_vec));
-    memset(&_R_bn, 0, sizeof(_R_bn));
+    memset(_u_prev_vec, 0, sizeof(_u_prev_vec));
+    memset(_R_bn, 0, sizeof(_R_bn));
     memset(&_traj_ref, 0, sizeof(_traj_ref));
     memset(&_indi_in, 0, sizeof(_indi_in));
     memset(&_indi_out, 0, sizeof(_indi_out));

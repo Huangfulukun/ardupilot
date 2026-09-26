@@ -87,6 +87,7 @@
 
     // @Param: E3_DUR
     // @DisplayName: E3 hold duration
+    // @Description: E3 stress injection hold duration
     // @Units: s
     // @Range: 1 10
     // @User: Advanced

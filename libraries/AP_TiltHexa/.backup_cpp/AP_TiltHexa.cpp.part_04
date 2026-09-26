@@ -1,3 +1,40 @@
+    // (Actuator model + LPF2 matching per Section 0.5)
+    // The same second-order Butterworth at THX_ACT_FILT_HZ is applied to each u_f element
+    // to match the phase lag of the accelerometer and gyro filter chains.
+    float act_dt = 1.0f / indi_hz;
+    for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+        _uf_lpf[i].apply(_uf_lpf[i], act_dt);
+    }
+}
+
+// ============================================================
+// 3. BUILD EFFECTIVENESS B(x_f)
+// ============================================================
+
+void AP_TiltHexa::build_effectiveness(void)
+{
+    float rho    = THX_SEED_RHO_KG_M3;
+    float S_ref  = THX_SEED_WING_AREA_M2;
+    float b_span = THX_SEED_WING_SPAN_M;
+    float c_bar  = THX_SEED_MAC_M;
+
+    thx_effectiveness_build(&_B, &_geom, _V_f, rho, S_ref, b_span, c_bar, _BA_params);
+}
+
+// ============================================================
+// 4. FORM ACHIEVED WRENCH w_f = B(x_f) * u_f
+// ============================================================
+
+void AP_TiltHexa::form_achieved_wrench(void)
+{
+    thx_form_wf(&_B, _u_f_flat, &_w_f_prev);
+}
+
+// ============================================================
+// 5. RUN INDI CONTROLLER -- DEPRECATED (dead code, never called from output())
+// Active path uses _pipeline.step() -> TiltHexa_Pipeline::run_full_pipeline().
+// Kept under #if 0 for reference; remove when Pipeline integration is stable.
+// ============================================================
 
 #if 0
 
@@ -11,8 +48,8 @@ void AP_TiltHexa::run_indi_controller(void)
     _indi_in.accel_f[1] = _accel_f[1];
     _indi_in.accel_f[2] = _accel_f[2];
     _indi_in.gyro_f[0]  = _gyro_f[0];
-    _indi_in.gyro_f[1]  = _gyro_f[1];
-    _indi_in.gyro_f[2]  = _gyro_f[2];
+    _indi_in.gyro_f[1] = _gyro_f[1];
+    _indi_in.gyro_f[2] = _gyro_f[2];
     _indi_in.gyro_dot_f[0] = _gyro_dot_f[0];
     _indi_in.gyro_dot_f[1] = _gyro_dot_f[1];
     _indi_in.gyro_dot_f[2] = _gyro_dot_f[2];
@@ -211,40 +248,3 @@ void AP_TiltHexa::run_allocator(void)
 
         // DIAGNOSTIC: report QP solve result and u_z[0] (only every 200 pipeline cycles ~ 2s)
         static uint32_t qp_diag_counter = 0;
-        if (++qp_diag_counter >= 200) {
-            qp_diag_counter = 0;
-            float total_T = 0.0f;
-            for (int i = 0; i < AP_TILTHEXA_N_U; i++) total_T += fabsf(qp_res.u_opt[i]);
-            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "QP: sz=%d it=%d T=%.0f uz=%.0f",
-                          qp_res.status, qp_res.iterations,
-                          (double)total_T, (double)qp_res.u_opt[1]);
-        }
-
-        if (qp_res.status == THX_SOLVER_OK) {
-            // Success: copy solution
-            for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
-                _u_prev_vec[i] = qp_res.u_opt[i];
-            }
-            float *wa = (float*)&_alloc_out.w_achieved;
-            for (int i = 0; i < AP_TILTHEXA_N_W; i++) {
-                wa[i] = qp_res.w_achieved[i];
-            }
-            _has_feasible_solution = true;
-        } else {
-            // QP failure: fallback
-            // Preserve the QP's raw failure status; log both original and effective status
-            int qp_raw_status = qp_res.status;
-            if (qp_raw_status != (int)THX_SOLVER_OK) {
-                _alloc_out.solver_status = qp_raw_status;
-            } else {
-                _alloc_out.solver_status = (int)THX_SOLVER_NUMERICAL;
-            }
-            if (_has_feasible_solution) {
-                // Keep previous feasible solution; solver_status already reflects QP failure
-                // n_active_constraints from previous solve is stale; set to -1 to signal fallback
-                _alloc_out.n_active_constraints = -1;
-            } else {
-                // Fallback to PI
-                TiltHexa_PIResult pi_res = _pi_solver.solve(&_alloc_in);
-                for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
-                    _u_prev_vec[i] = pi_res.u[i];

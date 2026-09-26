@@ -1,3 +1,40 @@
+        // Position (NED)
+        {
+            Vector3f pos_ned;
+            if (AP::ahrs().get_relative_position_NED_origin_float(pos_ned)) {
+                sensor.p_ned[0] = pos_ned.x;
+                sensor.p_ned[1] = pos_ned.y;
+                sensor.p_ned[2] = pos_ned.z;
+            }
+        }
+
+        // Airspeed
+        {
+            float airspeed = 0.0f;
+            bool airspeed_valid = false;
+            if (AP::airspeed() && AP::airspeed()->use()) {
+                airspeed = AP::airspeed()->get_airspeed();
+                airspeed_valid = true;
+            }
+            sensor.airspeed = airspeed;
+            sensor.airspeed_valid = airspeed_valid;
+        }
+
+        // Timestamp for Pipeline solve-time measurement
+        sensor.micros_now = AP_HAL::micros();
+
+        sensor.armed = hal.util->get_soft_armed();
+
+        // ---- Build reference from trajectory ----
+        TiltHexa_Reference ref;
+        memset(&ref, 0, sizeof(ref));
+
+        if (_traj_active && _mission.get() > 0 && _traj_phase >= THX_PHASE_TAKEOFF) {
+            // Use trajectory-generated absolute reference
+            ref.p_r[0] = _traj_ref.p_N_m;
+            ref.p_r[1] = _traj_ref.p_E_m;
+            ref.p_r[2] = _traj_ref.p_D_m;
+            ref.v_r[0] = _traj_ref.v_N_m_s;
             ref.v_r[1] = _traj_ref.v_E_m_s;
             ref.v_r[2] = _traj_ref.v_D_m_s;
             ref.a_r[0] = _traj_ref.a_N_m_s2;
@@ -211,40 +248,3 @@ void AP_TiltHexa::form_estimates(void)
     }
 
     // Filter actuator estimate through same LPF2 as sensors
-    // (Actuator model + LPF2 matching per Section 0.5)
-    // The same second-order Butterworth at THX_ACT_FILT_HZ is applied to each u_f element
-    // to match the phase lag of the accelerometer and gyro filter chains.
-    float act_dt = 1.0f / indi_hz;
-    for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
-        _u_f_flat[i] = _uf_lpf[i].apply(_u_f_flat[i], act_dt);
-    }
-}
-
-// ============================================================
-// 3. BUILD EFFECTIVENESS B(x_f)
-// ============================================================
-
-void AP_TiltHexa::build_effectiveness(void)
-{
-    float rho    = THX_SEED_RHO_KG_M3;
-    float S_ref  = THX_SEED_WING_AREA_M2;
-    float b_span = THX_SEED_WING_SPAN_M;
-    float c_bar  = THX_SEED_MAC_M;
-
-    thx_effectiveness_build(&_B, &_geom, _V_f, rho, S_ref, b_span, c_bar, _BA_params);
-}
-
-// ============================================================
-// 4. FORM ACHIEVED WRENCH w_f = B(x_f) * u_f
-// ============================================================
-
-void AP_TiltHexa::form_achieved_wrench(void)
-{
-    thx_form_wf(&_B, _u_f_flat, &_w_f_prev);
-}
-
-// ============================================================
-// 5. RUN INDI CONTROLLER -- DEPRECATED (dead code, never called from output())
-// Active path uses _pipeline.step() -> TiltHexa_Pipeline::run_full_pipeline().
-// Kept under #if 0 for reference; remove when Pipeline integration is stable.
-// ============================================================

@@ -1,3 +1,92 @@
+            // E4 (full mission with LAND) ends on touchdown, and the hover
+            // test (mission 4) holds forever and never reaches here. Ending
+            // the mission is safe on the ground.
+            _traj_active = false;
+            if (mission != 4) {
+                _mission.set(0);
+            }
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TiltHexa: Mission complete");
+        }
+    }
+}
+
+// ============================================================
+// TEST MODE FUNCTIONS
+// ============================================================
+
+void AP_TiltHexa::set_safe_outputs(void)
+{
+    static const SRV_Channel::Function motor_funcs[6] = {
+        SRV_Channel::k_motor1, SRV_Channel::k_motor2, SRV_Channel::k_motor3,
+        SRV_Channel::k_motor4, SRV_Channel::k_motor5, SRV_Channel::k_motor6
+    };
+    static const SRV_Channel::Function tilt_funcs[6] = {
+        SRV_Channel::k_tiltHexa1, SRV_Channel::k_tiltHexa2, SRV_Channel::k_tiltHexa3,
+        SRV_Channel::k_tiltHexa4, SRV_Channel::k_tiltHexa5, SRV_Channel::k_tiltHexa6
+    };
+
+    for (uint8_t i = 0; i < 6; i++) {
+        SRV_Channels::set_output_pwm(motor_funcs[i], 1000);  // motors off
+        SRV_Channels::set_output_pwm(tilt_funcs[i], 1100);   // 0 deg tilt
+    }
+    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, 1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    1500);
+}
+
+void AP_TiltHexa::set_hover_outputs(void)
+{
+    static const SRV_Channel::Function motor_funcs[6] = {
+        SRV_Channel::k_motor1, SRV_Channel::k_motor2, SRV_Channel::k_motor3,
+        SRV_Channel::k_motor4, SRV_Channel::k_motor5, SRV_Channel::k_motor6
+    };
+    static const SRV_Channel::Function tilt_funcs[6] = {
+        SRV_Channel::k_tiltHexa1, SRV_Channel::k_tiltHexa2, SRV_Channel::k_tiltHexa3,
+        SRV_Channel::k_tiltHexa4, SRV_Channel::k_tiltHexa5, SRV_Channel::k_tiltHexa6
+    };
+
+    // Hover thrust: 55 N per motor -> throttle from thrust-to-throttle curve
+    // At 55/95 = 0.579, solving 0.35*thr + 0.65*thr^2 = 0.579
+    // thr ≈ 0.725 -> PWM ≈ 1725 us
+    float hover_pwm = thrust_to_pwm(55.0f, _thr_max.get());
+    for (uint8_t i = 0; i < 6; i++) {
+        SRV_Channels::set_output_pwm(motor_funcs[i], hover_pwm);
+        SRV_Channels::set_output_pwm(tilt_funcs[i], 1100);  // 0 deg tilt
+    }
+    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, 1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     1500);
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    1500);
+}
+
+void AP_TiltHexa::run_test_mode(void)
+{
+    int8_t mode = _test_mode.get();
+    if (mode == 0) {
+        set_safe_outputs();
+    } else if (mode == 1) {
+        set_hover_outputs();
+    } else if (mode == 2) {
+        uint32_t now_us = AP_HAL::micros();
+        run_tilt_sweep(now_us);
+    }
+}
+
+void AP_TiltHexa::run_tilt_sweep(uint32_t now_us)
+{
+    // Sweep tilts from 0 to 40 deg and back over 4 seconds
+    static const SRV_Channel::Function motor_funcs[6] = {
+        SRV_Channel::k_motor1, SRV_Channel::k_motor2, SRV_Channel::k_motor3,
+        SRV_Channel::k_motor4, SRV_Channel::k_motor5, SRV_Channel::k_motor6
+    };
+    static const SRV_Channel::Function tilt_funcs[6] = {
+        SRV_Channel::k_tiltHexa1, SRV_Channel::k_tiltHexa2, SRV_Channel::k_tiltHexa3,
+        SRV_Channel::k_tiltHexa4, SRV_Channel::k_tiltHexa5, SRV_Channel::k_tiltHexa6
+    };
+
+    float hover_pwm = thrust_to_pwm(55.0f, _thr_max.get());
+    float cycle = fmodf(now_us * 1e-6f, 4.0f);
     float beta_deg;
     if (cycle < 2.0f) {
         beta_deg = cycle * 20.0f;  // 0 -> 40 deg

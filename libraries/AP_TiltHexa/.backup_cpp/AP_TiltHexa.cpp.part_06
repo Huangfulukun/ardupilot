@@ -1,3 +1,92 @@
+            Mzd : _indi_out.w_d.Mz,
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXA - Achieved wrench (model)
+    {
+        struct log_THXA pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXA_MSG),
+            time_us : now_us,
+            Fxm : _alloc_out.w_achieved.Fx,
+            Fzm : _alloc_out.w_achieved.Fz,
+            Mxm : _alloc_out.w_achieved.Mx,
+            Mym : _alloc_out.w_achieved.My,
+            Mzm : _alloc_out.w_achieved.Mz,
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXE - Wrench error
+    {
+        struct log_THXE pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXE_MSG),
+            time_us : now_us,
+            Ex : _indi_out.w_d.Fx - _alloc_out.w_achieved.Fx,
+            Ez : _indi_out.w_d.Fz - _alloc_out.w_achieved.Fz,
+            ER : _indi_out.w_d.Mx - _alloc_out.w_achieved.Mx,
+            EP : _indi_out.w_d.My - _alloc_out.w_achieved.My,
+            EY : _indi_out.w_d.Mz - _alloc_out.w_achieved.Mz,
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXT - Tilt angles
+    {
+        struct log_THXT pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXT_MSG),
+            time_us : now_us,
+            B1 : rad2deg(_u_prev.rotors[0].tilt_rad),
+            B2 : rad2deg(_u_prev.rotors[1].tilt_rad),
+            B3 : rad2deg(_u_prev.rotors[2].tilt_rad),
+            B4 : rad2deg(_u_prev.rotors[3].tilt_rad),
+            B5 : rad2deg(_u_prev.rotors[4].tilt_rad),
+            B6 : rad2deg(_u_prev.rotors[5].tilt_rad),
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXF - Thrust forces
+    {
+        struct log_THXF pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXF_MSG),
+            time_us : now_us,
+            T1 : _u_prev.rotors[0].thrust_N,
+            T2 : _u_prev.rotors[1].thrust_N,
+            T3 : _u_prev.rotors[2].thrust_N,
+            T4 : _u_prev.rotors[3].thrust_N,
+            T5 : _u_prev.rotors[4].thrust_N,
+            T6 : _u_prev.rotors[5].thrust_N,
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXS - Surface deflections
+    {
+        struct log_THXS pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXS_MSG),
+            time_us : now_us,
+            AL : (int16_t)(rad2deg(_u_prev.surfaces_rad[0]) * 100.0f),
+            AR : (int16_t)(rad2deg(_u_prev.surfaces_rad[1]) * 100.0f),
+            RVL : (int16_t)(rad2deg(_u_prev.surfaces_rad[2]) * 100.0f),
+            RVR : (int16_t)(rad2deg(_u_prev.surfaces_rad[3]) * 100.0f),
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXQ - Solver diagnostics
+    {
+        uint16_t sat_flags = (uint16_t)_alloc_out.n_active_constraints & 0x0FFF;
+        if (_w_d_clamped)    sat_flags |= (1 << 12);
+        if (_output_clamped) sat_flags |= (1 << 13);
+        struct log_THXQ pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXQ_MSG),
+            time_us : now_us,
+            Mode : (uint8_t)_alloc_out.alloc_mode,
+            Stat : (uint8_t)_alloc_out.solver_status,
+            Iter : (uint16_t)_alloc_out.solver_iterations,
+            Usec : _alloc_out.solver_time_us,
+            Sat  : sat_flags,
         };
         AP::logger().WriteBlock(&pkt, sizeof(pkt));
     }
@@ -159,92 +248,3 @@ void AP_TiltHexa::update_trajectory(float dt)
             }
             // Stay active; do not reset the mission.
         } else {
-            // E4 (full mission with LAND) ends on touchdown, and the hover
-            // test (mission 4) holds forever and never reaches here. Ending
-            // the mission is safe on the ground.
-            _traj_active = false;
-            if (mission != 4) {
-                _mission.set(0);
-            }
-            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "TiltHexa: Mission complete");
-        }
-    }
-}
-
-// ============================================================
-// TEST MODE FUNCTIONS
-// ============================================================
-
-void AP_TiltHexa::set_safe_outputs(void)
-{
-    static const SRV_Channel::Function motor_funcs[6] = {
-        SRV_Channel::k_motor1, SRV_Channel::k_motor2, SRV_Channel::k_motor3,
-        SRV_Channel::k_motor4, SRV_Channel::k_motor5, SRV_Channel::k_motor6
-    };
-    static const SRV_Channel::Function tilt_funcs[6] = {
-        SRV_Channel::k_tiltHexa1, SRV_Channel::k_tiltHexa2, SRV_Channel::k_tiltHexa3,
-        SRV_Channel::k_tiltHexa4, SRV_Channel::k_tiltHexa5, SRV_Channel::k_tiltHexa6
-    };
-
-    for (uint8_t i = 0; i < 6; i++) {
-        SRV_Channels::set_output_pwm(motor_funcs[i], 1000);  // motors off
-        SRV_Channels::set_output_pwm(tilt_funcs[i], 1100);   // 0 deg tilt
-    }
-    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  1500);
-    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, 1500);
-    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     1500);
-    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    1500);
-}
-
-void AP_TiltHexa::set_hover_outputs(void)
-{
-    static const SRV_Channel::Function motor_funcs[6] = {
-        SRV_Channel::k_motor1, SRV_Channel::k_motor2, SRV_Channel::k_motor3,
-        SRV_Channel::k_motor4, SRV_Channel::k_motor5, SRV_Channel::k_motor6
-    };
-    static const SRV_Channel::Function tilt_funcs[6] = {
-        SRV_Channel::k_tiltHexa1, SRV_Channel::k_tiltHexa2, SRV_Channel::k_tiltHexa3,
-        SRV_Channel::k_tiltHexa4, SRV_Channel::k_tiltHexa5, SRV_Channel::k_tiltHexa6
-    };
-
-    // Hover thrust: 55 N per motor -> throttle from thrust-to-throttle curve
-    // At 55/95 = 0.579, solving 0.35*thr + 0.65*thr^2 = 0.579
-    // thr ≈ 0.725 -> PWM ≈ 1725 us
-    float hover_pwm = thrust_to_pwm(55.0f, _thr_max.get());
-    for (uint8_t i = 0; i < 6; i++) {
-        SRV_Channels::set_output_pwm(motor_funcs[i], hover_pwm);
-        SRV_Channels::set_output_pwm(tilt_funcs[i], 1100);  // 0 deg tilt
-    }
-    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  1500);
-    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, 1500);
-    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     1500);
-    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    1500);
-}
-
-void AP_TiltHexa::run_test_mode(void)
-{
-    int8_t mode = _test_mode.get();
-    if (mode == 0) {
-        set_safe_outputs();
-    } else if (mode == 1) {
-        set_hover_outputs();
-    } else if (mode == 2) {
-        uint32_t now_us = AP_HAL::micros();
-        run_tilt_sweep(now_us);
-    }
-}
-
-void AP_TiltHexa::run_tilt_sweep(uint32_t now_us)
-{
-    // Sweep tilts from 0 to 40 deg and back over 4 seconds
-    static const SRV_Channel::Function motor_funcs[6] = {
-        SRV_Channel::k_motor1, SRV_Channel::k_motor2, SRV_Channel::k_motor3,
-        SRV_Channel::k_motor4, SRV_Channel::k_motor5, SRV_Channel::k_motor6
-    };
-    static const SRV_Channel::Function tilt_funcs[6] = {
-        SRV_Channel::k_tiltHexa1, SRV_Channel::k_tiltHexa2, SRV_Channel::k_tiltHexa3,
-        SRV_Channel::k_tiltHexa4, SRV_Channel::k_tiltHexa5, SRV_Channel::k_tiltHexa6
-    };
-
-    float hover_pwm = thrust_to_pwm(55.0f, _thr_max.get());
-    float cycle = fmodf(now_us * 1e-6f, 4.0f);

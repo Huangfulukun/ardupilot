@@ -38,11 +38,11 @@
   "thx_wls": {
     "name": "thx_wls",
     "rows": 66805,
-    "t_end_s": 167.012499999988437,
+    "t_end_s": 167.01249999988437,
     "max_alt_m": 61.23566253026252,
     "min_alt_m": -0.0,
     "max_roll_deg": 49.58840479417204,
-    "max_pitch_deg": 62.63842798788074,
+    "max_pitch_deg": 62.638427987889074,
     "max_airspeed_ms": 20.051159884446218,
     "max_nacelle_beta_deg": 24.18110738137821,
     "crashed": false
@@ -50,7 +50,7 @@
   "thx_stable": {
     "name": "thx_stable",
     "rows": 66805,
-    "t_end_s": 167.012499999988437,
+    "t_end_s": 167.01249999988437,
     "max_alt_m": 60.62286976288033,
     "min_alt_m": -0.0,
     "max_roll_deg": 69.66246983624573,

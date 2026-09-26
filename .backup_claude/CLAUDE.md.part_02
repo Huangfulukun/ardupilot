@@ -1,0 +1,200 @@
+  * libraries/AP_TiltHexa/AP_TiltHexa.h            remote commit a3116aa, md5 1795659561e97491091cdf1d7cf0249a
+    (first push 1970725 had a transcription error in rad2deg -- body read "return 57.29577951f"
+    instead of "return rad * 57.29577951f"; corrected and re-pushed as a3116aa, md5 now matches).
+  * libraries/AP_TiltHexa/AP_TiltHexa_CAPI_QP.cpp  remote commit 3cbad4b, md5 bca08f12964e4d1dc2ce81d4567c4203
+    (adds the thx_pi_solve forward declaration that satisfies -Werror=missing-declarations).
+  * libraries/AP_TiltHexa/AP_TiltHexa.cpp          remote commit 2cc9732, md5 da8fb56ad1252a3c9c95772635532124,
+    67333 bytes / 1817 lines, normalized diff against local = NONE. Contains the t~119.7 s
+    hold fix (latch _traj_hold_latched on E2/E3 completion, freeze clock inside HOVER_2, keep
+    holding final hover) and the constructor initializer _traj_hold_latched(false).
+- Also added _traj_hold_latched(false) to the AP_TiltHexa constructor initializer list
+  (local commit feb71fa) and rebuilt `python3 waf plane` (incremental, 44.6 s, 0 errors;
+  build/sitl/bin/arduplane 5,682,464 B at 05:35). The pushed .cpp is the exact source of the
+  binary that passed the transition smoke (hold fix) in §14.
+- git identity was reset after the container restart; re-set locally in this repo only
+  (user.name Huang Lukun, user.email 2636335620@qq.com).
+- REMAINING (next continuation): (1) optionally run --alloc pi and E3 stress (mission 2)
+  smoke to confirm the hold fix there too (wls hover + E2 transition already verified);
+  (2) push remaining local code not yet on remote (experiments/make_figures.py is identical to the
+  pushed paper/regenerate_figures.py; AP_TiltHexa C++ core files + Makefile; ArduPlane
+  hooks already committed locally); (3) user fills the author/affiliation/corresponding
+  placeholders in main.tex before submission (the only formal blocker per review round 3);
+  (4) when all goals are met, disable/delete cron 1230522285491 and report completion.
+
+## §16 Checkpoint 2026-09-22 (clean from-scratch SITL build verified; full Python tool/test/config set pushed and byte-verified)
+- GOAL OF THIS ROUND: prove the remote-tracked source set builds a SITL plane from scratch
+  with AP_TiltHexa compiled and linked, and finish synchronising the reproducibility
+  (Python physics/MPC/tests/config) package to the fork.
+- CLEAN FROM-SCRATCH FIRMWARE BUILD (firmware milestone closed):
+  * `rm -rf build/sitl`, then `/opt/python3.12/bin/python3 waf configure --board sitl`
+    (CONFIGURE_EXIT=0, log build_logs/clean_verify_config.log, "Enabled custom controller: yes")
+    and `/opt/python3.12/bin/python3 waf plane` -> "'plane' finished successfully (26m36s)",
+    PLANE_EXIT=0, 0 errors (log build_logs/clean_verify_plane.log, driver
+    build_logs/clean_verify_driver.log).
+  * build/sitl/bin/arduplane regenerated (5,682,464 B). AP_TiltHexa objects present under
+    build/sitl/libraries/AP_TiltHexa/ and the linked binary contains the class symbols
+    (e.g. AP_TiltHexa::update_trajectory, apply_actuator_outputs, write_logs). This proves the
+    pushed tree (library + wscript + ArduPlane hooks) independently compiles and links.
+- PUSHED THIS ROUND (branch pr_doubao_apm47, github_oauth push_files; every file re-verified
+  byte-identical by a public HTTPS `git fetch` into refs/remotes/verify/apm47 and
+  `git hash-object` vs `git rev-parse verify/apm47:<path>`; trailing-newline-only diffs were
+  aligned locally with an append, not re-pushed):
+  * tools/mpc_controller.py final 643-line version (commit bb5fee4): only difference vs the
+    older remote copy was a 5-line comment in step() explaining forward conversion indexes
+    the current-node trim by measured airspeed while reverse conversion keeps the time
+    reference (otherwise early tilting pushes the tail into stall); code logic identical.
+  * tests/ all 9 files (commits 2b7e2ef, c4b1622, 0732eaf): __init__.py,
+    test_bench_physics_contract, test_research_contract, test_seed_header_fresh,
+    test_physics_rigid_body, test_physics_actuator, test_physics_aero, test_physics_propulsion,
+    test_physics_integration. Local `/opt/python3.12/bin/python3 -m pytest` on the 5 physics
+    test files: 29 passed.
+  * .gitignore + config/generate_thx_defaults.py (commit 8650ab8); the 4 SITL parameter sets
+    config/{default,indi_pi,indi_wls,native_baseline}.parm (commit b41b558). All MATCH.
+  * tools/qp_reference.py (commit 9000f9b): Nocedal-Wright Alg.16.3 primal active-set QP
+    reference, the step/tolerance/status specification for the fixed-size C++ QP.
+    Self-test `python3 tools/qp_reference.py`: cases=500, OK&match=496 (99.2%),
+    worst_rel_gap=3.34e-04, worst_viol=3.22e-10, iters mean=17.0 p95=32 max=40. The 4 cases
+    above 1e-6 hit the iteration cap (incomplete convergence, not a correctness error).
+  * tools/test_qp_differential.py (commit e48b9a4): firmware thx_qp_solve_raw vs the Python
+    reference and quadprog (random + warm-start walk).
+  * tools/test_bench_acceptance.py (commit c4b4d4a): PI/WLS hover and transition acceptance
+    (slow marked) and the PI/WLS gain-identity contract.
+- PUSHED IN THE PREVIOUS ROUND (already byte-verified, do not re-push): physics package 11
+  files (incl. the rigid_body.py quaternion-product fix y1*y1 -> y1*y2, commit 85fb983, with
+  an independent math sanity test PASS), eval_truth.py, seed.yaml, make_figures.py, plus the
+  earlier firmware library (38 files), 3 runtime hooks and ArduPlane wscript.
+- REMAINING (next continuation): (1) push the remaining reproducibility harness/docs that are
+  local-only: experiments/common.py (924 lines, SITL+FDM launch/MAVLink/arm helpers),
+  experiments/smoke_sitl.py, experiments/run_e0..e5_*.py, run_campaign.py, metrics_common.py,
+  analysis/run_afms.py, top-level docs (EXPERIMENTS.md, IMPLEMENTATION_*.md, LOG_SCHEMA.md,
+  PARAMETER_MAP.md, README.md), physics/README_physics.md, tools/README_tools.md; list with
+  `git fetch ... && git diff verify/apm47 --name-status -- Tools/tilt_hexa_30kg/`.
+  (2) No push channel for binary figures (figures/fig_*.pdf/png) or the large results/
+  truth CSV/BIN set (gitignored); consider text-pushing the small summary JSONs
+  (fixed_summary.json, mc_summary.json, paper_metrics.json, comparison_nominal.json). Truth
+  CSVs are regenerable. (3) Optionally run --alloc pi and E3 stress smoke to extend the hold
+  fix verification (wls hover + E2 transition already pass). (4) User replaces the author /
+  affiliation / corresponding placeholders in main.tex (the only formal submission blocker
+  per review round 3). (5) When all goals are met, disable/delete cron 1230522285491 and
+  report completion.
+
+## §17 — Continuation: SITL experiment harness push (common/smoke/metrics/E0/E2/E3/AFMS/campaign)
+
+This round continued the repository-completeness work (all science, paper, 3 review rounds,
+firmware build/SITL smoke and the t≈119.7 s thrust-zero bug fix were already complete and
+verified; the only remaining task is mirroring the reproduction harness to the remote).
+
+Pushed via github_oauth push_files and byte-verified by public HTTPS `git fetch` to
+`refs/remotes/verify/apm47` + `git hash-object` vs `git rev-parse verify/apm47:<path>`
+(trailing-newline-only diffs aligned locally with an append, not re-pushed):
+- experiments/common.py (924/925 lines, commit c0c00d2): shared SITL+FDM launch, isolated
+  per-instance cwd/log dirs (fixes parallel BIN-log races), MAVLink connect/EKF/GPS/arm
+  helpers, .parm combination, THX mission orchestration, BIN/CSV collection, parallel runner.
+- experiments/smoke_sitl.py (118, commit 950bcd8) + experiments/__init__.py (1 line).
+- experiments/run_e0_boundaries.py (144, commit 6c4af45): builds and runs the standalone C++
+  E0 boundary test (8 cases × PI/QP) and copies the CSV to results/E0/.
+- experiments/run_e3_alloc_stress.py (276, commit f95e7bd): open-loop QP-vs-PI feasibility
+  sweep (weakest AFMS direction, pure Fx, pure Mx), static fixed-point + one-step rate-limited
+  residuals, ctypes QPInput/QPResult/PIResult mirror of the C ABI.
+- experiments/run_campaign.py (235, commit bd69998): unified E2/E4/E5 closed-loop campaign over
+  the full nonlinear FDM driving the production C++ core via ctypes; metrics recomputed from
+  the 400 Hz truth CSV; gust/wind/Monte-Carlo.
+- analysis/run_afms.py (186, commit 32b90ca): offline AFMS attainable-wrench projection
+  (linprog support boundary, static magnitude/geometry constraints), CSV + PNG/PDF.
+- experiments/metrics_common.py (640, commit c8b7f00): pymavlink DFReader .BIN parsing,
+  time-varying THXR-reference vs truth tracking metrics, crash detection, smoothness J,
+  model/plant wrench RMSE, solver timing; tolerant of a damaged log tail.
+- experiments/run_e2_transition.py (552, commit aed2e87): SITL bidirectional transition driver
+  for native (QuadPlane, engineering reference) / PI / WLS at 20 and 25 m/s, with mode
+  orchestration, metrics and per-run metadata.
+All ten files compile (`py_compile` ALL COMPILE OK) and match the remote byte-for-byte.
+
+REMAINING (next continuation):
+- experiments/run_e1_trim.py (743), run_e3_stress.py (907), run_e4_mission.py (907),
+  run_e5_robustness.py (979) — the four large SITL experiment drivers; read+push+fetch-verify.
+- experiments/run_baseline.sh is content-identical but differs only in the executable bit
+  (100644→100755), which push_files cannot set; skip.
+- Top-level docs (EXPERIMENTS.md, IMPLEMENTATION_PLAN.md, IMPLEMENTATION_REPORT.md,
+  LOG_SCHEMA.md, PAPER_IMPLEMENTATION_AUDIT.md, PARAMETER_MAP.md, README.md),
+  experiments/README_experiments.md, physics/README_physics.md, tools/README_tools.md.
+- Small summary JSONs (fixed_summary.json, mc_summary.json, paper_metrics.json,
+  comparison_nominal.json, baseline metrics) can be text-pushed; per-run truth CSV/BIN and
+  binary figures have no push channel (gitignored / regenerable; figures already live in the
+  remote paper/ directory).
+- Author/affiliation/corresponding placeholders in main.tex remain the only formal submission
+  blocker (user action). Then disable/delete cron 1230522285491 and report completion.
+
+## §18 Checkpoint 2026-09-22 (cron continuation: more SITL drivers pushed)
+- Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
+  * experiments/run_e1_trim.py (743 lines, commit e4de110; trailing newline aligned) — E1 nonlinear plant trim sweep V=0..25.
+  * experiments/run_e3_stress.py (962 lines, commit 0cc5ea0) — SITL E3 stress sweep. FIX: the file called
+    find_pi_saturation_boundary() which was never defined (NameError after the long sweep); added a small
+    defensive helper (first lambda where PI sat_fraction>0.3, any actuator near-limit >0.10, or wrench RMSE
+    >5x the lambda=0 baseline). py_compile OK.
+- CLAUDE.md note: earlier this round a condensed CLAUDE.md was pushed by mistake; restored the full §1-§17
+  history (commit 531aad1) and aligned local to it (removed two stale §6 bullets fully superseded by §7-§17);
+  local == remote blob 2e0e1b9 for CLAUDE.md.
+- REMAINING (next continuation):
+  (1) push experiments/run_e4_mission.py (907) and run_e5_robustness.py (979) — read+push+fetch-verify;
+  (2) push docs: top-level EXPERIMENTS.md, IMPLEMENTATION_PLAN.md, IMPLEMENTATION_REPORT.md, LOG_SCHEMA.md,
+      PAPER_IMPLEMENTATION_AUDIT.md, PARAMETER_MAP.md, README.md, experiments/README_experiments.md,
+      physics/README_physics.md, tools/README_tools.md;
+  (3) small text results (E1/E2/E3/E4/E5 summary JSON+CSV, fixed/mc/paper_metrics/comparison/baseline JSON)
+      can be pushed; per-run truth CSV/BIN and binary figures (figures/*.pdf,png) have no push channel
+      (gitignored/regenerable; figures already in remote paper/); run_baseline.sh mode-bit diff is unpushable;
+  (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker);
+  (5) when all goals met, disable/delete cron 1230522285491 and report completion.
+
+## §19 Checkpoint 2026-09-22 (cron continuation: final two SITL drivers + 7 docs pushed)
+- Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
+  * experiments/run_e4_mission.py (907 lines, commit 97a64bb; trailing newline aligned) — E4 full-mission
+    SITL driver (THX_MISSION=3, PI/WLS at 20/25 m/s, instances 20/21, native FBWA reference, phase/cross-track/
+    landing metrics). MATCH.
+  * experiments/run_e5_robustness.py (979 lines, first commit 46f141b) — E5 bench gust + Monte Carlo.
+    fetch-verify caught ONE real transcription bug: remote line 209 had yaw aero moment
+    `Mz_aero = q_bar*S*b*0.03*(drv_R - da_L)` (wrong: used aileron da_L); local correct is `(drv_R - drv_L)`.
+    Re-pushed corrected file (commit deb9589), re-fetched, MATCH.
+  * 7 documentation files, all MATCH after fetch-verify:
+    - README.md (commit 36c233e)
+    - PAPER_IMPLEMENTATION_AUDIT.md (commit 36c233e)
+    - PARAMETER_MAP.md (commit 71385c9)
+    - physics/README_physics.md (commit d2da4d1)
+    - tools/README_tools.md (commit e96be93)
+    - experiments/README_experiments.md (commit af1dfd7)
+    - LOG_SCHEMA.md (commit aa9f6e5)
+- REMAINING (next continuation):
+  (1) push the three large top-level docs: EXPERIMENTS.md (365 lines), IMPLEMENTATION_REPORT.md (598),
+      IMPLEMENTATION_PLAN.md (1273) — read+push+fetch-verify each (large inline pushes need the same
+      fetch-verify discipline; long comments are the usual transcription-error sites).
+  (2) optional small text results (E1/E2/E3/E4/E5 summary JSON+CSV, fixed/mc/paper_metrics/comparison/
+      baseline JSON) can be pushed; E1 afms .pdf/.png and per-run truth CSV/BIN and binary figures
+      (figures/*.pdf,png) have no push_files channel (gitignored/regenerable; figures already in remote paper/).
+  (3) experiments/run_baseline.sh is content-identical but differs only in the executable bit
+      (100644->100755), which push_files cannot set; skip.
+  (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker).
+  (5) when all goals met, disable/delete cron 1230522285491 and report completion.
+- All scientific/controller/firmware/paper work remains complete and verified (see §14-§18); this round is
+  purely synchronising the reproduction harness + docs to the remote fork.
+
+## §20 Checkpoint 2026-09-22 (cron continuation: 3 large docs + CI workflows + 5 MPC summary JSONs pushed; text-channel sync complete)
+- Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object; trailing-newline aligned):
+  * EXPERIMENTS.md (365 lines, commit 4b65ab3) MATCH - E0-E5 INDI-baseline experiment record.
+  * IMPLEMENTATION_REPORT.md (598 lines, commit 748bb49) MATCH - INDI-phase implementation audit.
+  * IMPLEMENTATION_PLAN.md (1274 lines incl. trailing newline, commit 7fa6aa1) MATCH - 2026-09-19 staged
+    multi-agent plan (B_A/QP/constraints/PI/logging/plant/parm/experiment architecture). HISTORICAL: it
+    predates the MPC decision; its "DO NOT change controller to MPC" line is a superseded historical note and
+    was pushed verbatim, deliberately not edited.
+  * .github/workflows/tilt_hexa_ci.yml (89 lines) and tilt_hexa_campaign.yml (141 lines), commit 0a01c2f,
+    both MATCH. These trigger on the historical branch name pr_unifympc_wls_20260918_apm47 (pushed verbatim);
+    run core/plant tests, from-scratch SITL build, param metadata, and the E0-E5 paper campaign.
+  * 5 MPC aggregated-result JSONs (the authoritative numbers behind paper Tables 3-5), all MATCH:
+    - results/MPC/comparison_nominal.json (commit 4cfdef4): MPC vs INDI-WLS nominal headline metrics.
+    - results/MPC/baseline/baseline_metrics.json (commit 4cfdef4): WLS/PI baseline transition metrics.
+    - results/MPC/campaign/fixed_summary.json (commit f7514e4): S4-S9c fixed 8-scenario campaign.
+    - results/MPC/campaign/mc_summary.json (commit b6b094f): 20/20 valid Monte Carlo (seeds 1000-1019).
+    - results/MPC/paper_metrics.json (commit 2ea169f): per-case paper metrics incl. fresh/int_fresh and the
+      two documented FAIL ablations (dob_fresh, fresh_nocorridor).
+- STATE: every source file, doc, paper text bundle (paper/main.tex, references.bib, regenerate_figures.py,
+  review_round1/2/3.md, README), firmware library, config, test, experiment driver, CI workflow, and the
+  headline aggregated-result JSONs that can be pushed through the only authorised github_oauth TEXT channel
+  are now on the remote and byte-verified.

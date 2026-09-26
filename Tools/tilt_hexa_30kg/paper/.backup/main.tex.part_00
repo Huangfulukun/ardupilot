@@ -1,0 +1,320 @@
+%% =====================================================================
+%% Manuscript for Aerospace Science and Technology (Elsevier)
+%% Uses the official Elsevier elsarticle class (elsarticle-num style).
+%% Results in Section 8 are recomputed from the plant-truth CSV logs under
+%% Tools/tilt_hexa_30kg/results/MPC (see paper/README.md). All airframe
+%% numbers in Section 3 are REFERENCE_SEED_NOT_MEASURED for the 30 kg design.
+%% Author/affiliation fields are placeholders to be completed before submission.
+%% =====================================================================
+\documentclass[preprint,3p,11pt]{elsarticle}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+% Lightweight siunitx-compatible macros (avoids a missing siunitx package).
+\newcommand{\SI}[2]{\ensuremath{#1\,#2}}
+\newcommand{\si}[1]{\ensuremath{#1}}
+\newcommand{\kilogram}{\mathrm{kg}}
+\newcommand{\newton}{\mathrm{N}}
+\newcommand{\meter}{\mathrm{m}}
+\newcommand{\kilo}{\mathrm{k}}
+\newcommand{\watt}{\mathrm{W}}
+\newcommand{\second}{\mathrm{s}}
+\newcommand{\pascal}{\mathrm{Pa}}
+\newcommand{\per}{/}
+\newcommand{\squared}{^{2}}
+\newcommand{\degree}{^{\circ}}
+
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=blue,urlcolor=blue}
+
+\journal{Aerospace Science and Technology}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{Corridor-aware conversion scheduling and unified model predictive control for a fully-tilting hexacopter: an open-source SITL companion benchmark in the ArduPilot framework}
+
+\author[a]{Author~One}
+\author[a]{Author~Two}
+\author[a,b]{Corresponding~Author\corref{cor1}}
+\cortext[cor1]{Corresponding author.}
+\affiliation[a]{organization={School of Automation, Nanjing University},
+  addressline={Nanjing, China}}
+\affiliation[b]{organization={(Corresponding affiliation)}}
+
+\begin{abstract}
+Fully-tilting hexacopters combine the hover capability of a multirotor with
+the efficient cruise of a fixed-wing aircraft, but the continuous transfer of
+lift between rotors and wing during conversion makes their full-envelope
+control difficult. Production autopilots, including the stock ArduPilot
+QuadPlane, address this problem with a switched multirotor/fixed-wing
+architecture and an open-loop, fixed-rate tilt schedule, which can induce
+altitude loss, attitude transients, and a large tuning burden. This paper does
+not claim to invent unified control; rather, it targets three issues that
+remain open for the \emph{fully-tilting hexacopter}, a strongly over-actuated
+configuration with six independently tilting rotors. First, a time-varying
+control-allocation layer is developed around the \emph{attainable wrench set}
+(AWS), whose inscribed-sphere radius is evaluated online along the
+transition to detect saturation and redistribute the six throttle commands,
+six tilt angles, and the aerodynamic control surfaces. Second, a
+corridor-constrained optimal control problem (OCP) generates the
+forward and backward conversion reference, and a single unified model
+predictive controller (MPC) tracks it across the whole envelope with zero mode
+switches; an AWS-margin feasibility signal is defined to trigger conservative
+re-planning if the manoeuvre becomes infeasible, although this path was not
+entered in the tested envelope because the constrained allocator kept a
+positive margin. A bounded, model-free position-error
+integral rejects constant plant mismatch without the instability of a
+model-based disturbance observer. Third, the complete pipeline is released
+as an open, reproducible software-in-the-loop (SITL) companion benchmark built
+in the ArduPilot framework for a \SI{30}{\kilogram} vehicle, and is compared
+under a standardized scenario matrix against the \emph{stock ArduPilot native
+firmware} (unmodified QuadPlane tilt-rotor controller). The conversion
+corridor enforces a physically correct fixed-wing cruise: above a
+$20$\,m/s threshold the nacelles fully tilt to $\beta=90^\circ$ and the wing
+carries all lift, rather than holding an intermediate 60--80$^\circ$ tilt. In
+plant-truth simulation the controller completes the full hover--cruise--hover
+mission with zero mode switches, peak attitude below $17^\circ$,
+forward/backward conversions of 14.0/25.0\,s and 20.6/35.8\,kJ of rotor
+induced energy, and passes all nine truth checks in eight fixed robustness
+scenarios (gust, steady crosswind, $+15\%$ mass, CG offset,
+thrust/surface/inertia mismatch) and a 20-run Monte-Carlo campaign. The
+native ArduPilot baseline is flown in the same SITL environment from its
+binary flight log; the proposed controller does not claim tracking
+superiority, and its demonstrated value is
+the zero-switch unified structure, explicit constraint handling, the
+physically correct full-tilt fixed-wing cruise, and the
+feasibility guarantee of the corridor. Removing the corridor destabilizes the
+backward leg, raising its altitude deviation from $1.39$ to $7.0$~m and its
+energy from $35.8$ to $45.6$~kJ and failing the truth checks. The inner QP runs
+at a mean of $0.4$~ms and a 99th percentile below $1.6$~ms against a $30$~ms
+period, with the C++ allocator at $\sim 41\,\mu$s. The benchmark, parameters,
+and scenario files are provided to make the study reproducible and to serve as
+a common baseline for future convertible-aircraft controllers.
+\end{abstract}
+
+\begin{keyword}
+Tilt-rotor hexacopter \sep Model predictive control \sep Control allocation
+\sep Attainable wrench set \sep Conversion corridor \sep ArduPilot SITL
+\end{keyword}
+
+\end{frontmatter}
+
+% =====================================================================
+\section{Introduction}\label{sec:intro}
+
+Convertible vertical take-off and landing (VTOL) unmanned aerial vehicles
+(UAVs) extend the endurance of multirotors by adding a lifting wing, and
+improve the versatility of fixed-wing aircraft by permitting hover. Among the
+many convertible layouts reviewed by Ducard and Allenspach~\cite{ducard2021review},
+the \emph{tilt-rotor} family rotates the propulsion units between a vertical
+(hover) and a horizontal (cruise) orientation. This paper studies a
+\emph{fully-tilting hexacopter}: six rotors are each mounted on an
+independently actuated nacelle, rotating about the spanwise axis from
+\SI{0}{\degree} (thrust vertical) to \SI{90}{\degree} (thrust horizontal),
+while a fixed wing and conventional tail surfaces provide lift and control in
+cruise. The vehicle considered has a maximum take-off mass of
+\SI{30}{\kilogram}.
+
+The principal difficulty of such aircraft is the conversion corridor. During
+forward transition the rotors must tilt forward to gain airspeed while the wing
+progressively carries the weight; during backward transition the wing unloads
+while the rotors must re-establish vertical lift. Neither extreme is
+problematic, but the intermediate region combines rapidly changing control
+authority, propeller-wing aerodynamic interaction, and near-saturation
+actuators. The autopilot must simultaneously avoid the low-speed stall
+boundary and the high-speed power/load boundary, while tracking a feasible
+attitude and altitude profile.
+
+The architecture used by the open-source ArduPilot autopilot is
+representative of production practice. In its QuadPlane framework, a
+multirotor controller and a fixed-wing controller are switched in and out, and
+the tilt servos are driven through an open-loop schedule with a fixed tilt
+rate~\cite{ardupilot2024tilt,ardupilot2024transitions}. This is robust and
+well tested, but it has three structural drawbacks: (i) the controller is
+discontinuous across the envelope, which produces transients at the switching
+points; (ii) the tilt schedule is fixed a priori and is not adapted to wind,
+mass, or actuator saturation; and (iii) all tilt servos are treated as a
+single synchronized logical tilt, which does not exploit the independent
+per-rotor tilting authority of a fully-tilting hexacopter.
+
+A large body of academic work has already addressed unified, full-envelope
+control. Bauersfeld \emph{et al.}~\cite{bauersfeld2021mpc} demonstrated, in
+outdoor flight, a model predictive controller that accepts a pilot velocity
+command and directly computes rotor speeds and tilt angles across the entire
+envelope. Allenspach and Ducard~\cite{allenspach2021nmpc} combined a unified
+nonlinear MPC (NMPC) with multi-stage control allocation on a real
+propeller-tilting UAV; Rohr \emph{et al.}~\cite{rohr2021nmpc} used NMPC for
+rapid tilt-wing transitions; Mancinelli \emph{et al.}~\cite{mancinelli2025unified}
+validated a unified incremental nonlinear controller with angle-of-attack
+protection on a dual-axis tilting quad-plane; and Chen \emph{et
+al.}~\cite{chen2024unified} reported a switching-free unified MPC. Incremental
+nonlinear dynamic inversion (INDI) offers a closely related, model-robust
+alternative~\cite{smeur2020incremental,smeur2018cascaded,smeur2016adaptive,wang2019stability},
+and has been applied to tailsitters and tilt-rotors. Consequently, the
+\emph{concept} of unified control is not novel and is not claimed as a
+contribution here.
+
+Three gaps nevertheless remain. First, almost all unified controllers target
+quad-scale tilt-rotors, tilt-wings, or tailsitters; the fully-tilting
+hexacopter, six rotors and six tilt servos plus four control surfaces (two
+ailerons and two V-tail ruddervators), i.e. sixteen actuators for six degrees
+of freedom, has a strongly time-varying,
+heavily redundant control-allocation problem that has mostly been studied for
+hover fault tolerance rather than across the full envelope. Second, optimal
+transition scheduling within a conversion corridor has been developed for
+manned tilt-rotors and tilt-wings, but is rarely coupled, in closed loop, with
+the real-time feasible-wrench information of the tracking controller. Third,
+although software-in-the-loop (SITL) augmentation and benchmarking of open
+autopilots has been shown for fixed-wing and conventional multirotors, no
+open, reproducible SITL benchmark currently covers a fully-tilting hexacopter
+with a unified controller and a corridor-optimal transition.
+
+This paper therefore makes three targeted contributions.
+
+\begin{enumerate}[label=(\roman*),leftmargin=2.2em]
+  \item \textbf{Time-varying AWS allocation.} A control-allocation layer is
+  formulated for the fully-tilting hexacopter in which the control
+  effectiveness matrix is updated online with tilt angle and airspeed, and a
+  constrained QP allocates the virtual wrench to the sixteen actuators with
+  position and rate limits as hard constraints. The attainable wrench set
+  (AWS) and its inscribed-sphere radius are evaluated along the transition to
+  provide a scalar feasibility margin, and the architecture specifies a
+  wrench-hedging action when that margin vanishes.
+  \item \textbf{Corridor-feasible reference and unified MPC.} A
+  corridor-constrained trim optimization (computed offline) supplies a
+  feasible-by-construction forward and backward conversion reference, and a
+  single unified model predictive controller tracks it across the whole
+  envelope with zero mode switches. A feasibility signal is defined to couple
+  the two layers and trigger conservative re-planning; this re-planning path is
+  designed and specified but is not triggered in the tested envelope, and the
+  demonstrated online feasibility comes from the constrained QP and the
+  corridor reference.
+  \item \textbf{Open SITL companion benchmark.} The method is implemented as a
+  companion controller around a high-rate nonlinear plant in the ArduPilot
+  framework for a \SI{30}{\kilogram} fully-tilting hexacopter and released,
+  with parameters, scenarios, and the \emph{stock ArduPilot native firmware}
+  as the comparison baseline, as a
+  reproducible benchmark. The proposed-controller results are generated
+  by the companion plant of the same physics model used by the ArduPilot JSON
+  SITL backend; the native-firmware baseline is run on the actual
+  \texttt{arduplane} SITL binary and parsed from its binary flight log, so
+  both sets of curves are SITL-derived. A single-stick velocity command is included as a design property,
+  with the number of mode switches as its evaluated metric.
+\end{enumerate}
+
+The remainder of the paper is organized as follows. Section~2 reviews related
+work. Section~3 describes the platform and the two models used for control
+and simulation. Section~4 develops the time-varying AWS allocation, Section~5
+the corridor OCP, and Section~6 the unified MPC and the two-layer
+integration. Section~7 details the ArduPilot SITL implementation, Section~8
+defines the simulation campaign, and Section~9 discusses limitations.
+Section~10 concludes.
+
+% =====================================================================
+\section{Related work}\label{sec:related}
+
+\subsection{Unified full-envelope control of convertible aircraft}
+Two controller families dominate. Optimization-based methods compute
+attitude, rotor speeds, and tilt angles in a single predictive
+problem~\cite{bauersfeld2021mpc,allenspach2021nmpc,rohr2021nmpc,chen2024unified}.
+Bauersfeld \emph{et al.}~\cite{bauersfeld2021mpc} is the most direct prior
+work: a pilot velocity command is mapped to rotor thrusts and tilt angles by
+an MPC over the entire envelope, with outdoor flight results and an explicit
+comparison against a binary-switch strategy. Sensor-based incremental methods
+(INDI) instead linearize about the current state and use angular acceleration
+feedback, which makes them robust to aerodynamic uncertainty; they have been
+validated on tailsitters, tilt-rotors, and dual-axis
+tilters~\cite{smeur2020incremental,smeur2018cascaded,smeur2016adaptive,wang2019stability,mancinelli2025unified,bhardwaj2018integrated,lovell2023tailsitter,sun2021incremental}.
+Other recent approaches include iterative-LQR MPC for tilt-propulsion
+eVTOL~\cite{xia2022ilqr}, robust allocation for a quad-plane
+RAMC~\cite{cardoso2020ramc}, generic NMPC for multirotors with fixed and tilted
+propellers~\cite{bicego2020nmpc}, unified attitude control in
+ACC~\cite{belak2023unified}, MPC for a tilt-rotor tricopter~\cite{prach2018mpc},
+neural-network approximations of MPC~\cite{ducard2024neural,jiang2022nnmpc},
+dynamic-inversion transition
+controllers~\cite{saetti2025dynamic,jeong2025longitudinal,li2026asynchronous},
+and composite tilt-rotor modelling~\cite{liang2024composite}. Feasible control
+allocation has been coupled with NMPC for a tiltrotor
+quadrotor~\cite{shayan2024nmpc}, the closest predictive-allocation precedent;
+that work targets a four-rotor machine with a fixed envelope and neither
+constructs a conversion corridor nor closes a feasibility loop to an outer
+planner. The present work uses MPC because it handles actuator constraints and
+the conversion corridor naturally; the novelty is not the predictive control
+itself but its coupling with the real-time AWS and its realization on a
+fully-tilting hexacopter with a corridor-feasible reference.
+
+\subsection{Transition scheduling and the conversion corridor}
+The conversion corridor delimits the safe (airspeed, tilt) combinations.
+Yu \emph{et al.}~\cite{yu2022pilot} optimized the XV-15 conversion to
+alleviate pilot workload, explicitly including corridor constraints, power,
+attitude, and a multi-objective cost. Kang \emph{et al.}~\cite{kang2024minimum}
+computed minimum-energy conversion within a predefined corridor; May
+\emph{et al.}~\cite{may2025backward} studied backward transition under
+failure; and Milz \emph{et al.} examined unified pilot control and simplified
+vehicle operations~\cite{milz2026taming} and robust NDI for a tandem
+tilt-wing~\cite{milz2024tandem}. Tilt-wing cargo optimization was treated
+in~\cite{chen2020tiltwing}; forward and backward transition trajectory
+optimization with constant-altitude and stall constraints was studied
+in~\cite{panish2024tiltwing}; and a multi-objective constrained tilt corridor
+with a dynamic-imbalance and power boundary was proposed for a compound
+tilt-rotor in~\cite{zhuang2025mctc}. These studies establish corridor-optimal
+scheduling, but generally treat the corridor as a fixed offline envelope and
+do not feed the tracking controller's instantaneous feasibility back to the
+planner.
+
+\subsection{Control allocation for over-actuated tilt multirotors}
+Control allocation maps a desired virtual wrench to redundant actuators under
+saturation; the field is reviewed in~\cite{johansen2013survey,blaha2023survey},
+with adaptive constrained variants in~\cite{tohidi2020adaptive}. Tilted and
+tilting hexacopters have been studied mainly for hover fault tolerance and
+full actuation: Giribet \emph{et al.}~\cite{giribet2016tilted} designed a
+tilted-rotor hexacopter for fault tolerance; Pose \emph{et al.}~\cite{pose2017hexacopter}
+analysed hexacopter allocation after rotor loss; fast allocation for a heavily
+over-actuated quad tilt-rotor was developed in~\cite{santos2021fast}; and
+sliding-mode, self-scheduled, robust, and non-negative-least-squares allocators
+were reported
+in~\cite{nguyen2022smc,nguyen2018selfscheduled,baldini2023ftc,zheng2026safety}.
+Yang \emph{et al.}~\cite{yang2026biaxial} used the inscribed-sphere metric of
+the AWS to preserve full six-degree-of-freedom actuation of a biaxial-tilt
+hexacopter under passive fault tolerance; Mancinelli
+\emph{et al.}~\cite{mancinelli2025ftc} addressed over-actuated hybrid VTOL
+fault tolerance; and controllability after a single rotor failure was analysed
+in~\cite{du2015controllability}. The AWS metric is therefore established, but
+it has been used as an offline or hover-only diagnostic. We evaluate it
+\emph{online along the full transition} and close the loop to the planner.
+
+\subsection{Open-source autopilots and SITL validation}
+Open flight stacks are surveyed in~\cite{aliane2024opensource}. ArduPilot has
+been used as a platform for adaptive augmentation with SITL
+validation~\cite{baldi2022ardupilot}, adaptive formation
+flight~\cite{yang2019formation}, and digital-twin
+modelling~\cite{valencia2025digitaltwin}; the PX4 stack was used for fractional
+control of an omnidirectional hexarotor~\cite{deoca2025fractional}; HIL and
+VTOL swarm simulation platforms were presented
+in~\cite{dai2021rflysim,sethi2022swarm}. None of these covers a fully-tilting
+hexacopter with a unified, corridor-aware controller. Our benchmark fills this
+gap and is deliberately built on the widely deployed ArduPilot SITL.
+
+\subsection{Positioning relative to the closest prior work}
+Relative to Bauersfeld \emph{et al.}~\cite{bauersfeld2021mpc}, the differences
+are: (i) the platform is a fully-tilting hexacopter (sixteen actuators) rather
+than a quad-scale tilt-rotor; (ii) the allocation is made explicitly
+time-varying and feasibility-aware through the AWS; and (iii) the result is an
+open ArduPilot SITL benchmark rather than a proprietary flight stack. Relative
+to Yu \emph{et al.}~\cite{yu2022pilot}, the corridor OCP is closed-loop with
+the controller's real-time feasibility margin rather than being an offline
+manned-rotor optimization.
+
+% =====================================================================
+\section{Platform and dynamical model}\label{sec:model}
+
+\subsection{The fully-tilting hexacopter}\label{sec:config}

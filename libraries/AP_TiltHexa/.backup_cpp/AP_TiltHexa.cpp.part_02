@@ -1,3 +1,40 @@
+    _traj_hold_latched(false),
+    _indi_cycle_us(0)
+{
+    AP_Param::setup_object_defaults(this, var_info);
+
+    memset(&_geom, 0, sizeof(_geom));
+    memset(&_B, 0, sizeof(_B));
+    memset(_accel_f, 0, sizeof(_accel_f));
+    memset(_gyro_f, 0, sizeof(_gyro_f));
+    memset(_gyro_dot_f, 0, sizeof(_gyro_dot_f));
+    memset(_u_f_flat, 0, sizeof(_u_f_flat));
+    memset(_pos_actual, 0, sizeof(_pos_actual));
+    memset(_vel_actual, 0, sizeof(_vel_actual));
+    memset(&_w_f_prev, 0, sizeof(_w_f_prev));
+    memset(&_w_f_est, 0, sizeof(_w_f_est));
+    memset(&_u_prev, 0, sizeof(_u_prev));
+    memset(&_u_prev_vec, 0, sizeof(_u_prev_vec));
+    memset(&_R_bn, 0, sizeof(_R_bn));
+    memset(&_traj_ref, 0, sizeof(_traj_ref));
+    memset(&_indi_in, 0, sizeof(_indi_in));
+    memset(&_indi_out, 0, sizeof(_indi_out));
+    memset(&_alloc_in, 0, sizeof(_alloc_in));
+    memset(&_alloc_out, 0, sizeof(_alloc_out));
+
+    _R_bn[0] = 1.0f; _R_bn[4] = 1.0f; _R_bn[8] = 1.0f; // identity DCM
+
+    // Init BA surface derivatives from seed
+    _BA_params[THX_BA_CL_DA]    = THX_SEED_CL_DA;
+    _BA_params[THX_BA_CL_DA_I]  = THX_SEED_CL_DA_ROLL;
+    _BA_params[THX_BA_CM_DA]    = THX_SEED_CM_DA;
+    _BA_params[THX_BA_CN_DA]    = THX_SEED_CN_DA;
+    _BA_params[THX_BA_CL_DRV]   = THX_SEED_CL_DRV;
+    _BA_params[THX_BA_CL_DRV_I] = THX_SEED_CL_DRV_ROLL;
+    _BA_params[THX_BA_CM_DRV]   = THX_SEED_CM_DRV;
+    _BA_params[THX_BA_CN_DRV]   = THX_SEED_CN_DRV;
+}
+
 // ---- Initialization ----
 
 void AP_TiltHexa::init(void)
@@ -14,7 +51,8 @@ void AP_TiltHexa::init(void)
     _initialised = true;
 }
 
-void AP_TiltHexa::compute_motor_geometry(void) {
+void AP_TiltHexa::compute_motor_geometry(void)
+{
     float L  = _arm_l.get();
     float zr = _rotor_z.get();
     float kQ = _kq.get();
@@ -210,40 +248,3 @@ void AP_TiltHexa::output(void)
             }
         }
 
-        // Position (NED)
-        {
-            Vector3f pos_ned;
-            if (AP::ahrs().get_relative_position_NED_origin_float(pos_ned)) {
-                sensor.p_ned[0] = pos_ned.x;
-                sensor.p_ned[1] = pos_ned.y;
-                sensor.p_ned[2] = pos_ned.z;
-            }
-        }
-
-        // Airspeed
-        {
-            float airspeed = 0.0f;
-            bool airspeed_valid = false;
-            if (AP::airspeed() && AP::airspeed()->use()) {
-                airspeed = AP::airspeed()->get_airspeed();
-                airspeed_valid = true;
-            }
-            sensor.airspeed = airspeed;
-            sensor.airspeed_valid = airspeed_valid;
-        }
-
-        // Timestamp for Pipeline solve-time measurement
-        sensor.micros_now = AP_HAL::micros();
-
-        sensor.armed = hal.util->get_soft_armed();
-
-        // ---- Build reference from trajectory ----
-        TiltHexa_Reference ref;
-        memset(&ref, 0, sizeof(ref));
-
-        if (_traj_active && _mission.get() > 0 && _traj_phase >= THX_PHASE_TAKEOFF) {
-            // Use trajectory-generated absolute reference
-            ref.p_r[0] = _traj_ref.p_N_m;
-            ref.p_r[1] = _traj_ref.p_E_m;
-            ref.p_r[2] = _traj_ref.p_D_m;
-            ref.v_r[0] = _traj_ref.v_N_m_s;

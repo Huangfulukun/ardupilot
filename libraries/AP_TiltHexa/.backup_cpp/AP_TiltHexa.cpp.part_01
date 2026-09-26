@@ -87,7 +87,6 @@
 
     // @Param: E3_DUR
     // @DisplayName: E3 hold duration
-    // @Description: E3 stress injection hold duration
     // @Units: s
     // @Range: 1 10
     // @User: Advanced
@@ -196,6 +195,43 @@
     // @User: Advanced
     AP_GROUPINFO("FW_BETA", 56, AP_TiltHexa, _fw_target_beta, 90.0f),
 
+    // @Param: FW_T_N
+    // @DisplayName: FW cruise per-rotor forward thrust trim (N)
+    // @Description: In pure wing-borne cruise (fw_frac~1) the rotor thrust is
+    // overridden from the INDI hover-level value to this forward thrust, which
+    // compensates cruise drag (offline trim_map at V=20 m/s). A speed-error
+    // term (FW_KSP) is added on top. 0 keeps the allocator thrust.
+    // @Units: N
+    // @Range: 0 200
+    // @User: Advanced
+    AP_GROUPINFO("FW_T_N", 57, AP_TiltHexa, _fw_thr_trim_n, 17.5f),
+
+    // @Param: FW_DRV_DEG
+    // @DisplayName: FW cruise symmetric vtail/elevator trim (deg)
+    // @Description: Symmetric ruddervator deflection that trims the wing-borne
+    // pitch moment at the FW trim (offline trim_map). An altitude-error term
+    // (FW_KALT) is added on top to hold the cruise altitude with the wing.
+    // @Units: deg
+    // @Range: -45 45
+    // @User: Advanced
+    AP_GROUPINFO("FW_DRV_DEG", 58, AP_TiltHexa, _fw_drv_trim_deg, -19.0f),
+
+    // @Param: FW_KSP
+    // @DisplayName: FW cruise speed-loop gain (N per m/s)
+    // @Description: Per-rotor thrust correction = FW_KSP * (V_cruise - Vnow) in
+    // wing-borne cruise; closes the airspeed loop through the forward thrust.
+    // @Range: 0 20
+    // @User: Advanced
+    AP_GROUPINFO("FW_KSP", 59, AP_TiltHexa, _fw_ksp, 3.0f),
+
+    // @Param: FW_KALT
+    // @DisplayName: FW cruise altitude-to-elevator gain (deg per m)
+    // @Description: Symmetric vtail correction = FW_KALT * (alt_ref - alt) in
+    // wing-borne cruise; closes the altitude loop through the wing lift.
+    // @Range: 0 10
+    // @User: Advanced
+    AP_GROUPINFO("FW_KALT", 60, AP_TiltHexa, _fw_kalt_deg_m, 1.5f),
+
     AP_GROUPEND
 };
 
@@ -211,41 +247,3 @@ AP_TiltHexa::AP_TiltHexa() :
     _traj_phase(0),
     _traj_t(0.0f),
     _traj_yaw_start_rad(0.0f),
-    _traj_hold_latched(false),
-    _indi_cycle_us(0)
-{
-    AP_Param::setup_object_defaults(this, var_info);
-
-    memset(&_geom, 0, sizeof(_geom));
-    memset(&_B, 0, sizeof(_B));
-    memset(_accel_f, 0, sizeof(_accel_f));
-    memset(_gyro_f, 0, sizeof(_gyro_f));
-    memset(_gyro_dot_f, 0, sizeof(_gyro_dot_f));
-    memset(_u_f_flat, 0, sizeof(_u_f_flat));
-    memset(_pos_actual, 0, sizeof(_pos_actual));
-    memset(_vel_actual, 0, sizeof(_vel_actual));
-    memset(&_w_f_prev, 0, sizeof(_w_f_prev));
-    memset(&_w_f_est, 0, sizeof(_w_f_est));
-    memset(&_u_prev, 0, sizeof(_u_prev));
-    memset(_u_prev_vec, 0, sizeof(_u_prev_vec));
-    memset(_R_bn, 0, sizeof(_R_bn));
-    memset(&_traj_ref, 0, sizeof(_traj_ref));
-    memset(&_indi_in, 0, sizeof(_indi_in));
-    memset(&_indi_out, 0, sizeof(_indi_out));
-    memset(&_alloc_in, 0, sizeof(_alloc_in));
-    memset(&_alloc_out, 0, sizeof(_alloc_out));
-
-    _R_bn[0] = 1.0f; _R_bn[4] = 1.0f; _R_bn[8] = 1.0f; // identity DCM
-
-    // Init BA surface derivatives from seed
-    _BA_params[THX_BA_CL_DA]    = THX_SEED_CL_DA;
-    _BA_params[THX_BA_CL_DA_I]  = THX_SEED_CL_DA_ROLL;
-    _BA_params[THX_BA_CM_DA]    = THX_SEED_CM_DA;
-    _BA_params[THX_BA_CN_DA]    = THX_SEED_CN_DA;
-    _BA_params[THX_BA_CL_DRV]   = THX_SEED_CL_DRV;
-    _BA_params[THX_BA_CL_DRV_I] = THX_SEED_CL_DRV_ROLL;
-    _BA_params[THX_BA_CM_DRV]   = THX_SEED_CM_DRV;
-    _BA_params[THX_BA_CN_DRV]   = THX_SEED_CN_DRV;
-}
-
-

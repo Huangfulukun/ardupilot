@@ -1,0 +1,320 @@
+The vehicle has six rotors on booms of
+radius $R_r=\SI{0.70}{\meter}$ about the centre of mass. Each rotor is carried
+by a nacelle that rotates independently about the body spanwise axis
+$y_b$. The per-nacelle tilt angle $\delta_i$ (the same nacelle tilt angle
+denoted $\beta$ in the rest of the paper; all rotors share a common tilt on
+the converted schedule) is measured from the vertical:
+$\delta_i=0$ in hover (thrust along $+z_b$) and $\delta_i=\pi/2$ in cruise
+(thrust along $+x_b$). A fixed wing with two independent ailerons and a
+V-tail with two ruddervators (mixed elevator/rudder action) provide cruise
+lift and control. The six throttles, six independent tilt servos, and four
+surfaces give sixteen control inputs for six DOF. The nominal parameters are
+given in Table~\ref{tab:params}. Throughout the paper the dynamics are written
+in an inertial $z$-up convention for clarity; the implementation uses a
+body FRD convention in which the vertical rotor force is $-T\cos\delta$, which
+is a sign-only difference.
+
+\begin{table}[t]
+\centering
+\caption{Nominal parameters of the \SI{30}{\kilogram} fully-tilting hexacopter.}
+\label{tab:params}
+\small
+\begin{tabular}{lll}
+\toprule
+Symbol & Value & Description \\
+\midrule
+$m$                  & \SI{30}{\kilogram}            & Maximum take-off mass \\
+$W=mg$               & \SI{294.2}{\newton}           & Weight \\
+$b$                  & \SI{3.50}{\meter}             & Wing span \\
+$S$                  & \SI{1.26}{\meter\squared}     & Wing area \\
+$AR=b^2/S$           & 9.72                          & Aspect ratio \\
+$\bar c=S/b$         & \SI{0.36}{\meter}             & Mean aerodynamic chord \\
+$D_p$                & \SI{0.70}{\meter}             & Propeller diameter \\
+$A_d=\pi D_p^2/4$    & \SI{0.385}{\meter\squared}    & Rotor disk area (each) \\
+$T_{i,\max}$         & \SI{95}{\newton}              & Per-rotor max thrust ($T/W=1.94$) \\
+$T_{i,\mathrm{hov}}$ & \SI{49.0}{\newton}            & Per-rotor hover thrust ($W/6$) \\
+$P_{\mathrm{ind,hov}}$ & \SI{2.12}{\kilo\watt}        & Ideal induced hover power (all rotors) \\
+$V_c$                & \SI{20}{\meter\per\second}    & Test cruise speed (25 nominal) \\
+$V_s$                & \SI{16.2}{\meter\per\second}  & Wing-borne stall speed ($C_{L,\max}=1.45$) \\
+$V_{\max}$           & \SI{25}{\meter\per\second}    & Nominal maximum speed \\
+$q_c=\tfrac12\rho V_c^2$ & \SI{245}{\pascal}         & Cruise dynamic pressure ($V_c=20$) \\
+$\dot\delta_{\max}$  & \SI{60}{\degree\per\second}  & Independent tilt rate limit \\
+$R_r$                & \SI{0.80}{\meter}             & Rotor boom radius \\
+$I_{xx},I_{yy},I_{zz}$ & $4.27,\,6.64,\,9.58$ \si{\kilogram\meter\squared} & Body inertias \\
+Tail                 & V-tail, $35^\circ$ dihedral, $S_t=0.18$ m$^2$ & Two ruddervators ($\pm25^\circ$) \\
+\midrule
+Actuators            & $6$ throttle $+\,6$ tilt $+\,4$ surfaces & 16 inputs, 6 DOF \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Rigid-body dynamics}\label{sec:rigid}
+Let $p\in\mathbb{R}^3$ and $v$ denote position and velocity in the inertial
+frame, $\eta=(\phi,\theta,\psi)$ the Euler angles, and $\omega^b$ the body
+rates. With $R_b^I$ the body-to-inertial rotation matrix,
+\begin{equation}
+\dot p = v,\qquad
+m\dot v = mg_0 + R_b^I\!\left(F_r+F_a\right),\qquad
+\dot\eta = H(\eta)\,\omega^b,\qquad
+J\dot\omega^b = -\omega^b\times J\omega^b + \tau_r+\tau_a ,
+\label{eq:rigid}
+\end{equation}
+where $g_0=[0,0,-g]^\top$, $F_r,\tau_r$ are the rotor forces and moments,
+$F_a,\tau_a$ the aerodynamic forces and moments, and $J=\mathrm{diag}(I_{xx},I_{yy},I_{zz})$.
+
+\subsection{Rotor and independent tilt model}\label{sec:rotor}
+Rotor $i$ at body position $r_i=[x_i,y_i,z_i]^\top$ produces thrust $T_i$
+along its tilted axis
+\begin{equation}
+n_i(\delta_i)=[\sin\delta_i,\ 0,\ \cos\delta_i]^\top .
+\label{eq:naxis}
+\end{equation}
+The aggregate rotor force and moment are
+\begin{equation}
+F_r=\sum_{i=1}^{6} T_i\, n_i(\delta_i), \qquad
+\tau_r=\sum_{i=1}^{6}\left[r_i\times T_i n_i(\delta_i)
+   + \sigma_i \kappa T_i\, n_i(\delta_i)\right],
+\label{eq:rotor}
+\end{equation}
+where $\sigma_i\in\{+1,-1\}$ is the rotor spin direction and $\kappa$ is the
+thrust-to-reaction-torque coefficient. Throttle and tilt are rate limited,
+\begin{equation}
+0\le T_i\le T_{i,\max},\quad |\dot T_i|\le \dot T_{\max},\quad
+0\le\delta_i\le\pi/2,\quad |\dot\delta_i|\le\dot\delta_{\max}.
+\label{eq:actlim}
+\end{equation}
+Independence of the six $\delta_i$ is the key difference from a
+synchronized-tilt or front-tilt machine: differential tilt generates direct
+pitch and lift-redistribution moments, and a failed rotor can be isolated by
+re-tilting the remaining healthy rotors.
+
+\subsection{Aerodynamic and slipstream model}\label{sec:aero}
+The wing and tail are modelled with stability derivatives,
+\begin{equation}
+F_a=\tfrac12\rho V^2 S
+ \begin{bmatrix} -C_D(\alpha,\delta)\\ C_Y(\beta,\delta_r)\\ -C_L(\alpha,\delta)\end{bmatrix},
+\qquad
+\tau_a=\tfrac12\rho V^2 S
+ \begin{bmatrix} b\, C_l(\beta,p,\delta_a)\\ \bar c\, C_m(\alpha,q,\delta_e)\\ b\, C_n(\beta,r,\delta_r)\end{bmatrix},
+\label{eq:aero}
+\end{equation}
+with $C_L=C_{L_\alpha}\alpha+C_{L_{\delta_e}}\delta_e$ and a quadratic drag
+polar $C_D=C_{D_0}+k C_L^2$. Because the rotors blow the wing during
+conversion, an effective slipstream velocity and an augmented
+$C_{L,\max}(\delta)$ are used, following the propeller-wing interaction
+modelling common in tilt-wing studies~\cite{rohr2021nmpc,mancinelli2025unified}.
+Aerodynamic control authority scales with $q=\tfrac12\rho V^2$ and therefore
+vanishes in hover, where the rotors provide all control.
+
+\subsection{Two-model strategy}\label{sec:twomodel}
+Two models are deliberately maintained. A low-order model
+(Eqs.~\eqref{eq:rigid}--\eqref{eq:aero}) with coarse stability derivatives is
+used by the controller and the corridor OCP, while the ArduPilot SITL flight
+dynamics model (higher fidelity, with motor and servo dynamics) acts as the
+plant. The mismatch between the two is the principal robustness test in
+Section~\ref{sec:campaign}; it is not hidden by using the same model for
+control and simulation.
+
+% =====================================================================
+\section{Time-varying attainable-wrench-set control allocation}\label{sec:aws}
+
+\subsection{Control effectiveness matrix}\label{sec:Bmatrix}
+Collect the virtual wrench and the actuators as
+\begin{equation}
+w=\begin{bmatrix}F\\ \tau\end{bmatrix}\in\mathbb{R}^{6},\qquad
+u=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
+\label{eq:wu}
+\end{equation}
+Because the rotor force contains products $T_i\sin\delta_i$ and
+$T_i\cos\delta_i$, the mapping is nonlinear. Linearizing about the operating
+point $(T_0,\delta_0,V)$ gives
+\begin{equation}
+w \approx w_0 + B(\delta_0,V)\,\Delta u,\qquad
+B(\delta_0,V)=\begin{bmatrix}
+B_{FT}(\delta_0) & B_{F\delta}(\delta_0) & 0\\
+B_{\tau T}(\delta_0) & B_{\tau\delta}(\delta_0) & B_{\tau s}(V)
+\end{bmatrix},
+\label{eq:B}
+\end{equation}
+where the surface block $B_{\tau s}(V)\propto q(V)$ grows with airspeed and the
+rotor blocks rotate continuously with $\delta_0$. At hover $B_{\tau s}\approx0$
+and the rotors act in all six channels; in cruise $B_{\tau s}$ dominates the
+moment channels while the rotors act mainly along $x_b$. The matrix is
+re-evaluated at every control step.
+
+\subsection{Attainable wrench set and inscribed-sphere metric}\label{sec:awsmetric}
+The attainable wrench set at the current operating point is
+\begin{equation}
+\mathcal{M}(\delta,V)=\bigl\{w:\ w=w_0+B(\delta,V)\Delta u,\
+\underline u\le u\le\bar u,\ |\dot u|\le\dot u_{\max}\bigr\},
+\label{eq:AWS}
+\end{equation}
+a bounded six-dimensional polytope. Following the passive fault-tolerance
+construction of~\cite{yang2026biaxial}, its size is summarized by the radius
+of the largest wrench ball centered at the nominal $w_0$ that it contains,
+\begin{equation}
+\rho(\delta,V)=\max_{r\ge0}\ r\quad\text{s.t.}\quad
+\mathcal{B}_r(w_0)\subseteq\mathcal{M}(\delta,V).
+\label{eq:rho}
+\end{equation}
+A large $\rho$ means ample authority in every direction; $\rho\to0$ signals
+incipient saturation; and a commanded wrench with
+$\|w_{\mathrm{cmd}}-w_0\|_2>\rho$ is infeasible. In this work the normalized
+minimum singular value of the effectiveness matrix is used as a scalar proxy
+for $\rho$ and is evaluated along the corridor to characterize authority
+(Fig.~\ref{fig:aws}); the constrained QP of Eq.~\eqref{eq:alloc} enforces the
+exact actuator limits online, so the explicit inscribed-sphere LP is not on
+the critical real-time path.
+
+\subsection{Reachable force and torque polytopes}\label{sec:afms_poly}
+To characterise how the conversion tilt reshapes the vehicle's authority, the
+full attainable force and moment polytopes of Eq.~\eqref{eq:AWS} are computed
+offline by linear-programming support functions over the six rotor thrusts,
+six tilt angles, and four control surfaces, at each nacelle tilt
+$\beta\in\{0^\circ,30^\circ,45^\circ,60^\circ,75^\circ,90^\circ\}$ and
+airspeed $V\in\{0,10,15,20\}$~m/s.  Figure~\ref{fig:afms_poly} (left) shows the
+$F_x$--$F_z$ reachable-force fan: at $\beta=0^\circ$ (hover) all $570$~N of
+maximum static thrust is vertical and forward force is zero; at $\beta=90^\circ$
+(fixed-wing) all thrust is horizontal and the rotors contribute no lift (the
+wing carries the weight); at intermediate tilts the force vector rotates and
+both components are available (at $\beta=45^\circ$ each component reaches
+$403$~N).  Figure~\ref{fig:afms_poly} (right) shows the nested $M_x$--$M_y$ moment
+polytopes at $V=15$~m/s: the roll authority $|M_x|$ shrinks from
+$183$~N$\cdot$m at $\beta=0^\circ$ to $41$~N$\cdot$m at $\beta=90^\circ$
+(horizontal thrust removes the rotor moment arm), and the polytope area
+contracts by a factor of $9.8$.  The ailerons recover roll authority as speed
+builds: at $\beta=90^\circ$ the available $|M_x|$ rises from $9.7$~N$\cdot$m
+at $V=0$ to $64.4$~N$\cdot$m at $V=20$~m/s, which is the physical reason the
+conversion corridor transfers moment generation from the differential rotors
+to the surfaces as speed increases.  The maximum available lift, forward
+force, roll moment, and pitch moment are plotted against $\beta$ in
+Fig.~\ref{fig:afms_curves}; these
+curves motivate the tilt-rate and authority constraints used by the MPC and
+confirm that the corridor trim (Section~\ref{sec:corridor}) always operates
+well inside the attainable set.
+
+\subsection{Online weighted allocation}\label{sec:alloc}
+At each fast-loop step the MPC produces $w_{\mathrm{cmd}}$. The actuator
+command solves a weighted, prioritized least-squares
+problem~\cite{johansen2013survey,blaha2023survey,tohidi2020adaptive},
+\begin{equation}
+\min_{\Delta u}\ \bigl\|\Omega_w(B\Delta u-\Delta w_{\mathrm{cmd}})\bigr\|_2^2
+ +\bigl\|\Omega_u(\Delta u-\Delta u_d)\bigr\|_2^2
+\quad\text{s.t.}\quad \underline u\le u\le\bar u,\ |\dot u|\le\dot u_{\max},
+\label{eq:alloc}
+\end{equation}
+with fixed weights $\Omega_w,\Omega_u$ chosen so that the six independent tilt
+angles are used preferentially for moment generation at low speed and the
+surfaces at high speed, consistently with the time-varying $B(\delta,V)$.
+Because the limits are hard constraints, the active-set solver redistributes
+the wrench to the healthy channels whenever an actuator reaches its bound;
+this is the mechanism that provides online load redistribution, rather than an
+explicit adaptive re-weighting. The achieved wrench and the unmet residual are
+returned at every step and used to freeze the error integral under
+saturation.
+
+\subsection{Feasibility monitoring and wrench hedging}\label{sec:hedge}
+The primary online feasibility mechanism is the constrained QP of
+Eq.~\eqref{eq:alloc}: actuator position and rate limits are hard constraints,
+so the allocated wrench is always attainable and the residual
+$w_{\mathrm{cmd}}-w_{\mathrm{ach}}$ is explicitly returned rather than silently
+clipped. In addition, the inscribed-sphere margin $\rho$ is evaluated along the
+realised trajectory as a scalar feasibility monitor. If the commanded wrench
+ball were to exceed $\rho$, a wrench-hedging projection onto the boundary of
+$\mathcal{M}$ and a request to slow the outer reference would be issued. This
+projection and the associated outer re-planning are part of the architecture
+but, as reported in Section~\ref{sec:campaign}, they were never triggered in
+the tested envelope because the corridor reference together with the
+constrained QP kept $\rho$ strictly positive; the realised minimum margin is
+reported rather than asserted. This design replaces the abrupt saturation and
+integrator wind-up of a fixed allocator and defines the signal that would
+close the two-layer loop of Section~\ref{sec:twolayer} under a more demanding
+command.
+
+% =====================================================================
+\section{Corridor-aware optimal transition scheduling}\label{sec:corridor}
+
+\subsection{Conversion corridor}\label{sec:corridorderiv}
+The lower (stall) boundary follows from the vertical force balance. With the
+rotors contributing a vertical component $\sum_i T_i\cos\delta_i$ and the wing
+providing $L=\tfrac12\rho V^2 S C_L$, the minimum sustainable speed is
+\begin{equation}
+V_{\min}(\delta)=
+\sqrt{\frac{2\,\bigl(mg-\sum_i T_{i,\max}\cos\delta\bigr)}
+{\rho\,S\,C_{L,\max}(\delta)}},
+\qquad V_{\min}=0\ \text{if }mg\le\sum_i T_{i,\max}\cos\delta .
+\label{eq:Vmin}
+\end{equation}
+For the \SI{30}{\kilogram} vehicle, $\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$
+in total. The corridor restricts incidence to a conservative
+$\alpha_{\mathrm{stall}}=13^\circ$, which gives
+$C_{L,\mathrm{stall}}=C_{L_0}+C_{L_\alpha}\alpha_{\mathrm{stall}}=1.29$;
+the resulting boundary at $\delta=90^\circ$ is $17.2$~m/s, slightly above the
+$C_{L,\max}=1.45$ wing-borne stall speed $V_s=16.2$~m/s listed in
+Table~\ref{tab:params}, because the corridor does not use the full lift
+coefficient. The upper boundary is set by the
+available power and the normal-load limit,
+\begin{equation}
+P_{\mathrm{avail}}\ge P_{\mathrm{ind}}+P_{\mathrm{prof}}+P_{\mathrm{par}}
+ +V\!\sum_i T_i\sin\delta_i,\qquad |n|\le n_{\max},
+\label{eq:Vmax}
+\end{equation}
+which defines $V_{\max}(\delta)$. The corridor is
+$\mathcal{C}=\{(\delta,V):V_{\min}(\delta)\le V\le V_{\max}(\delta)\}$; its
+nominal lower boundary is listed in Table~\ref{tab:corridor} from
+Eq.~\eqref{eq:Vmin} with the conservative, no-slipstream stall incidence
+$\alpha_{\mathrm{stall}}=13^\circ$, i.e. $C_{L,\mathrm{stall}}=1.29$ rather
+than the full $C_{L,\max}=1.45$ (a soft-stall model
+$C_L=C_{L,\max}\tanh((C_{L,0}+C_{L,\alpha}\alpha)/C_{L,\max})$ is used
+identically in the plant, the prediction model, and the corridor).
+
+\begin{table}[t]
+\centering
+\caption{Nominal lower conversion-corridor boundary for the \SI{30}{\kilogram}
+vehicle from Eq.~\eqref{eq:Vmin}, using the conservative corridor stall
+incidence $\alpha_{\mathrm{stall}}=13^\circ$ ($C_{L,\mathrm{stall}}=1.29$, no
+slipstream augmentation). The $\delta=90^\circ$ value ($17.2$~m/s) is therefore
+slightly above the $C_{L,\max}=1.45$ wing-borne stall speed $V_s=16.2$~m/s.}
+\label{tab:corridor}
+\small
+\begin{tabular}{lccccccc}
+\toprule
+Tilt $\delta$ (deg) & 0 & 15 & 30 & 45 & 60 & 75 & 90 \\
+\midrule
+$V_{\min}$ (m/s) & 0 & 0 & 0 & 0 & 3.0 & 12.1 & 17.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Forward transition reference}\label{sec:ocp}
+On a level, slow conversion the full dynamic optimal-control problem with the
+power/load/tilt-rate objective collapses to a quasi-steady minimum-thrust
+trim traversed by a jerk-limited speed law; we therefore use this explicit,
+deterministic form rather than a free-time collocation solver (a CasADi/IPOPT
+formulation~\cite{andersson2019casadi} was implemented and discarded because it
+is singular at
+$V=0$ and produces bang--bang tilt activity). A smoothstep speed S-curve
+$V(s)=V_0+(V_f-V_0)(3s^2-2s^3)$, $s=t/T_f$, with zero end jerk, prescribes the
+corridor traversal in a fixed conversion time $T_f$. At each node the
+\emph{minimum-thrust level trim} is solved from the exact longitudinal
+force-and-moment equilibrium
+\begin{equation}
+\sum_i T_i\sin\tau = D,\qquad
+\sum_i T_i\cos\tau + L = mg,\qquad
+M_y^{\mathrm{rot}}+M_y^{\mathrm{wing}}+M_y^{\mathrm{tail}}=0,
+\label{eq:trim}
+\end{equation}
+with $\tau=\beta-\theta$ the thrust-line angle from vertical, including the
+thrust-line moment and the V-tail authority, and with the wing loaded up to
+exactly what is needed (bounded by $C_{L,\max}$); the rotors supply the
+residual lift and the forward force. The node solution
+$(\beta,T,\theta,\alpha)$ and the body-frame feed-forward wrench
+$w_{\mathrm{ff}}$ and aerodynamic-surface force $F_{\mathrm{surf}}$ are
+tabulated against airspeed. The stall boundary $V_{\min}(\beta)$ is enforced
+at every node, so the reference is feasible by construction.
+
+Above the cruise speed the aircraft enters pure fixed-wing flight: the nacelles
+are fully tilted to $\beta=90^\circ$, the wing carries all the lift, and the
+rotors provide only forward thrust to overcome drag.  This is enforced by a
+fixed-wing conversion threshold $V_{\mathrm{fw}}=20$~m/s in the trim map: for
+$V\ge V_{\mathrm{fw}}$ the trim is solved with $\beta$ fixed at $90^\circ$ and

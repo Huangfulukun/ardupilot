@@ -1,0 +1,83 @@
+MCP channel corrupts them). Reproduce scripts + data CSVs + SVGs + main.tex +
+this CLAUDE.md are the push set.
+
+---
+
+## Phase 2 (FW-conversion blend investigation) — 2026-09-26
+
+**Goal reached:** determine whether the real `arduplane` SITL can hold a
+stable 90° wing-borne cruise, and document the result honestly.
+
+**What was added to the firmware (`libraries/AP_TiltHexa/`):**
+- Two new params: `THX_FW_SPD` (idx 55, default 0 = disabled) and
+  `THX_FW_BETA` (idx 56, default 90). Above `THX_FW_SPD` m/s in the
+  ACCEL/CRUISE phases, `apply_actuator_outputs()` sweeps each nacelle command
+  from the allocator value linearly to `THX_FW_BETA`.
+- Fixed a latent SITL airspeed bug: when `AP::airspeed()->healthy()` was true
+  but returned 0 (the ARSPD_TYPE=100 backend is not wired to the FDM
+  airspeed), `V` was stuck at 0. Now we trust the airspeed sensor only when
+  it is >0.5 m/s, otherwise fall back to projected body speed.
+- **Important integration note:** in the pipeline path the legacy
+  `_V_f` member is NOT refreshed (`gather_sensors()` is bypassed; the pipeline
+  uses its own `TiltHexa_SensorInput`). The blend therefore reads ground speed
+  directly from `AP::ahrs().get_velocity_NED()`, not `_V_f`.
+
+**Finding (honest, not retouched):**
+- With the blend ENABLED, the FDM truth confirms the nacelles DO command
+  β=90° (peak β1=90.0°) — the actuator interlink is physically capable.
+- BUT a stable 20 m/s wing-borne cruise at β≈90° could NOT be sustained with
+  the present INDI companion controller. The outer loop still budgets vertical
+  rotor thrust; at β≈90° that budget is delivered as forward thrust. Under-derated
+  → speed runaway (as up to 90–113 m/s, departure); thrust-derated to
+  approximate wing-borne lift → descent/sink. The offline MPC sustains 90°
+  cruise only because it solves the coupled pitch–throttle–tilt OCP.
+- Therefore the blend ships DISABLED by default (`THX_FW_SPD=0`). The stable
+  real-binary result is the compound trim: `thx_stable` (WLS) holds 60 m,
+  cruise 19–20 m/s, |roll|<0.4° in the cruise window, cruise β≈17–24°.
+- Firmware-side future work: a wing-borne cruise trim inside the loop
+  (pitch–throttle–tilt coordination) is required before the blend can be
+  enabled as a default.
+
+**Reproduce the stable SITL flight:**
+```
+cd Tools/tilt_hexa_30kg
+python3 experiments/run_thx_sitl_flight.py --alloc wls --mission 1 \
+    --alt 60 --cruise 20 --dur 130 --name thx_stable
+python3 experiments/analyze_sitl.py   # regenerates fig_sitl_overview*.svg
+```
+
+**Paper:** §7.4 now has a dedicated paragraph "Firmware-side conversion blend
+(attempted)" documenting the 90°-on-command vs unstable-sustained result.
+Compiles to 27 pages A4, no errors. No flight curve shows a 90° steady cruise
+that the real binary did not sustain.
+
+## Pre-submission quality pass (final)
+
+**Number-consistency audit (cross-checked against results/*.json and
+fw_fix4_truth.csv):**
+- §8 body text had stale numbers contradicting the abstract/Table 1:
+  backward altitude deviation "0.98 m" -> 1.39 m; backward energy
+  "(45.6 vs 26.4 kJ)" / "nearly doubles" -> "35.8 to 45.6 kJ". Aligned to
+  Table 1 / abstract.
+- Verified consistent: transition times 14.0/25.0 s, energies 20.6/35.8 kJ,
+  h/V RMSE 0.76/0.38 m(m/s), max pitch 16.7 deg, solve-time mean 0.43 /
+  P99 1.56 / worst 3.1 ms, allocator ~41 us (all match fw_fix4_metrics.json
+  and paper_metrics.json). SITL numbers match sitl_metrics.json (native roll
+  170 deg / airspeed 48 m/s / beta 90 servo; thx_pi roll 0.45 / pitch 8.6 /
+  cruise 20.05 m/s / beta 22.9).
+- Cruise beta kept in two clearly separated places: companion campaign
+  mean 88.7 deg peak 90 deg vs real-binary SITL 20-24 deg (trim-schedule
+  difference, §7.4). Never conflated.
+
+**Terminology:** unified nacelle-tilt symbol -- dynamics section used delta_i;
+added explicit note that delta_i is the per-nacelle realization of beta.
+
+**Reproducibility:** fixed paper/regenerate_figures.py dead data paths
+(int_fresh_*.csv -> fw_fix4_*.csv; fresh_nocorridor_ctrl.csv made optional;
+int_fresh_metrics.json -> fw_fix4_metrics.json). rebuild_figures.sh now runs
+end-to-end: AFMS polytopes, transition figs, corridor/trim/profile/aws/
+robustness/solve-time/MC, plus analyze_sitl.py SITL figs, all regenerate from
+committed CSV/JSON with no missing files.
+
+**Compile:** pdflatex -> bibtex -> pdflatex -> pdflatex = 27 pages, 0 errors,
+0 undefined references, 0 citation warnings.

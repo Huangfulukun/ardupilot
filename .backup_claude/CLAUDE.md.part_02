@@ -19,7 +19,7 @@
   pushed paper/regenerate_figures.py; AP_TiltHexa C++ core files + Makefile; ArduPlane
   hooks already committed locally); (3) user fills the author/affiliation/corresponding
   placeholders in main.tex before submission (the only formal blocker per review round 3);
-  (4) when all goals are met, disable/delete cron 1230522285491 and report completion.
+  (4) when all goals are met, disable/delete cron 12305222854914 and report completion.
 
 ## §16 Checkpoint 2026-09-22 (clean from-scratch SITL build verified; full Python tool/test/config set pushed and byte-verified)
 - GOAL OF THIS ROUND: prove the remote-tracked source set builds a SITL plane from scratch
@@ -75,7 +75,7 @@
   CSVs are regenerable. (3) Optionally run --alloc pi and E3 stress smoke to extend the hold
   fix verification (wls hover + E2 transition already pass). (4) User replaces the author /
   affiliation / corresponding placeholders in main.tex (the only formal submission blocker
-  per review round 3). (5) When all goals are met, disable/delete cron 1230522285491 and
+  per review round 3). (5) When all goals are met, disable/delete cron 12305222854914 and
   report completion.
 
 ## §17 — Continuation: SITL experiment harness push (common/smoke/metrics/E0/E2/E3/AFMS/campaign)
@@ -122,7 +122,7 @@ REMAINING (next continuation):
   binary figures have no push channel (gitignored / regenerable; figures already live in the
   remote paper/ directory).
 - Author/affiliation/corresponding placeholders in main.tex remain the only formal submission
-  blocker (user action). Then disable/delete cron 1230522285491 and report completion.
+  blocker (user action). Then disable/delete cron 12305222854914 and report completion.
 
 ## §18 Checkpoint 2026-09-22 (cron continuation: more SITL drivers pushed)
 - Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
@@ -143,7 +143,7 @@ REMAINING (next continuation):
       can be pushed; per-run truth CSV/BIN and binary figures (figures/*.pdf,png) have no push channel
       (gitignored/regenerable; figures already in remote paper/); run_baseline.sh mode-bit diff is unpushable;
   (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker);
-  (5) when all goals met, disable/delete cron 1230522285491 and report completion.
+  (5) when all goals met, disable/delete cron 12305222854914 and report completion.
 
 ## §19 Checkpoint 2026-09-22 (cron continuation: final two SITL drivers + 7 docs pushed)
 - Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
@@ -172,7 +172,7 @@ REMAINING (next continuation):
   (3) experiments/run_baseline.sh is content-identical but differs only in the executable bit
       (100644->100755), which push_files cannot set; skip.
   (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker).
-  (5) when all goals met, disable/delete cron 1230522285491 and report completion.
+  (5) when all goals met, disable/delete cron 12305222854914 and report completion.
 - All scientific/controller/firmware/paper work remains complete and verified (see §14-§18); this round is
   purely synchronising the reproduction harness + docs to the remote fork.
 

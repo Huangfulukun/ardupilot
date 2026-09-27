@@ -12,8 +12,8 @@ from experiments import common as C
 inst = 0
 out = tempfile.mkdtemp(prefix="lat_")
 parm = os.path.join(out, "combined.parm")
-C.combine_parm_files([os.path.join(TOOLS, "config","default.parm"),
-                      os.path.join(TOOLS, "config","indi_pi.parm")], parm)
+C.combine_parm_files([os.path.join(TOOLS, "config", "default.parm"),
+                      os.path.join(TOOLS, "config", "indi_pi.parm")], parm)
 cfg = os.path.join(TOOLS, "config", "tilt_hexa_30kg_seed.yaml")
 truth = os.path.join(out, "truth.csv")
 fdm = sitl = mav = act = None

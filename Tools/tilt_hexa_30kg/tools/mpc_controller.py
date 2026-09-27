@@ -175,7 +175,7 @@ class MissionReference:
         j = min(i + 1, len(t) - 2)
         frac = (tau - t[i]) / max(t[j] - t[i], 1e-9)
         frac = float(np.clip(frac, 0, 1))
-        X = sol["X"][i] + frac * (sol["X"][i + 1] - sol["X"])
+        X = sol["X"][i] + frac * (sol["X"][i + 1] - sol["X"][i])
         iu = min(i, len(sol["U"]) - 1); ju = min(iu + 1, len(sol["U"]) - 1)
         U = sol["U"][iu] + frac * (sol["U"][ju] - sol["U"][iu])
         w = sol["wff"][iu] + frac * (sol["wff"][ju] - sol["wff"][iu])
@@ -285,7 +285,7 @@ class MissionReference:
                         Fsurf=fs, rates=np.zeros(3))
         # final hover (at the end of the backward deceleration distance)
         d_b = self.bwd["X"][-1][0]
-        x_final = xe + d_b * ce; y_final = ye + d * se
+        x_final = xe + d_b * ce; y_final = ye + d_b * se
         return dict(phase=6, p=np.array([x_final, y_final, -alt]), v=np.zeros(3),
                     att=np.array([0.0, 0.0, yawe]),
                     wff=self.w_hover.copy(), V=0.0, beta=0.0, Fsurf=np.zeros(3),

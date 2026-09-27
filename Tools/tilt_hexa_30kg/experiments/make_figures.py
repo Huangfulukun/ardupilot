@@ -21,7 +21,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 from corridor_ocp import CorridorOCP  # noqa: E402
 
-FIG = os.path.join(ROOT, "figures")
+FIG = os.path.join(ROOT, "paper", "figures")
 os.makedirs(FIG, exist_ok=True)
 MPC = os.path.join(ROOT, "results", "MPC")
 
@@ -36,7 +36,7 @@ C_MPC, C_REF, C_NC = "#1f4e79", "#c0392b", "#7f8c8d"
 
 
 def save(fig, name):
-    for ext in ("pdf", "png"):
+    for ext in ("pdf", "png", "svg"):
         fig.savefig(os.path.join(FIG, f"{name}.{ext}"), bbox_inches="tight")
     plt.close(fig)
     print(f"wrote {name}")
@@ -185,7 +185,7 @@ def fig_aws():
         eps = 1e-4
         for i in range(6):
             Btilt[:, i] = (thrust_col(beta + eps, spin[i], r[i])
-                           - thrust_col(beta - eps, spin[i], r[i])) / (2 * eps) * T
+                           - thrust_col(beta - eps, r[i])) / (2 * eps) * T
         # four aerodynamic surfaces (two ailerons, two ruddervators), scaled qS
         qS = 0.5 * rho_air * V * V * S_ref
         Bsurf = np.zeros((5, 4))

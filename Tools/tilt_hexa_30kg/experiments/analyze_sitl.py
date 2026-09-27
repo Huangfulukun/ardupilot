@@ -85,10 +85,10 @@ def fig_sitl_overview():
     ax[1].axhline(20, color=C_REF, ls="--", lw=0.8, label="cruise ref 20 m/s")
     ax[1].set_ylabel("Airspeed (m/s)"); ax[1].legend(framealpha=0.9, loc="lower right")
     ax[2].plot(t, np.degrees(tr.beta1.values), color=C_NAT, label="nacelle $\\beta_1$")
-    ax[2].axhline(90, color=C_REF, ls="--", lw=0.8, label="$\\beta$=90$^\\circ$ wing-borne")
+    ax[2].axhline(90, color=C_REF, ls="--", lw=0.8, label="$\\beta=90$ wing-borne")
     ax[2].set_ylabel("Nacelle angle (deg)"); ax[2].set_xlabel("Time (s)")
     ax[2].legend(framealpha=0.9, loc="lower right")
-    ax[0].set_title("Real arduplane SITL: proposed FW-mode law achieves wing-borne $\\beta=90^\\circ$ cruise")
+    ax[0].set_title("Real arduplane SITL: proposed FW-mode law achieves wing-borne $\\beta=90$ cruise")
     fig.tight_layout()
     for ext in ("svg", "pdf"):
         fig.savefig(os.path.join(FIG, f"fig_sitl_overview.{ext}"), bbox_inches="tight")

@@ -12,4 +12,6 @@ cd "$ROOT"
 "$PY" analysis/make_transition_figs.py
 # 3. Corridor, trim, profile, AWS, robustness, solve-time, Monte Carlo figures
 "$PY" paper/regenerate_figures.py
+# 4. Real arduplane SITL figures (overview + native-vs-proposed) from truth CSVs
+"$PY" experiments/analyze_sitl.py
 echo "All figures regenerated into paper/figures/"

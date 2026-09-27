@@ -6,7 +6,7 @@ if not uart then
     gcs:send_text(0, "THX bridge: no scripting UART")
     return function() return update, 1000 end
 end
-	gcs:send_text(6, "THX bridge: uart ok")
+gcs:send_text(6, "THX bridge: uart ok")
 uart:begin(115200)
 
 local pwm = {}
@@ -61,5 +61,5 @@ function update()
     return update, 5
 end
 
-	gcs:send_text(6, "THX serial bridge started")
+gcs:send_text(6, "THX serial bridge started")
 return update()

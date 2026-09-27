@@ -1,0 +1,13 @@
+{
+  "cruise_beta_mean_deg": 88.16635275608577,
+  "cruise_beta_min_deg": 61.37297762886837,
+  "cruise_V_mean": 19.986660501874386,
+  "cruise_alt_mean": 60.48993147578939,
+  "cruise_alt_std": 0.24862567643308767,
+  "cruise_dur_s": 17.419999999984157,
+  "max_roll_deg": 0.131935147841015,
+  "max_pitch_deg": 14.956397249128397,
+  "final_alt": 59.87549518478365,
+  "final_V": 0.0103899584733184,
+  "total_time": 128.1549999999197
+}

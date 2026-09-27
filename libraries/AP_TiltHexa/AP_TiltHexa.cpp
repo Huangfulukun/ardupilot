@@ -1344,7 +1344,7 @@ void AP_TiltHexa::run_allocator(void)
     for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
         float ux = _u_prev_vec[2*i];
         float uz = _u_prev_vec[2*i+1];
-        float T = sqrtf(ux*ux + uz);
+        float T = sqrtf(ux*ux + uz*uz);
         float beta = atan2f(ux, uz);
 
         // Low-thrust hysteresis state machine (Section 0.6):
@@ -1517,7 +1517,7 @@ void AP_TiltHexa::apply_actuator_outputs(void)
             {25.0f,  6.35f, 90.00f, 10.24f,  -6.68f },
         };
         // On DECEL, index the table by the *target* speed (which ramps down over
-        // 22 s) so beta/thrust/elevator pre-schedule before the wing unloads;
+        // 22 s) so beta/thrust/elevator pre-schedule before the wing unloads; on
         // accel/cruise we track the measured speed.
         float V_lookup = Vnow;
         if (_traj_phase == THX_PHASE_DECEL && decel_t >= 0.0f) {
@@ -1809,7 +1809,7 @@ void AP_TiltHexa::update_trajectory(float dt)
     }
 
     // The trajectory clock starts when the pipeline hands over to closed-loop
-    // flight (spool-up runs before that); until then the reference is the
+    // flight (spool-up, runs before that); until then the reference is the
     // ground point at the origin.
     {
         const uint8_t ppl_phase = _pipeline.get_phase();

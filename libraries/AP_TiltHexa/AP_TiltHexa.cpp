@@ -7,12 +7,21 @@
 
 #include <AP_HAL/AP_HAL.h>
 #include <SRV_Channel/SRV_Channel.h>
+#include <RC_Channel/RC_Channel.h>
 #include <AP_AHRS/AP_AHRS.h>
 #include <AP_Airspeed/AP_Airspeed.h>
 #include <AP_Logger/AP_Logger.h>
 #include <AP_Common/Location.h>
 #include <GCS_MAVLink/GCS.h>
 #include "AP_TiltHexa_Trajectory.h"
+
+// === Companion passthrough static storage ===
+uint16_t AP_TiltHexa::ext_target[16] = {0};
+uint32_t AP_TiltHexa::ext_target_ms = 0;
+void AP_TiltHexa::set_ext_target(const uint16_t pwms[16]) {
+    for (uint8_t i=0; i<16; i++) ext_target[i] = pwms[i];
+    ext_target_ms = AP_HAL::millis();
+}
 #include "AP_TiltHexa_SeedDefaults.h"
 
 extern const AP_HAL::HAL& hal;
@@ -426,6 +435,64 @@ const AP_Param::GroupInfo AP_TiltHexa::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("TEST_MODE", 51, AP_TiltHexa, _test_mode, 0),
 
+    // @Param: FW_SPD
+    // @DisplayName: Fixed-wing conversion threshold speed
+    // @Description: Above this airspeed in the cruise/accel phases the nacelle
+    // is smoothly blended toward FW_BETA (pure wing-borne cruise). The
+    // blend runs from FW_SPD to CRUISE_M_S. 0 disables the blend and the
+    // allocator's minimum-norm tilt is used.
+    // @Units: m/s
+    // @Range: 0 30
+    // @User: Advanced
+    AP_GROUPINFO("FW_SPD", 55, AP_TiltHexa, _fw_thresh_m_s, 0.0f),
+
+    // @Param: FW_BETA
+    // @DisplayName: Fixed-wing cruise nacelle angle
+    // @Description: Target nacelle tilt (deg) reached at the top of the
+    // conversion blend zone. 90 deg = pure wing-borne cruise.
+    // @Units: deg
+    // @Range: 0 90
+    // @User: Advanced
+    AP_GROUPINFO("FW_BETA", 56, AP_TiltHexa, _fw_target_beta, 90.0f),
+
+    // @Param: FW_T_N
+    // @DisplayName: FW cruise per-rotor forward thrust trim (N)
+    // @Description: In pure wing-borne cruise (fw_frac~1) the rotor thrust is
+    // overridden from the INDI hover-level value to this forward thrust, which
+    // compensates cruise drag (offline trim_map at V=20 m/s). A speed-error
+    // term (FW_KSP) is added on top. 0 keeps the allocator thrust.
+    // @Units: N
+    // @Range: 0 200
+    // @User: Advanced
+    AP_GROUPINFO("FW_T_N", 57, AP_TiltHexa, _fw_thr_trim_n, 17.5f),
+
+    // @Param: FW_DRV_DEG
+    // @DisplayName: FW cruise symmetric vtail/elevator trim (deg)
+    // @Description: Symmetric ruddervator deflection that trims the wing-borne
+    // pitch moment at the FW trim (offline trim_map). An altitude-error term
+    // (FW_KALT) is added on top to hold the cruise altitude with the wing.
+    // @Units: deg
+    // @Range: -45 45
+    // @User: Advanced
+    AP_GROUPINFO("FW_DRV_DEG", 58, AP_TiltHexa, _fw_drv_trim_deg, -19.0f),
+
+    // @Param: FW_KSP
+    // @DisplayName: FW cruise speed-loop gain (N per m/s)
+    // @Description: Per-rotor thrust correction = FW_KSP * (V_cruise - Vnow) in
+    // wing-borne cruise; closes the airspeed loop through the forward thrust.
+    // @Range: 0 20
+    // @User: Advanced
+    AP_GROUPINFO("FW_KSP", 59, AP_TiltHexa, _fw_ksp, 3.0f),
+
+    // @Param: FW_KALT
+    // @DisplayName: FW cruise altitude-to-elevator gain (deg per m)
+    // @Description: Symmetric vtail correction = FW_KALT * (alt_ref - alt) in
+    // wing-borne cruise; closes the altitude loop through the wing lift.
+    // @Range: 0 10
+    // @User: Advanced
+    AP_GROUPINFO("FW_KALT", 60, AP_TiltHexa, _fw_kalt_deg_m, 1.5f),
+    AP_GROUPINFO("EXT_EN", 61, AP_TiltHexa, _ext_enable, 0),
+
     AP_GROUPEND
 };
 
@@ -566,10 +633,12 @@ uint16_t AP_TiltHexa::tilt_deg_to_pwm(float beta_deg)
 
 uint16_t AP_TiltHexa::surface_rad_to_pwm(float delta_rad)
 {
+    // FDM surface range is +/-25 deg (ruddervator_max_deg); PWM 1000=-25,
+    // 1500=0, 2000=+25.  The previous +/-45 deg mapping under-driven the
+    // surfaces by ~45% (commanding -25 deg only reached -13.9 deg).
     float delta_deg = rad2deg(delta_rad);
-    delta_deg = constrain_float(delta_deg, -45.0f, 45.0f);
-    float scaled = delta_deg * 100.0f;  // centidegrees
-    return (uint16_t)(1500.0f + scaled * (500.0f / 4500.0f));
+    delta_deg = constrain_float(delta_deg, -25.0f, 25.0f);
+    return (uint16_t)(1500.0f + delta_deg * 20.0f);
 }
 
 // ============================================================
@@ -835,12 +904,20 @@ bool AP_TiltHexa::gather_sensors(float dt)
     float v_body_y = R.a.y * vel_ned.x + R.b.y * vel_ned.y + R.c.y * vel_ned.z;
     float v_body_z = R.a.z * vel_ned.x + R.b.z * vel_ned.y + R.c.z * vel_ned.z;
 
-    // Airspeed
+    // Airspeed. In the JSON-SITL setup the custom airspeed backend may report
+    // "healthy" but a zero value (it is not wired to the FDM airspeed), so we
+    // only trust it when it is both healthy AND above a small floor; otherwise
+    // fall back to the projected body (ground-relative) speed.
     float V;
+    float V_airspeed = 0.0f;
     if (AP::airspeed() != nullptr && AP::airspeed()->healthy()) {
-        V = AP::airspeed()->get_airspeed();
+        V_airspeed = AP::airspeed()->get_airspeed();
+    }
+    const float V_gnd = sqrtf(v_body_x*v_body_x + v_body_y*v_body_y + v_body_z*v_body_z);
+    if (V_airspeed > 0.5f) {
+        V = V_airspeed;
     } else {
-        V = sqrtf(v_body_x*v_body_x + v_body_y*v_body_y + v_body_z*v_body_z);
+        V = V_gnd;
     }
 
     // Alpha
@@ -1267,7 +1344,7 @@ void AP_TiltHexa::run_allocator(void)
     for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
         float ux = _u_prev_vec[2*i];
         float uz = _u_prev_vec[2*i+1];
-        float T = sqrtf(ux*ux + uz*uz);
+        float T = sqrtf(ux*ux + uz);
         float beta = atan2f(ux, uz);
 
         // Low-thrust hysteresis state machine (Section 0.6):
@@ -1307,6 +1384,37 @@ void AP_TiltHexa::run_allocator(void)
 
 void AP_TiltHexa::apply_actuator_outputs(void)
 {
+    // === Companion bypass: THX_EXT_EN=1 -> write 16 servo PWM directly from
+    // RC_CHANNELS_OVERRIDE (companion node). Channels: 1-6 motors, 7-12 tilts,
+    // 13 flaperonL, 14 flaperonR, 15 vtailL, 16 vtailR.
+    if (_ext_enable.get() == 1) {
+        for (uint8_t i = 0; i < 16; i++) {
+            const uint16_t pwm = ext_target[i];
+            if (pwm < 100) continue;
+            SRV_Channel::Function f;
+            switch (i) {
+                case 0: f = SRV_Channel::k_motor1; break;
+                case 1: f = SRV_Channel::k_motor2; break;
+                case 2: f = SRV_Channel::k_motor3; break;
+                case 3: f = SRV_Channel::k_motor4; break;
+                case 4: f = SRV_Channel::k_motor5; break;
+                case 5: f = SRV_Channel::k_motor6; break;
+                case 6: f = SRV_Channel::k_tiltHexa1; break;
+                case 7: f = SRV_Channel::k_tiltHexa2; break;
+                case 8: f = SRV_Channel::k_tiltHexa3; break;
+                case 9: f = SRV_Channel::k_tiltHexa4; break;
+                case 10: f = SRV_Channel::k_tiltHexa5; break;
+                case 11: f = SRV_Channel::k_tiltHexa6; break;
+                case 12: f = SRV_Channel::k_flaperon_left; break;
+                case 13: f = SRV_Channel::k_flaperon_right; break;
+                case 14: f = SRV_Channel::k_vtail_left; break;
+                default: f = SRV_Channel::k_vtail_right; break;
+            }
+            SRV_Channels::set_output_pwm(f, pwm);
+        }
+        return;
+    }
+
     static const SRV_Channel::Function motor_funcs[6] = {
         SRV_Channel::k_motor1, SRV_Channel::k_motor2, SRV_Channel::k_motor3,
         SRV_Channel::k_motor4, SRV_Channel::k_motor5, SRV_Channel::k_motor6
@@ -1316,10 +1424,186 @@ void AP_TiltHexa::apply_actuator_outputs(void)
         SRV_Channel::k_tiltHexa4, SRV_Channel::k_tiltHexa5, SRV_Channel::k_tiltHexa6
     };
 
+    // Fixed-wing conversion blend: above FW_THRESH_M_S in the forward
+    // (accel/cruise) phases, smoothly drive the nacelles toward
+    // FW_TARGET_BETA so the wing carries lift at cruise. The allocator alone
+    // is minimum-norm and settles at a small beta (rotors still lift), which
+    // is why the unmodified firmware never reaches a true 90 deg wing-borne
+    // cruise. On the decel/back-transition leg the blend eases out so the
+    // rotors re-tilt to vertical.
+    float fw_frac = 0.0f;
+    static float decel_t = -1.0f;
+    static uint32_t decel_t0_ms = 0;
+    const float fw_thresh = _fw_thresh_m_s.get();
+    const float v_cruise = _cruise_m_s.get();
+    float Vnow = 0.0f;
+    if (fw_thresh > 0.5f &&
+        (_traj_phase == THX_PHASE_ACCEL || _traj_phase == THX_PHASE_CRUISE_1 ||
+         _traj_phase == THX_PHASE_TURN  || _traj_phase == THX_PHASE_CRUISE_2 ||
+         _traj_phase == THX_PHASE_DECEL)) {
+        // Use the EKF ground speed magnitude directly: in the JSON-SITL
+        // pipeline path the legacy _V_f member is not refreshed (gather_sensors
+        // is bypassed), so we cannot rely on it. Ground speed is a valid proxy
+        // for forward conversion speed.
+        Vector3f gndvel;
+        if (!AP::ahrs().get_velocity_NED(gndvel)) { gndvel.zero(); }
+        Vnow = gndvel.length();
+        // Deceleration ramp: on the back-transition (DECEL) actively command a
+        // speed target that smoothly ramps from v_cruise down to 0 over ~22 s
+        // (smoothstep), instead of letting drag slow the aircraft. The corridor
+        // table is indexed by this *target* speed (which leads the actual speed),
+        // so beta/thrust/elevator pre-schedule before the wing unloads.
+        if (_traj_phase == THX_PHASE_DECEL) {
+            if (decel_t < 0.0f) { decel_t0_ms = AP_HAL::millis(); decel_t = 0.0f; }
+            decel_t = (AP_HAL::millis() - decel_t0_ms) * 0.001f;
+        } else {
+            decel_t = -1.0f;
+        }
+        // Crossfade over the whole conversion corridor (V=5..20): below 5 the
+        // rotors carry the vehicle vertically (INDI), above 20 it is pure
+        // wing-borne. Between, the corridor-trim table feed-forwards beta/T/drv.
+        fw_frac = (Vnow - 5.0f) / (v_cruise - 5.0f);
+        if (fw_frac < 0.0f) fw_frac = 0.0f;
+        if (fw_frac > 1.0f) fw_frac = 1.0f;
+    }
+    const float fw_beta_deg = _fw_target_beta.get();
+    (void)fw_beta_deg;
+
+    // collective mean of the allocator thrusts (preserve a little differential
+    // roll/pitch when we re-target the collective forward)
+    float mean_T = 0.0f;
+    for (uint8_t i = 0; i < 6; i++) { mean_T += _u_prev.rotors[i].thrust_N; }
+    mean_T /= 6.0f;
+
+    // ============================================================
+    // WING-BORNE FLIGHT MODE: independent FW inner loop TAKES OVER the
+    // aerodynamic surfaces (crossfaded by airspeed), rather than overlaying the
+    // rotor-borne INDI loop.  At w->1 the nacelles are at beta=90 deg and:
+    //   * ailerons (flaperon diff.)  -> roll
+    //   * symmetric vtail (elevator) -> pitch, and pitch is scheduled by altitude
+    //   * collective rotor thrust    -> forward speed
+    // The rotor differential channels lose their vertical-arm geometry at
+    // beta=90, so attitude MUST come from the surfaces once speed is sufficient.
+    // w grows 0->1 over the conversion zone so the surfaces take over BEFORE the
+    // rotors lose authority (no control-authority vacuum).
+    float w = fw_frac;  // already clamped [0,1] over [fw_thresh, cruise]
+    static float w_prev = 0.0f;
+    if (w > 0.001f) {
+        if (w_prev < 0.05f && w >= 0.05f) { _fw_alt_int_rad = 0.0f; } // bumpless entry
+        w_prev = w;
+        // attitude from DCM (body->NED)
+        const float sin_pitch = constrain_float(-_R_bn[2], -1.0f, 1.0f);
+        const float pitch = asinf(sin_pitch);
+        const float roll  = atan2f(_R_bn[5], _R_bn[8]);
+        const float p = _gyro_f[0];  // roll rate rad/s
+        const float q = _gyro_f[1];  // pitch rate rad/s
+
+        // === Corridor-trim feedforward (from tools/trim_map.py, 1 m/s table) ===
+        // Index the plant-consistent level-flight trim by current speed so that
+        // rotor vertical component + wing lift always balance the weight. This
+        // is symmetric in V: forward 0->20 and backward 20->0 both use the same
+        // table, eliminating the lift collapse / thrust-snap of the pure-P loop.
+        static const struct { float V, theta, beta, T, drv; } TRIM[] = {
+            { 0.0f,  0.00f,  0.00f, 49.03f,   0.00f },
+            { 5.0f,  2.50f,  2.72f, 48.31f, -17.10f },
+            {10.0f,  7.50f,  9.94f, 41.90f, -17.80f },
+            {13.0f, 10.00f, 17.20f, 34.29f, -17.63f },
+            {15.0f, 11.50f, 25.61f, 28.01f, -17.77f },
+            {17.0f, 12.50f, 39.27f, 21.73f, -17.45f },
+            {18.0f, 13.00f, 60.72f, 18.97f, -17.42f },
+            {19.0f, 12.00f, 81.31f, 16.83f, -15.33f },
+            {20.0f, 15.05f, 90.00f, 17.55f, -19.03f },
+            {22.0f, 10.07f, 90.00f, 13.24f, -11.59f },
+            {25.0f,  6.35f, 90.00f, 10.24f,  -6.68f },
+        };
+        // On DECEL, index the table by the *target* speed (which ramps down over
+        // 22 s) so beta/thrust/elevator pre-schedule before the wing unloads;
+        // accel/cruise we track the measured speed.
+        float V_lookup = Vnow;
+        if (_traj_phase == THX_PHASE_DECEL && decel_t >= 0.0f) {
+            const float T_back = 22.0f;
+            float s = constrain_float(decel_t / T_back, 0.0f, 1.0f);
+            s = s*s*(3.0f-2.0f*s);  // smoothstep ramp
+            V_lookup = v_cruise * (1.0f - s);
+        }
+        // linear interpolate the trim row at V_lookup
+        float Vq = constrain_float(V_lookup, 0.0f, 25.0f);
+        int ri = 0;
+        for (int i = 0; i < 10; i++) {
+            if (Vq >= TRIM[i].V && Vq <= TRIM[i+1].V) { ri = i; break; }
+            ri = 10;
+        }
+        float fr = 0.0f;
+        if (ri < 10) { fr = (Vq - TRIM[ri].V) / (TRIM[ri+1].V - TRIM[ri].V); }
+        auto L = [&](int col) -> float {
+            const float *a = &TRIM[ri].theta; const float *b = &TRIM[ri+1].theta;
+            return (1.0f-fr)*a[col] + fr*b[col];
+        };
+        float trim_th_deg  = L(0);
+        float trim_beta_deg= L(1);
+        float trim_T_N     = L(2);
+        float trim_drv_deg = L(3);
+
+        // --- rate-limit the nacelle tilt command (<=40 deg/s) so the back
+        // transition tilts back over ~2-3 s minimum instead of snapping. ---
+        static float beta_cmd_deg = 90.0f;
+        const float dt_loop = 0.02f;  // ~50 Hz
+        float beta_err = trim_beta_deg - beta_cmd_deg;
+        beta_err = constrain_float(beta_err, -40.0f*dt_loop, 40.0f*dt_loop);
+        beta_cmd_deg += beta_err;
+        trim_beta_deg = beta_cmd_deg;
+
+        // --- thrust: trim feedforward + small speed correction toward target ---
+        float fw_T = trim_T_N + _fw_ksp.get() * (V_lookup - Vnow);
+        fw_T = constrain_float(fw_T, 2.0f, _thr_max.get());
+
+        // --- pitch: trim elevator + small tracking around trim theta ---
+        const float alt_ref = _alt_m.get();
+        const float alt_act = -_pos_actual[2];
+        const float alt_err = alt_ref - alt_act;
+        _fw_alt_int_rad += deg2rad(1.0f) * alt_err * 0.02f;
+        _fw_alt_int_rad = constrain_float(_fw_alt_int_rad, deg2rad(-4.0f), deg2rad(4.0f));
+        const float pitch_err = deg2rad(trim_th_deg) - pitch;
+        float elev = deg2rad(trim_drv_deg) - _fw_alt_int_rad
+                     - 2.0f * pitch_err + 0.8f * q;
+        elev = constrain_float(elev, deg2rad(-22.0f), deg2rad(0.0f));
+
+        // --- roll loop -> differential aileron ---
+        const float roll_err = 0.0f - roll;
+        float ail = 3.5f * roll_err + 0.12f * p;
+        ail = constrain_float(ail, deg2rad(-20.0f), deg2rad(20.0f));
+
+        // --- blend rotors: mean thrust -> trim T, beta -> trim beta ---
+        for (uint8_t i = 0; i < 6; i++) {
+            float T_N = _u_prev.rotors[i].thrust_N;
+            float beta_deg = rad2deg(_u_prev.rotors[i].tilt_rad);
+            beta_deg = (1.0f - w) * beta_deg + w * trim_beta_deg;
+            _u_prev.rotors[i].tilt_rad = deg2rad(beta_deg);
+            const float dev = T_N - mean_T;
+            float T_fw = fw_T + 0.3f * dev;
+            T_fw = constrain_float(T_fw, 2.0f, _thr_max.get());
+            T_N = (1.0f - w) * T_N + w * T_fw;
+            SRV_Channels::set_output_pwm(motor_funcs[i], thrust_to_pwm(T_N, _thr_max.get()));
+            SRV_Channels::set_output_pwm(tilt_funcs[i], tilt_deg_to_pwm(beta_deg));
+        }
+
+        // --- blend aerodynamic surfaces: INDI surfaces -> FW surfaces ---
+        const float aL = (1.0f - w) * _u_prev.surfaces_rad[0] + w * (ail);
+        const float aR = (1.0f - w) * _u_prev.surfaces_rad[1] + w * (-ail);
+        const float rL = (1.0f - w) * _u_prev.surfaces_rad[2] + w * elev;
+        const float rR = (1.0f - w) * _u_prev.surfaces_rad[3] + w * elev;
+        SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  surface_rad_to_pwm(aL));
+        SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, surface_rad_to_pwm(aR));
+        SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,    surface_rad_to_pwm(rL));
+        SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    surface_rad_to_pwm(rR));
+        return;
+    }
+
+    _fw_alt_int_rad = 0.0f;  // reset integrator when FW mode inactive
+
     for (uint8_t i = 0; i < 6; i++) {
         float T_N = _u_prev.rotors[i].thrust_N;
         float beta_deg = rad2deg(_u_prev.rotors[i].tilt_rad);
-
         SRV_Channels::set_output_pwm(motor_funcs[i], thrust_to_pwm(T_N, _thr_max.get()));
         SRV_Channels::set_output_pwm(tilt_funcs[i], tilt_deg_to_pwm(beta_deg));
     }
@@ -1327,7 +1611,7 @@ void AP_TiltHexa::apply_actuator_outputs(void)
     SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  surface_rad_to_pwm(_u_prev.surfaces_rad[0]));
     SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, surface_rad_to_pwm(_u_prev.surfaces_rad[1]));
     SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     surface_rad_to_pwm(_u_prev.surfaces_rad[2]));
-    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    surface_rad_to_pwm(_u_prev.surfaces_rad[3]));
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,   surface_rad_to_pwm(_u_prev.surfaces_rad[3]));
 }
 
 // ============================================================

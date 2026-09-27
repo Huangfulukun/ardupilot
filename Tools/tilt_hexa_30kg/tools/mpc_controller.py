@@ -148,7 +148,11 @@ class MissionReference:
         self.alt = alt
         self.cruise = cruise
         self.fwd, _ = ocp.solve_forward(cruise, 14.0)
-        self.bwd, _ = ocp.solve_backward(cruise, 20.0)
+        # Backward conversion from beta=90 deg fixed-wing cruise needs more
+        # time: the nacelles must tilt back from 90 to 0 while the wing
+        # progressively unloads.  25 s gives a safe deceleration compatible
+        # with the 60 deg/s tilt rate and the wing-borne stall boundary.
+        self.bwd, _ = ocp.solve_backward(cruise, 25.0)
         self.tf = self.fwd["t"][-1]
         self.tb = self.bwd["t"][-1]
         self.t_climb = alt / climb_rate
@@ -171,7 +175,7 @@ class MissionReference:
         j = min(i + 1, len(t) - 2)
         frac = (tau - t[i]) / max(t[j] - t[i], 1e-9)
         frac = float(np.clip(frac, 0, 1))
-        X = sol["X"][i] + frac * (sol["X"][i + 1] - sol["X"][i])
+        X = sol["X"][i] + frac * (sol["X"][i + 1] - sol["X"])
         iu = min(i, len(sol["U"]) - 1); ju = min(iu + 1, len(sol["U"]) - 1)
         U = sol["U"][iu] + frac * (sol["U"][ju] - sol["U"][iu])
         w = sol["wff"][iu] + frac * (sol["wff"][ju] - sol["wff"][iu])
@@ -281,7 +285,7 @@ class MissionReference:
                         Fsurf=fs, rates=np.zeros(3))
         # final hover (at the end of the backward deceleration distance)
         d_b = self.bwd["X"][-1][0]
-        x_final = xe + d_b * ce; y_final = ye + d_b * se
+        x_final = xe + d_b * ce; y_final = ye + d * se
         return dict(phase=6, p=np.array([x_final, y_final, -alt]), v=np.zeros(3),
                     att=np.array([0.0, 0.0, yawe]),
                     wff=self.w_hover.copy(), V=0.0, beta=0.0, Fsurf=np.zeros(3),
@@ -605,6 +609,25 @@ class TiltHexaMPC:
             Vdot_ref = (sched["X"][j + 1, 2] - sched["X"][j, 2]) / sched["dt"]
             beta_t, T_t, th_t, al_t, w_t, fs_t = self.ocp.level_trim(
                 max(V, 0.0), Vdot_ref)
+            refs[0]["wff"] = w_t
+            refs[0]["Fsurf"] = fs_t
+            refs[0]["att"][1] = al_t
+            refs[0]["beta"] = beta_t
+        if refs[0]["phase"] == 5:
+            # Backward conversion starting from beta=90 deg fixed-wing cruise:
+            # index the current-node trim on ACHIEVED airspeed so that when the
+            # aircraft is still fast the nacelles stay tilted forward (maintaining
+            # forward thrust and wing lift), and only tilt back as the speed
+            # genuinely falls.  This prevents the over-tilt / sink that occurs
+            # with pure time-based indexing from a 90-deg start.  The backward
+            # trim (scheduled_alpha, rotor-borne incidence) is used; Vdot is
+            # taken from the time reference so deceleration intent is preserved.
+            sched = self.ref.bwd
+            tt = np.clip(t_mission - self.ref.T2, 0.0, None)
+            j = int(np.clip(np.searchsorted(sched["t"], tt) - 1, 0, len(sched["t"]) - 2))
+            Vdot_ref = (sched["X"][j + 1, 2] - sched["X"][j, 2]) / sched["dt"]
+            beta_t, T_t, th_t, al_t, w_t, fs_t = self.ocp.level_trim(
+                max(V, 0.0), Vdot_ref, backward=True)
             refs[0]["wff"] = w_t
             refs[0]["Fsurf"] = fs_t
             refs[0]["att"][1] = al_t

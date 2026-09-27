@@ -26,12 +26,12 @@
   "thx_pi": {
     "name": "thx_pi",
     "rows": 58678,
-    "t_end_s": 146.694999999990285,
+    "t_end_s": 146.69499999990285,
     "max_alt_m": 60.03732400897323,
     "min_alt_m": -0.0,
     "max_roll_deg": 0.44528491736120573,
     "max_pitch_deg": 8.56593582992437,
-    "max_airspeed_ms": 20.04980179976161,
+    "max_airspeed_ms": 20.04980179976761,
     "max_nacelle_beta_deg": 22.86410696168544,
     "crashed": false
   },
@@ -53,7 +53,7 @@
     "t_end_s": 167.012499999988437,
     "max_alt_m": 60.62286976288033,
     "min_alt_m": -0.0,
-    "max_roll_deg": 69.6624697624573,
+    "max_roll_deg": 69.66246983624573,
     "max_pitch_deg": 67.38777234125847,
     "max_airspeed_ms": 20.051480687880623,
     "max_nacelle_beta_deg": 24.186410845988785,
@@ -74,7 +74,7 @@
   "fwmode_v9": {
     "name": "fwmode_v9",
     "rows": 54805,
-    "t_end_s": 137.012499999988437,
+    "t_end_s": 137.01249999991165,
     "max_alt_m": 60.53643779483734,
     "min_alt_m": -0.0,
     "max_roll_deg": 179.935670335684,

@@ -237,7 +237,7 @@ def main():
     print("Generating controls figure...")
     plot_controls(mpc, tag="mpc")
 
-    print("Generating wrench figure...
+    print("Generating wrench figure...")
     plot_wrench(mpc, tag="mpc")
 
     print("Done.")

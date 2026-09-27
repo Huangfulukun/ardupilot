@@ -58,7 +58,7 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     truth = os.path.join(out_dir, f"{a.name}_truth.csv")
     work = tempfile.mkdtemp(prefix=f"cl_{a.name}_")
-    parm = os.path.join(work,"combined.parm")
+    parm = os.path.join(work, "combined.parm")
     C.combine_parm_files([os.path.join(TOOLS, "config", "default.parm"),
                           os.path.join(TOOLS, "config", "indi_pi.parm")], parm)
     cfg = os.path.join(TOOLS, "config", "tilt_hexa_30kg_seed.yaml")
@@ -66,14 +66,14 @@ def main():
     inst = 0
     try:
         C.free_experiment_ports([inst])
-        fo = open(os.path.join(work,"fdm.log"),"w")
+        fo = open(os.path.join(work, "fdm.log"), "w")
         fdm = subprocess.Popen([sys.executable,
             os.path.join(TOOLS, "physics", "tilt_hexa_30kg_fdm.py"),
             "--config", cfg, "--instance", str(inst), "--seed", "42",
             "--physics-rate", "400", "--csv-out", truth, "--start-alt", "0"],
             stdout=fo, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp, cwd=TOOLS)
         time.sleep(1.0)
-        so = open(os.path.join(work,"sitl.log"),"w")
+        so = open(os.path.join(work, "sitl.log"), "w")
         sitl = subprocess.Popen([C.SITL_BINARY, "--model", "JSON:127.0.0.1", "-I", str(inst),
             "-w", "--defaults", parm, "--serial0", f"tcp:{C.MAVLINK_BASE_PORT+10*inst}"],
             stdout=so, stderr=subprocess.STDOUT, preexec_fn=os.setpgrp, cwd=work)

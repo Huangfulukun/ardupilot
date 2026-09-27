@@ -237,7 +237,7 @@ attitude, rotor speeds, and tilt angles in a single predictive
 problem~\cite{bauersfeld2021mpc,allenspach2021nmpc,rohr2021nmpc,chen2024unified}.
 Bauersfeld \emph{et al.}~\cite{bauersfeld2021mpc} is the most direct prior
 work: a pilot velocity command is mapped to rotor thrusts and tilt angles by
-an MPC over the entire envelope, with outdoor flight flight results and an explicit
+an MPC over the entire envelope, with outdoor flight results and an explicit
 comparison against a binary-switch strategy. Sensor-based incremental methods
 (INDI) instead linearize about the current state and use angular acceleration
 feedback, which makes them robust to aerodynamic uncertainty; they have been
@@ -451,7 +451,7 @@ control and simulation.
 Collect the virtual wrench and the actuators as
 \begin{equation}
 w=\begin{bmatrix}F\\ \tau\end{bmatrix}\in\mathbb{R}^{6},\qquad
-nu=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
+u=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
 \label{eq:wu}
 \end{equation}
 Because the rotor force contains products $T_i\sin\delta_i$ and
@@ -1303,7 +1303,7 @@ hardware-in-the-loop, flight tests, and rotor-fault scenarios.
 \section*{CRediT authorship contribution statement}
 Author One: Conceptualization, Methodology, Software, Writing -- original draft.
 Author Two: Validation, Visualization, Writing -- review \& editing.
-Corresponding Author: Supervision, Funding acquisition, Writing -- review \& editing.
+Corresponding Author: Supervision, Funding acquisition, MathD, Writing -- review \& editing.
 
 \section*{Declaration of competing interest}
 The authors declare that they have no known competing financial interests or

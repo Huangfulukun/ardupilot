@@ -210,7 +210,7 @@ This paper therefore makes three targeted contributions.
   \item \textbf{Open SITL companion benchmark.} The method is implemented as a
   companion controller around a high-rate nonlinear plant in the ArduPilot
   framework for a \SI{30}{\kilogram} fully-tilting hexacopter and released,
-  with parameters, scenario, and the \emph{stock ArduPilot native firmware}
+  with parameters, scenarios, and the \emph{stock ArduPilot native firmware}
   as the comparison baseline, as a
   reproducible benchmark. The proposed-controller results are generated
   by the companion plant of the same physics model used by the ArduPilot JSON
@@ -223,7 +223,7 @@ This paper therefore makes three targeted contributions.
 The remainder of the paper is organized as follows. Section~2 reviews related
 work. Section~3 describes the platform and the two models used for control
 and simulation. Section~4 develops the time-varying AWS allocation, Section~5
-the corridor OCP, and Section~6 the unified MPC and two-layer
+the corridor OCP, and Section~6 the unified MPC and the two-layer
 integration. Section~7 details the ArduPilot SITL implementation, Section~8
 defines the simulation campaign, and Section~9 discusses limitations.
 Section~10 concludes.
@@ -630,7 +630,7 @@ force-and-moment equilibrium
 \begin{equation}
 \sum_i T_i\sin\tau = D,\qquad
 \sum_i T_i\cos\tau + L = mg,\qquad
-M_y^{\mathrm{rot}}+\mathrm{wing}}+M_y^{\mathrm{tail}}=0,
+M_y^{\mathrm{rot}}+M_y^{\mathrm{wing}}+M_y^{\mathrm{tail}}=0,
 \label{eq:trim}
 \end{equation}
 with $\tau=\beta-\theta$ the thrust-line angle from vertical, including the
@@ -956,7 +956,7 @@ VFR\_HUD), solves the QP, and writes the 16 actuator commands (6 motors, 6
 tilts, 4 surfaces) over a dedicated scripting serial port
 (\texttt{SERIAL2\_PROTOCOL=28}). A Lua bridge decodes a 35-byte frame and calls
 \texttt{SRV\_Channels::set\_output\_pwm\_chan\_timeout} directly, bypassing the
-RC-override/GCS routing layer that proved unreliable in SITL. The
+RC-override/GCS routing layer that proved unreliable in SITL.
 
 The resulting SITL flight (\texttt{full\_paper}, Fig.~\ref{fig:sitl_overview})
 completes the full hover$\to$cruise$\to$hover mission: climb to 60\,m, forward
@@ -1049,7 +1049,7 @@ thrust, and body pitch versus airspeed.}
 attitude, mean nacelle tilt, mean rotor thrust, and ruddervator deflection.
 Shaded bands mark the six mission phases.}
 \label{fig:profile}
-\end{figure*}
+\end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_ablation_corridor.pdf}

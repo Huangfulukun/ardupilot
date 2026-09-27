@@ -35,7 +35,7 @@ def main():
     inst=0
     work=tempfile.mkdtemp(prefix="diag_")
     truth=os.path.join(work,"truth.csv"); parm=os.path.join(work,"combined.parm")
-    C.combine_parm_files([os.path.join(TOOLS, "config", "native_baseline.parm")], parm)
+    C.combine_parm_files([os.path.join(TOOLS,"config","native_baseline.parm")], parm)
     cfg=os.path.join(TOOLS,"config","tilt_hexa_30kg_seed.yaml")
     fdm=sitl=mav=None
     try:

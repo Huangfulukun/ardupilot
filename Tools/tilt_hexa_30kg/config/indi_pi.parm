@@ -67,3 +67,8 @@ THX_HOVER_DUR_S 5
 THX_CRUISE_DUR_S 10
 THX_DECEL_M_S2 1.0       # braking authority at beta_min=-10 deg is ~1.7 m/s2 without drag
 THX_PITCH_MAX 5          # pitch-attitude reference at cruise (deg)
+
+SERIAL2_PROTOCOL 28
+
+SCR_ENABLE 1
+SCR_VM_I2C_ADDR 0

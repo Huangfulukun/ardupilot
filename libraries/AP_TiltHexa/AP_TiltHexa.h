@@ -34,6 +34,12 @@ public:
     // Main output hook called from Plane::servos_output()
     void output(void);
 
+    // === Companion direct actuator passthrough (bypass RC_Channels) ===
+    // GCS calls this on RC_CHANNELS_OVERRIDE; instance reads ext_target[]
+    static void set_ext_target(const uint16_t pwms[16]);
+    static uint16_t ext_target[16];
+    static uint32_t ext_target_ms;
+
 private:
     // ---- Parameters ----
     AP_Int8  _enable;        // THX_ENABLE
@@ -96,6 +102,7 @@ private:
     AP_Float _fw_drv_trim_deg; // THX_FW_DRV_DEG
     AP_Float _fw_ksp;        // THX_FW_KSP
     AP_Float _fw_kalt_deg_m; // THX_FW_KALT
+    AP_Int16 _ext_enable;    // THX_EXT_EN
 
     // ---- Internal state ----
     bool _initialised;
@@ -226,6 +233,9 @@ private:
 
     // DCM body-to-NED (row-major, 9 elements)
     float _R_bn[9];
+
+    // FW-mode altitude integrator (elevator bias, rad), reset when FW mode off
+    float _fw_alt_int_rad = 0.0f;
 
     // Time at last INDI cycle start (for solve time measurement)
     uint32_t _indi_cycle_us;

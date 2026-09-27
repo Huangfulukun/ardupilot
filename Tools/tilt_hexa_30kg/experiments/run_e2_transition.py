@@ -198,18 +198,32 @@ def run_native_transition(instance: int, seed: int, cruise_m_s: float = 20.0,
             result["error"] = "Failed to set FBWA mode"
             return result
 
-        # Wait for airspeed to build up to cruise speed
-        print(f"[Native] Waiting for airspeed {cruise_m_s} m/s ...")
+        # Send RC override: full throttle, neutral pitch/roll/yaw
+        # Channels: 1=roll, 2=pitch, 3=throttle, 4=yaw
+        def send_rc_override(throttle=1900, pitch=1500, roll=1500, yaw=1500):
+            mav.mav.rc_channels_override_send(
+                mav.target_system, mav.target_component,
+                roll, pitch, throttle, yaw, 0, 0, 0, 0)
+
+        # Wait for airspeed to build up to cruise speed (use groundspeed since ARSPD_USE=0)
+        print(f"[Native] Waiting for groundspeed {cruise_m_s} m/s ...")
         t0 = time.monotonic()
         cruise_reached = False
         cruise_hold_start = 0.0
+        last_rc = 0.0
         while time.monotonic() - t0 < duration_s:
+            # Keep RC override alive (every 0.5s)
+            if time.monotonic() - last_rc > 0.5:
+                send_rc_override(throttle=1900)
+                last_rc = time.monotonic()
             msg = mav.recv_match(type="VFR_HUD", blocking=True, timeout=2.0)
             if msg is not None:
                 airspeed = msg.airspeed
+                groundspeed = msg.groundspeed
                 alt = msg.alt
-                print(f"  t={time.monotonic()-t0:.1f}s  airspeed={airspeed:.1f} m/s  alt={alt:.1f}m")
-                if not cruise_reached and airspeed >= cruise_m_s * 0.9:
+                speed = groundspeed if airspeed < 0.1 else airspeed
+                print(f"  t={time.monotonic()-t0:.1f}s  speed={speed:.1f} m/s (as={airspeed:.1f}, gs={groundspeed:.1f})  alt={alt:.1f}m")
+                if not cruise_reached and speed >= cruise_m_s * 0.9:
                     print(f"[Native] Cruise speed reached at t={time.monotonic()-t0:.1f}s")
                     cruise_reached = True
                     cruise_hold_start = time.monotonic()
@@ -222,6 +236,11 @@ def run_native_transition(instance: int, seed: int, cruise_m_s: float = 20.0,
                 print("[Native] Cruise hold complete, starting back transition")
                 break
 
+        # Clear RC override before switching back
+        mav.mav.rc_channels_override_send(
+            mav.target_system, mav.target_component,
+            0, 0, 0, 0, 0, 0, 0, 0)
+
         # Switch back to QLOITER for back transition
         print("[Native] Switching to QLOITER for back transition ...")
         set_mode(mav, MODE_QLOITER)
@@ -231,9 +250,11 @@ def run_native_transition(instance: int, seed: int, cruise_m_s: float = 20.0,
         t1 = time.monotonic()
         while time.monotonic() - t1 < 30.0:
             msg = mav.recv_match(type="VFR_HUD", blocking=True, timeout=2.0)
-            if msg is not None and msg.airspeed < 5.0:
-                print(f"[Native] Airspeed below 5 m/s, transition complete")
-                break
+            if msg is not None:
+                speed = msg.groundspeed if msg.airspeed < 0.1 else msg.airspeed
+                if speed < 5.0:
+                    print(f"[Native] Speed below 5 m/s, transition complete")
+                    break
 
         # Land
         print("[Native] Commanding land ...")

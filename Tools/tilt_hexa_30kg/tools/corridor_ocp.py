@@ -55,13 +55,16 @@ class CorridorOCP:
         self.W = m * g
         # Exact plant-consistent feasible trim corridor (numerical equilibrium
         # including the thrust-line moment and V-tail authority).
-        self.trim = TrimMap(alpha_cap_deg=14.5)
+        self.trim = TrimMap(alpha_cap_deg=14.5, fw_threshold_mps=20.0)
         # The backward conversion uses a monotonic, rotor-borne alpha schedule
         # (cruise incidence easing to zero as speed falls) so the nacelles tilt
         # back and the rotors take over without the near-stall pitch-up that
         # makes deceleration unstable in the plant's body-frame lift model.
+        # The fixed-wing threshold applies here too: the backward leg STARTS
+        # from beta=90 deg (pure fixed-wing cruise) and tilts back as speed
+        # falls below the threshold.
         self.trim_bwd = TrimMap(alpha_cap_deg=11.0, scheduled_alpha=True,
-                                Vc=20.0)
+                                Vc=20.0, fw_threshold_mps=20.0)
 
     def aero(self, V, alpha):
         q = 0.5 * self.rho * V * V

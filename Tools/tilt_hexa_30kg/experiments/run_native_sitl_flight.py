@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real stock arduplane SITL baseline v2: build speed in QLOITER then gentle FBWA transition."""
+"""Real stock arduplane SITL baseline v2: build speed in QLOITER, then gentle FBWA transition."""
 import os, sys, time, tempfile, shutil, subprocess, math
 import numpy as np, pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))

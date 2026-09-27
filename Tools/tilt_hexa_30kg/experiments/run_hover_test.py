@@ -73,7 +73,7 @@ def main():
     work = tempfile.mkdtemp()
     parm = os.path.join(work, "combined.parm")
     C.combine_parm_files([os.path.join(TOOLS,"config","default.parm"),
-                          os.path.join(TOOLS,"config","indi_pi.parm"), parm)
+                          os.path.join(TOOLS,"config","indi_pi.parm")], parm)
     # copy Lua script into SITL working dir
     scripts_dir = os.path.join(work, "scripts")
     os.makedirs(scripts_dir, exist_ok=True)

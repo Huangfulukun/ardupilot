@@ -327,7 +327,7 @@ stale CSVs — check timestamps/metrics before trusting results.
       ~1316 lines), tools/thx_core.py (ctypes bindings), experiments/run_baseline.sh,
       experiments/make_figures.py (fig_mc update), AP_TiltHexa C++ core/Makefile, config parm;
   (2) FIRMWARE (not started): verify submodules -> ./waf configure --board sitl && ./waf plane
-      -> arduplane SITL hover smoke -> investigate t~119.7 s thrust-collapse bug
+      -> arduplane SITL hover smoke -> investigate t~119.7 s thrust-collapse open bug
       (read BIN THXR/THXQ/THXC/RCOU);
   (3) user must replace author/affiliation/corresponding placeholders in main.tex before submission;
   (4) optional: an infeasible-command/rotor-derate scenario that actually triggers online replanning;
@@ -499,7 +499,7 @@ Pushed via github_oauth push_files and byte-verified by public HTTPS `git fetch`
 - experiments/run_campaign.py (235, commit bd69998): unified E2/E4/E5 closed-loop campaign over
   the full nonlinear FDM driving the production C++ core via ctypes; metrics recomputed from
   the 400 Hz truth CSV; gust/wind/Monte-Carlo.
-- analysis/run_afms.py (186, commit 32b9ca): offline AFMS attainable-wrench projection
+- analysis/run_afms.py (186, commit 32b90ca): offline AFMS attainable-wrench projection
   (linprog support boundary, static magnitude/geometry constraints), CSV + PNG/PDF.
 - experiments/metrics_common.py (640, commit c8b7f00): pymavlink DFReader .BIN parsing,
   time-varying THXR-reference vs truth tracking metrics, crash detection, smoothness J,
@@ -528,9 +528,9 @@ REMAINING (next continuation):
 - Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
   * experiments/run_e1_trim.py (743 lines, commit e4de110; trailing newline aligned) — E1 nonlinear plant trim sweep V=0..25.
   * experiments/run_e3_stress.py (962 lines, commit 0cc5ea0) — SITL E3 stress sweep. FIX: the file called
-  find_pi_saturation_boundary() which was never defined (NameError after the long sweep); added a small
-  defensive helper (first lambda where PI sat_fraction>0.3, any actuator near-limit >0.10, or wrench RMSE
-  >5x the lambda=0 baseline). py_compile OK.
+    find_pi_saturation_boundary() which was never defined (NameError after the long sweep); added a small
+    defensive helper (first lambda where PI sat_fraction>0.3, any actuator near-limit >0.10, or wrench RMSE
+    >5x the lambda=0 baseline). py_compile OK.
 - CLAUDE.md note: earlier this round a condensed CLAUDE.md was pushed by mistake; restored the full §1-§17
   history (commit 531aad1) and aligned local to it (removed two stale §6 bullets fully superseded by §7-§17);
   local == remote blob 2e0e1b9 for CLAUDE.md.
@@ -543,7 +543,7 @@ REMAINING (next continuation):
       can be pushed; per-run truth CSV/BIN and binary figures (figures/*.pdf,png) have no push channel
       (gitignored/regenerable; figures already in remote paper/); run_baseline.sh mode-bit diff is unpushable;
   (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker);
-  (5) when all goals meet, disable/delete cron 12305222854914 and report completion.
+  (5) when all goals met, disable/delete cron 12305222854914 and report completion.
 
 ## §19 Checkpoint 2026-09-22 (cron continuation: final two SITL drivers + 7 docs pushed)
 - Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
@@ -870,7 +870,7 @@ fw_fix4_truth.csv):**
   difference, §7.4). Never conflated.
 
 **Terminology:** unified nacelle-tilt symbol -- dynamics section used delta_i;
-add explicit note that delta_i is the per-nacelle realization of beta.
+added explicit note that delta_i is the per-nacelle realization of beta.
 
 **Reproducibility:** fixed paper/regenerate_figures.py dead data paths
 (int_fresh_*.csv -> fw_fix4_*.csv; fresh_nocorridor_ctrl.csv made optional;
@@ -1016,7 +1016,7 @@ Path A (external MPC over MAVLink) assessed: requires firmware actuator passthro
 (THX currently owns all 16 servos) + 30-50Hz state feedback + external QP loop.
 This is a multi-day integration; documented as recommended next step in paper 7.4.
 Forward wing-borne cruise remains the real-binary deliverable (v12: beta 88.9,
-as 20.2, alt 58.1m). Paper 27p compile clean.
+as 20.2, alt 58.1m). Paper 27p clean.
 
 ## Phase-3g: companion actuator bypass proven (THX_EXT_EN)
 Added THX_EXT_EN=1: firmware forwards RC_CHANNELS_OVERRIDE ch1-16 directly to
@@ -1150,7 +1150,7 @@ fb_z now -1.0 (was 0) -- RAW_IMU received but scale wrong (should be -10).
 max_roll=172.5 still flips. f_body scale needs calibration. Documented.
 
 ## Phase-3z4: f_body scale fixed (hover22)
-f_body=-9.8 correct. But still max_roll=109°, no liftoff. Attitude control tuning
+fb_z=-9.8 correct. But still max_roll=109°, no liftoff. Attitude control tuning
 remains. I/O bridge + f_body now both correct.
 
 ## Phase-3z5: latency analysis

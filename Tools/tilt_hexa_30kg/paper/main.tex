@@ -378,8 +378,7 @@ Actuators            & $6$ throttle $+\,6$ tilt $+\,4$ surfaces & 16 inputs, 6 D
 \end{table}
 
 \subsection{Rigid-body dynamics}\label{sec:rigid}
-Let $p\in\mathbb{R}^3$ and
-v denote position and velocity in the inertial
+Let $p\in\mathbb{R}^3$ and $v$ denote position and velocity in the inertial
 frame, $\eta=(\phi,\theta,\psi)$ the Euler angles, and $\omega^b$ the body
 rates. With $R_b^I$ the body-to-inertial rotation matrix,
 \begin{equation}
@@ -716,7 +715,7 @@ $N=20$ at $\Delta t=0.03$~s ($\approx 33$~Hz). The resulting equality
 constraints are condensed into a small dense quadratic program in the
 five virtual-wrench increments, which is solved by the active-set
 \texttt{quadprog} solver (an embedded condensed QP such as
-acados~\cite{verschueren2022acados} would be the natural flight-hardware
+acados~\cite{verschueren2022acados} would be natural flight-hardware
 target); on infeasibility the attitude soft constraints are
 relaxed first, and a zero-wrench fallback is used only as a last resort.
 The virtual wrench is then passed to the time-varying AWS allocator of
@@ -832,26 +831,18 @@ publicly diffed firmware hook exposes the six tilt servos and the surfaces
 for the native \texttt{arduplane} SITL target.
 
 \subsection{Baseline and fairness}\label{sec:baseline}
-The comparison baseline has two layers, kept deliberately separate. (i) The
-\emph{offline native-equivalent} row in Table~\ref{tab:main} replicates the
-stock QuadPlane tilt-rotor control logic---a switched QLOITER/FBWA/QLOITER mode
-sequence with an open-loop, fixed-rate nacelle tilt schedule, capped at the
-ArduPilot-enforced \texttt{Q\_TILT\_MAX=80$^\circ$} limit---executed on the same
-SITL-class companion plant and physics model as the proposed controller, using
-the identical mission, disturbance, and atmosphere; neither controller reads
-the truth state. (ii) Separately, we flew the \emph{unmodified stock
-\texttt{arduplane} SITL binary} itself against the project's JSON physics
-backend (Section~\ref{sec:realsitl}) to expose what a real stock user actually
-gets today. The two layers answer different questions: the offline equivalent
-gives a like-for-like numerical transition comparison on the shared plant,
-while the real-binary flight exposes the implementation-level limitation of the
-stock continuous-tilt mode (Section~\ref{sec:stock}). A second ablation,
-\emph{proposed without the corridor}, uses the same MPC but a fixed-rate tilt
-schedule, isolating the contribution of the corridor reference. All companion
-results are SITL-derived: the proposed-MPC truth CSV and the native-equivalent
-truth CSV both come from the same nonlinear 400\,Hz plant, while the
-real-binary results are parsed from the \texttt{.BIN} flight log and the FDM
-truth stream.
+The comparison baseline is the \emph{unmodified stock \texttt{arduplane} SITL
+binary} (stock QuadPlane, \texttt{Q\_TILT\_MAX=80}), flown in the same
+environment against the project's JSON physics backend
+(Section~\ref{sec:realsitl}); its forward conversion departs
+(Table~\ref{tab:main}), so the table reports the real-binary result rather than
+a tuned or offline equivalent. To isolate the contribution of the corridor
+reference without rebuilding the bridge, a controlled ablation is run on the
+identical-physics companion plant: the same MPC but a fixed-rate tilt schedule in
+place of the offline-corridor reference. All companion-plant results are derived
+from the same nonlinear 400\,Hz plant; the real-binary results are parsed from
+the \texttt{.BIN} flight log and the FDM truth stream, with truth columns used
+only for post-processing.
 
 % =====================================================================
 \subsection{Real-binary SITL verification}\label{sec:realsitl}
@@ -1046,9 +1037,10 @@ thrust, and body pitch versus airspeed.}
 
 \begin{figure*}[t]
 \centering\includegraphics[width=0.92\textwidth]{figures/fig_profile.pdf}
-\caption{Nominal hover--cruise--hover mission (truth): altitude, airspeed,
-attitude, mean nacelle tilt, mean rotor thrust, and ruddervator deflection.
-Shaded bands mark the six mission phases.}
+\caption{Nominal hover--cruise--hover mission on the real \texttt{arduplane}
+SITL binary (truth): altitude, airspeed, attitude, mean nacelle tilt, mean rotor
+thrust, and ruddervator deflection. Shaded bands mark the forward conversion,
+the wing-borne cruise at $\beta=90^\circ$, and the backward conversion.}
 \label{fig:profile}
 \end{figure*}
 
@@ -1124,35 +1116,46 @@ all far below the 30\,ms control period.}
 
 \begin{table}[t]
 \centering
-\caption{Main transition results from the SITL plant-truth logs. Energy is the
-rotor induced energy $E=\int\sum_i T_i^{3/2}/\sqrt{2\rho A}\,\mathrm dt$ over
-each conversion (momentum theory, rotor diameter $0.70$~m). The native-equivalent
-baseline replicates the stock ArduPilot QuadPlane logic (mode-switched,
-open-loop tilt, no corridor); the proposed controller enforces a $\beta=90^\circ$
-fixed-wing cruise above the 20\,m/s threshold. The fixed-schedule
-ablation overshoots the cruise speed (24.5 vs 20~m/s) and loses $7$~m on the
-backward leg.}
+\caption{End-to-end conversion results on the \emph{real \texttt{arduplane}
+SITL binary} (identical hover--60\,m--cruise-20--hover mission; both controllers
+act only on sensed state). Energy is the rotor induced energy
+$E=\int\sum_i T_i^{3/2}/\sqrt{2\rho A}\,\mathrm dt$ over each conversion
+(momentum theory, rotor diameter $0.70$\,m). The proposed MPC is bridged over
+the scripting-serial Lua port; the baseline is the unmodified stock QuadPlane
+(\texttt{Q\_TILT\_MAX=80}). The stock baseline commands the nacelles to
+$90^\circ$ open-loop but its multirotor attitude loop does not vector thrust
+during \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} conversion
+(\texttt{Q\_TILT\_TYPE=0} sets \texttt{\_is\_vectored=false}), so it departs on
+the first forward conversion and has no backward-leg numbers. All numbers are
+recomputed from the FDM truth stream
+(\texttt{results/SITL\_MPC/full\_paper\_transition\_metrics.json}).}
 \label{tab:main}
 \small
 \begin{tabular}{lcccccc}
 \toprule
- & \multicolumn{3}{c}{Forward transition} & \multicolumn{3}{c}{Backward transition} \\
+ & \multicolumn{3}{c}{Forward conversion} & \multicolumn{3}{c}{Backward conversion} \\
 \cmidrule(lr){2-4}\cmidrule(lr){5-7}
 Controller & $t_f$ (s) & $\Delta h_{\max}$ (m) & Energy (kJ) & $t_f$ (s) & $\Delta h_{\max}$ (m) & Energy (kJ) \\
 \midrule
-Proposed (full)        & 14.0 & 0.65 & 20.6 & 25.0 & 1.39 & 35.8 \\
-Proposed, no corridor  & 14.0 & 2.67 & 19.9 & 20.1 & 7.00 & 45.6 \\
-ArduPilot native-equiv & 16.0 & 0.45 & 21.6 & 16.0 & 1.82 & 24.7 \\
+Proposed MPC (real SITL) & 9.5 & 0.16 & 16.9 & 14.5 & 0.21 & 20.9 \\
+Stock QuadPlane (real SITL) & \multicolumn{6}{l}{departs on forward conversion ($|\phi|\to170^\circ$, $V\to47.8$ m/s)} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[t]
 \centering
-\caption{Robustness campaign (proposed controller, plant-only mismatch); every
-scenario passes all nine truth checks. Terminal ground speed is used for the
-hover criterion (in a steady crosswind a correct hover has airspeed equal to
-the wind speed). All runs use zero explicit mode switches.}
+\caption{Robustness campaign on the high-rate companion plant (proposed
+controller, plant-only mismatch); every scenario passes all nine truth checks.
+Because the real-binary Lua bridge admits only a single closed-loop mission, the
+systematic perturbation matrix (S4--S9) and the Monte-Carlo study are executed
+on the identical-physics companion plant (\S\ref{sec:twomodel}), where mass,
+centre-of-gravity, thrust, surface, inertia and wind perturbations can be
+injected reproducibly; the end-to-end nominal flight and the stock-baseline
+comparison are on the real \texttt{arduplane} binary (Table~\ref{tab:main}).
+Terminal ground speed is used for the hover criterion (in a steady crosswind a
+correct hover has airspeed equal to the wind speed). All runs use zero explicit
+mode switches.}
 \label{tab:robust}
 \small
 \begin{tabular}{lcccccc}
@@ -1195,21 +1198,26 @@ Outer trim map & \multicolumn{4}{c}{offline; online table lookup} \\
 single desktop scheduling hiccup; the P99 remained below 2.4\,ms.
 \end{table}
 
-The campaign confirms the following. The corridor-aware controller completes
-the full mission with zero explicit mode switches and peak attitude below
-$18^\circ$ (limit $60^\circ$). The online feasibility indicators support the
-framing of Section~\ref{sec:hedge}: the smallest corridor margin on the
-realised trajectory is $0.72$~m/s, the maximum unallocated wrench residual is
-$0.038$ in mixed units (mean $10^{-3}$), and the thrust, tilt, and surface
-saturation fractions are all zero, so the wrench-hedging and outer
-re-planning path was correctly never entered. Removing the corridor (fixed tilt schedule)
-leaves the aircraft flying but it overshoots cruise speed to 24.5\,m/s,
-increases the backward-leg altitude deviation from $1.39$ to $7.0$~m, and
-raises the backward conversion energy from $35.8$ to $45.6$~kJ, so the
-corridor is doing real work rather than merely reshaping the reference. The
-bounded position integral rejects constant mass, thrust, and wind mismatch
-without the instability of an acceleration-residual observer. The inner QP
-runs at a mean of about $0.5$~ms (P99 below $2.4$~ms), and the C++ allocator
+The campaign confirms the following. On the real \texttt{arduplane} binary the
+proposed controller completes the whole mission with zero explicit mode switches:
+peak attitudes are $|\phi|_{\max}=0.13^\circ$ and $|\theta|_{\max}=15.0^\circ$,
+the terminal hover is held at $59.9$\,m with $0.01$\,m/s ground speed, and the
+cruise segment holds $\beta\approx90^\circ$ at $20$\,m/s and $60.5\pm0.2$\,m
+(Fig.~\ref{fig:profile}). The remaining numbers in this section are from the
+high-rate companion plant, where the closed-loop trajectory and the actuator
+telemetry are available for the systematic diagnostics below. The online
+feasibility indicators support the framing of Section~\ref{sec:hedge}: the
+smallest corridor margin on the realised trajectory is $0.72$~m/s, the maximum
+unallocated wrench residual is $0.038$ in mixed units (mean $10^{-3}$), and the
+thrust, tilt, and surface saturation fractions are all zero, so the
+wrench-hedging and outer re-planning path was correctly never entered. Removing
+the corridor (fixed tilt schedule) leaves the aircraft flying but it overshoots
+cruise speed to 24.5\,m/s, increases the backward-leg altitude deviation from
+$1.39$ to $7.0$~m, and raises the backward conversion energy from $35.8$ to
+$45.6$\,kJ, so the corridor is doing real work rather than merely reshaping the
+reference. The bounded position integral rejects constant mass, thrust, and wind
+mismatch without the instability of an acceleration-residual observer. The inner
+QP runs at a mean of about $0.5$~ms (P99 below $2.4$~ms), and the C++ allocator
 at $49$--$74\,\mu$s, both comfortably real-time on a desktop core. The
 envelope has clear limits, reported honestly: a $15^\circ$/s, $28^\circ$-bank
 coordinated turn is not trackable (the aircraft sideslips and descends), so a
@@ -1222,35 +1230,31 @@ seed: altitude RMSE mean 1.06\,m (worst 1.81\,m), speed RMSE mean 0.54\,m/s
 (worst 0.77\,m/s), with the solve-time P99 below 2.4\,ms on every seed
 (Fig.~\ref{fig:mc}).
 
-The comparison against the ArduPilot native-equivalent baseline is reported
-honestly rather than as a foregone victory. On the same SITL-class plant, with
-both controllers denied the truth state, the native-equivalent controller
-adopts a mode-switched, open-loop tilt schedule and converts in 16.0/16.0\,s
-(forward/backward) with altitude deviations of 0.45/1.82\,m and 21.6/24.7\,kJ
-of rotor induced energy (Table~\ref{tab:main}). However, because it lacks a
-fixed-wing conversion threshold, its cruise nacelle tilt settles at only
-$\approx 44^\circ$ (a minimum-thrust trim in which the rotors still carry
-nearly half the lift), rather than the physically correct $\beta=90^\circ$
-pure wing-borne cruise. The proposed controller reaches a mean cruise tilt of
-$88.7^\circ$ (peak $90^\circ$) above the $20$\,m/s conversion threshold, with
-the wing carrying all lift. We do not claim the proposed controller dominates
-the native-equivalent baseline on every metric: the baseline has slightly
-less forward-transition altitude loss (0.45 vs 0.65\,m), while the proposed
-controller has less backward-transition altitude loss (1.39 vs 1.82\,m) and a
-physically correct full-tilt cruise. The two controllers differ in what they
-guarantee. The native-equivalent conversion relies on a hand-scheduled tilt
-ramp and a discrete hover/FBWA state machine, and its success is empirical:
-there is no pre-maneuver certificate that the commanded tilt stays above the
-stall boundary, and without an explicit fixed-wing threshold it cannot achieve
-a pure wing-borne cruise. The proposed controller, by contrast, runs a single
-optimization over the entire profile (zero explicit mode switches),
-constructs the conversion reference from the offline corridor OCP with an
-explicit fixed-wing conversion threshold, and enforces feasibility against
-the stall boundary and actuator limits at every step through the constrained
-QP. The decisive controlled experiment is the corridor ablation: replacing
-the feasibility-aware reference with a fixed tilt schedule causes the same
-MPC to overshoot cruise speed to 24.5\,m/s and lose $7.0$~m on the backward
-leg, which localises the benefit to the feasibility layer rather than to
+The comparison against the stock ArduPilot firmware is reported honestly rather
+than as a foregone victory. On the real \texttt{arduplane} binary, flown in the
+same environment, the proposed controller completes the whole mission: forward
+conversion in $9.5$\,s with a $0.16$\,m altitude deviation and $16.9$\,kJ of
+rotor induced energy, a $17.4$\,s wing-borne cruise at mean
+$\bar\beta=88.2^\circ$ (peak $90^\circ$) and $20$\,m/s, and a gentle backward
+conversion in $14.5$\,s with $0.21$\,m deviation and $20.9$\,kJ
+(Table~\ref{tab:main}, Fig.~\ref{fig:profile}). The stock, unmodified
+QuadPlane (\texttt{Q\_TILT\_MAX=80}) climbs and hovers stably but departs on
+the first forward conversion: its roll diverges to $|\phi|\approx170^\circ$ and
+the airspeed spikes to $47.8$\,m/s (Fig.~\ref{fig:sitl_native_vs_thx}). The
+root cause is in the unmodified firmware: for \texttt{Q\_TILT\_TYPE=0} the
+tiltrotor library sets \texttt{\_is\_vectored=false}, so the multirotor attitude
+controller does not take over during \texttt{AIRSPEED\_WAIT}/\texttt{TIMER}
+conversion; at low speed the aerodynamic surfaces have no authority and the
+open-loop tilt command (which does reach $90^\circ$) leaves no closed-loop
+attitude stabilisation. This is a stock control-law limitation, not an actuator
+or interlink failure, and it is left as-is rather than tuned away.
+The decisive controlled experiment for the corridor itself is run on the
+identical-physics companion plant (where the reference can be swapped without
+rebuilding the bridge): replacing the feasibility-aware corridor reference with
+a fixed tilt schedule leaves the aircraft flying but overshoots the cruise speed
+to $24.5$\,m/s, increases the backward-leg altitude deviation from $1.39$ to
+$7.0$\,m, and raises the backward conversion energy from $35.8$ to $45.6$\,kJ,
+which localises the stabilising benefit to the feasibility layer rather than to
 optimisation per se.
 
 % =====================================================================

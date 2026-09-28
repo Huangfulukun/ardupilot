@@ -661,7 +661,7 @@ wing-borne rather than holding an intermediate 60--80$^\circ$ tilt.
 \subsection{Backward transition}\label{sec:backward}
 Backward transition is treated symmetrically but is the more sensitive
 manoeuvre, because premature wing unloading at intermediate speed produces a
-pitch-up and a sink~\cite{may2025backward}。 Starting from the fixed-wing cruise
+pitch-up and a sink~\cite{may2025backward}. Starting from the fixed-wing cruise
 trim ($\beta=90^\circ$), the backward leg uses a monotonic, time-scheduled
 rotor-borne incidence profile (cruise incidence easing to $0^\circ$ as the
 nacelles tilt back from $90^\circ$ to $0^\circ$) over a $25$~s conversion,
@@ -1128,7 +1128,7 @@ during \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} conversion
 (\texttt{Q\_TILT\_TYPE=0} sets \texttt{\_is\_vectored=false}), so it departs on
 the first forward conversion and has no backward-leg numbers. All numbers are
 recomputed from the FDM truth stream
-(\texttt{results/SITL\_MPC/full\_paper\_transition\_metrics.json}).}
+(\texttt{results/SITL_MPC/full_paper_transition_metrics.json}).}
 \label{tab:main}
 \small
 \begin{tabular}{lcccccc}
@@ -1325,7 +1325,7 @@ permit full reproduction of the benchmark.
 The released artifact contains:
 \begin{itemize}[leftmargin=1.6em,itemsep=2pt]
   \item ArduPilot parameter files (stock baseline and proposed configuration),
-  including \texttt{Q\_FRAME\_CLASS}、\texttt{Q\_TILT\_MASK}、tilt rates, and
+  including \texttt{Q\_FRAME\_CLASS}, \texttt{Q\_TILT\_MASK}, tilt rates, and
   limits;
   \item the nonlinear SITL plant for the \SI{30}{\kilogram} fully-tilting
   hexacopter and the Python companion controller (with a C ABI to the C++

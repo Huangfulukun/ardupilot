@@ -91,10 +91,15 @@ def fig_trim_schedule():
     save(fig, "fig_trim_schedule")
 
 
-def fig_full_profile(truth="fw_fix4_truth.csv", ctrl="fw_fix4_ctrl.csv",
+def fig_full_profile(truth="SITL_MPC/full_paper_truth.csv",
                      name="fig_profile"):
-    df = pd.read_csv(os.path.join(MPC, truth))
-    c = pd.read_csv(os.path.join(MPC, ctrl))
+    """Nominal full-mission time history from the REAL arduplane binary SITL
+    (proposed MPC over the Lua companion bridge).  Truth columns are used for
+    post-processing only; there is no offline controller reference file -- the
+    reference lines (alt 60 m, cruise 20 m/s, wing-borne beta=90 deg) and the
+    phase bands are overlaid directly."""
+    tr = os.path.join(ROOT, "results", truth)
+    df = pd.read_csv(tr)
     t = df["t"].values
     h = -df["pz"].values
     V = df["airspeed"].values
@@ -103,31 +108,41 @@ def fig_full_profile(truth="fw_fix4_truth.csv", ctrl="fw_fix4_ctrl.csv",
     beta = np.degrees(df[["beta1", "beta2", "beta3", "beta4", "beta5", "beta6"]].mean(axis=1).values)
     T = df[["T1", "T2", "T3", "T4", "T5", "T6"]].mean(axis=1).values
     rv = np.degrees(df[["d_rvL", "d_rvR"]].mean(axis=1).values)
-    tc = c["t"].values
     fig, ax = plt.subplots(3, 2, figsize=(7.2, 6.2), sharex=True)
-    ax[0, 0].plot(t, h, color=C_MPC, label="MPC")
-    ax[0, 0].plot(tc, c["h_ref"], color=C_REF, ls="--", label="Reference")
+    ax[0, 0].plot(t, h, color=C_MPC, label="SITL truth")
+    ax[0, 0].axhline(60, color=C_REF, ls="--", lw=0.9, label="alt. ref 60 m")
     ax[0, 0].set_ylabel("Altitude (m)"); ax[0, 0].legend(framealpha=0.9)
     ax[0, 1].plot(t, V, color=C_MPC)
-    ax[0, 1].plot(tc, c["V_ref"], color=C_REF, ls="--")
-    ax[0, 1].set_ylabel("Airspeed (m/s)")
+    ax[0, 1].axhline(20, color=C_REF, ls="--", lw=0.9, label="cruise ref 20 m/s")
+    ax[0, 1].set_ylabel("Airspeed (m/s)"); ax[0, 1].legend(framealpha=0.9, fontsize=7)
     ax[1, 0].plot(t, pitch, color=C_MPC, label="Pitch")
     ax[1, 0].plot(t, roll, color=C_NC, label="Roll")
     ax[1, 0].set_ylabel("Attitude (deg)"); ax[1, 0].legend(framealpha=0.9)
     ax[1, 1].plot(t, beta, color=C_MPC)
-    ax[1, 1].set_ylabel("Mean nacelle tilt (deg)")
+    ax[1, 1].axhline(90, color=C_REF, ls="--", lw=0.9, label="β = 90°")
+    ax[1, 1].set_ylabel("Mean nacelle tilt (deg)"); ax[1, 1].legend(framealpha=0.9, fontsize=7)
     ax[2, 0].plot(t, T, color=C_MPC)
     ax[2, 0].set_ylabel("Mean rotor thrust (N)")
     ax[2, 1].plot(t, rv, color=C_MPC)
     ax[2, 1].set_ylabel("Ruddervator (deg)")
     for a in ax[2]:
         a.set_xlabel("Time (s)")
-    # phase shading
-    phases = c.groupby("phase")["t"].agg(["min", "max"])
-    labels = {1: "climb", 2: "hover", 3: "fwd", 4: "cruise", 5: "back", 6: "hover"}
-    for ph, (a0, a1) in phases.iterrows():
-        for a in ax.flat:
-            a.axvspan(a0, a1, color="0.9", alpha=0.4, zorder=0)
+    # phase shading inferred from the truth (hover -> fwd conv -> cruise -> back conv)
+    cruise = (V > 18) & (beta > 80)
+    ci = np.where(cruise)[0]
+    if len(ci):
+        c0, c1 = ci[0], ci[-1]
+        fwd_s = c0
+        while fwd_s > 0 and V[fwd_s] > 1.0:
+            fwd_s -= 1
+        bwd_e = c1
+        while bwd_e < len(t) - 1 and V[bwd_e] > 1.0:
+            bwd_e += 1
+        bands = [(t[fwd_s], t[c0], "fwd conv"), (t[c0], t[c1], "cruise"),
+                 (t[c1], t[bwd_e], "back conv")]
+        for a0, a1, _ in bands:
+            for a in ax.flat:
+                a.axvspan(a0, a1, color="0.9", alpha=0.4, zorder=0)
     fig.tight_layout()
     save(fig, name)
 
@@ -188,7 +203,7 @@ def fig_aws():
         eps = 1e-4
         for i in range(6):
             Btilt[:, i] = (thrust_col(beta + eps, spin[i], r[i])
-                           - thrust_col(beta - eps, spin[i], r[i])) / (2 * eps) * T
+                           - thrust_col(beta - eps, spin[i])) / (2 * eps) * T
         # four aerodynamic surfaces (two ailerons, two ruddervators), scaled qS
         qS = 0.5 * rho_air * V * V * S_ref
         Bsurf = np.zeros((5, 4))

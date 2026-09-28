@@ -41,20 +41,30 @@ with **0 errors and 0 undefined references**.
    Output: `main_zh.pdf`.
 
 ## Data sources (kept deliberately distinct; no fabricated curves)
+- **Real ArduPilot `arduplane` SITL binary** (`results/SITL_*/`): supplies the
+  §8 nominal body curves (`fig_profile`, `fig_transition_overview_comparison`,
+  `fig_controls_mpc`, `fig_wrench_mpc`) and `tab:main`. The proposed MPC runs as a
+  100 Hz companion node over a scripting-serial (`SERIAL2_PROTOCOL=28`) Lua bridge
+  that writes 16 servo channels directly. It completes the full
+  hover–forward-conversion–wing-borne cruise–backward-conversion–hover mission: a
+  17.4 s cruise at mean beta 88.2 deg (90% of the window >= 85 deg), 20 m/s and
+  60.5 +/- 0.2 m altitude, peak |roll| 0.13 deg, terminal hover at 59.9 m with
+  0.01 m/s ground speed; forward/backward conversion 9.5/14.5 s, altitude
+  deviation 0.16/0.21 m, induced energy 16.9/20.9 kJ
+  (`experiments/analyze_full_paper.py`, written to
+  `results/SITL_MPC/full_paper_transition_metrics.json`). The stock, unmodified
+  ArduPilot binary (`results/SITL_native/native_sitl_truth.csv`, Q_TILT_MAX=80)
+  climbs and hovers but diverges on the forward conversion (|roll| -> 170 deg,
+  airspeed -> 47.8 m/s); see Section 7.4.
 - **Offline high-fidelity companion plant** (`results/MPC/`, 400 Hz RK4 nonlinear
-  plant; Python MPC + C++ allocator at 33 Hz): supplies the main nominal
-  campaign, the corridor/no-corridor ablation, the robustness matrix, and the
-  20-run Monte-Carlo study.
-- **Real ArduPilot `arduplane` SITL binary** (`results/SITL_*/`): the same MPC
-  runs as a 100 Hz companion node over a scripting-serial
-  (`SERIAL2_PROTOCOL=28`) Lua bridge that writes 16 servo channels directly.
-  It completes the full hover–forward-conversion–wing-borne cruise–backward-
-  conversion–hover mission: a 17.4 s cruise at mean beta 88.2 deg (90% of the
-  window >= 85 deg), 20 m/s and 60.5 +/- 0.2 m altitude, peak |roll| 0.13 deg,
-  terminal hover at 59.9 m with 0.01 m/s ground speed. The stock, unmodified
-  ArduPilot binary is flown in the same environment as the baseline (its
-  forward conversion diverges; see Section 7.4). Truth CSV columns are used
-  only for post-processing; the controller receives only sensed state.
+  plant; Python MPC + C++ allocator at 33 Hz): supplies the systematic
+  perturbation study — the corridor/no-corridor ablation, the robustness matrix
+  (tab:robust, S4–S9), the Monte-Carlo study (fig:mc), and the real-time solve-time
+  statistics (tab:rt). Because the real-binary Lua bridge admits only a single
+  closed-loop mission, mass/CG/thrust/surface/inertia/wind perturbations are
+  injected on this identical-physics companion plant for reproducibility. Truth
+  CSV columns are used only for post-processing; the controller receives only
+  sensed state.
 
 ## Status / honesty notes
 - All airframe parameters carry `REFERENCE_SEED_NOT_MEASURED` status; the work

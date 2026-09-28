@@ -1,0 +1,45 @@
+{
+  "proposed": {
+    "source": "results/SITL_MPC/full_paper_truth.csv (real arduplane binary SITL)",
+    "forward": {
+      "t0_s": 67.37499999997497,
+      "t1_s": 76.84249999996636,
+      "dur_s": 9.46749999999139,
+      "alt_min_m": 59.87388326936252,
+      "alt_max_m": 60.15654183624917,
+      "max_alt_dev_from_60_m": 0.1565418362491684,
+      "energy_kJ": 16.911631735552454
+    },
+    "cruise": {
+      "t0_s": 76.842499999996636,
+      "t1_s": 92.80999999995184,
+      "dur_s": 15.967499999985478,
+      "beta_mean_deg": 89.63629422094576,
+      "V_mean_ms": 20.04796678041576,
+      "alt_mean_m": 60.5251242512466,
+      "alt_std_m": 0.22868382514207528
+    },
+    "backward": {
+      "t0_s": 92.80999999995184,
+      "t1_s": 107.30499999993866,
+      "dur_s": 14.494999999986817,
+      "alt_min_m": 59.788678789521306,
+      "alt_max_m": 60.15514859842694,
+      "max_alt_dev_from_60_m": 0.2113212104786939,
+      "energy_kJ": 20.90998862780276
+    },
+    "max_roll_deg": 0.131935147841015,
+    "max_pitch_deg": 14.956397249128397,
+    "final_alt_m": 59.87549518478365,
+    "final_V_ms": 0.0103899584733184,
+    "total_time_s": 128.1549999999197
+  },
+  "native_stock": {
+    "source": "/home/user/Doubao/chats/38443086470788354/ardupilot/Tools/tilt_hexa_30kg/results/SITL_native/native_sitl_truth.csv",
+    "max_roll_deg": 169.85183978423404,
+    "max_airspeed_ms": 47.83211039924115,
+    "max_nacelle_beta_deg": 89.99999999999962,
+    "departure": true,
+    "departure_t_s": 95.64249999994928
+  }
+}

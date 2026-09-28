@@ -1,248 +1,126 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-analysis/make_transition_figs.py -- Generate transition comparison figures.
+analysis/make_transition_figs.py -- §8 论文图（真实 arduplane 二进制 SITL 真值）。
 
-Reads MPC truth CSV and (optionally) native SITL BIN log / truth CSV,
-produces paper-quality comparison figures:
-  - Altitude & airspeed vs time
-  - Pitch & nacelle tilt vs time
-  - Rotor thrust & surface deflection
-  - Wrench tracking
+数据源（全部为真实 arduplane SITL 飞行，禁止使用 results/MPC/fw_fix4_* 伴随闭环）：
+  proposed : results/SITL_MPC/full_paper_truth.csv   提出 MPC 经 Lua 桥（SERIAL2_PROTOCOL=28）
+                                                     飞行完整 hover->fwd->beta=90 cruise->bwd->hover
+  native   : results/SITL_native/native_sitl_truth.csv stock QuadPlane (Q_TILT_MAX=80) 同场景
+
+产出 paper/figures/：
+  fig_transition_overview_comparison.{pdf,png,svg}  alt/as/pitch/beta 两机对比
+  fig_controls_mpc.{pdf,png,svg}                   6 旋翼推力 + 4 舵面（提出 MPC）
+  fig_wrench_mpc.{pdf,png,svg}                     三轴力矩/力 实现 vs 传播参考（提出 MPC）
 """
 import os
-import sys
-import json
-import math
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(SCRIPT_DIR)
-sys.path.insert(0, ROOT)
-sys.path.insert(0, os.path.join(ROOT, "experiments"))
-
 FIG_DIR = os.path.join(ROOT, "paper", "figures")
 os.makedirs(FIG_DIR, exist_ok=True)
 
-# Paper style
+PROPOSED = os.path.join(ROOT, "results", "SITL_MPC", "full_paper_truth.csv")
+NATIVE = os.path.join(ROOT, "results", "SITL_native", "native_sitl_truth.csv")
+
 plt.rcParams.update({
-    "font.size": 10,
-    "axes.labelsize": 11,
-    "axes.titlesize": 11,
-    "legend.fontsize": 9,
-    "xtick.labelsize": 9,
-    "ytick.labelsize": 9,
-    "figure.dpi": 150,
-    "savefig.dpi": 300,
-    "savefig.bbox": "tight",
-    "font.family": "serif",
+    "font.size": 9, "axes.labelsize": 9, "axes.titlesize": 10,
+    "legend.fontsize": 7.5, "lines.linewidth": 1.3,
+    "axes.grid": True, "grid.alpha": 0.3, "grid.linewidth": 0.5,
+    "figure.dpi": 150, "savefig.dpi": 300, "font.family": "serif",
 })
-
-COLORS = {
-    "mpc": "#1f77b4",
-    "native": "#d62728",
-    "indi": "#2ca02c",
-}
+C_P, C_N = "#1f4e79", "#c0392b"
 
 
-def read_mpc_truth(csv_path):
-    """Read MPC truth CSV, return dict of arrays."""
-    data = np.genfromtxt(csv_path, delimiter=",", names=True)
-    out = {}
-    for name in data.dtype.names:
-        out[name] = data[name]
-    # compute mean beta and T
-    beta_cols = [f"beta{i}" for i in range(1, 7)]
-    T_cols = [f"T{i}" for i in range(1, 7)]
-    out["beta_mean"] = np.mean([data[c] for c in beta_cols], axis=0)
-    out["T_mean"] = np.mean([data[c] for c in T_cols], axis=0)
-    out["alt"] = -data["pz"]  # NED z -> altitude up
+def load(path):
+    if not os.path.exists(path):
+        raise SystemExit(f"missing truth CSV: {path}")
+    d = np.genfromtxt(path, delimiter=",", names=True)
+    out = {n: d[n] for n in d.dtype.names}
+    out["alt"] = -d["pz"]
+    out["beta_mean"] = np.mean([d[f"beta{i}"] for i in range(1, 7)], axis=0)
+    out["T_mean"] = np.mean([d[f"T{i}"] for i in range(1, 7)], axis=0)
     return out
 
 
-def read_native_truth(csv_path):
-    """Read native SITL truth CSV (same format as FDM output)."""
-    if not os.path.exists(csv_path):
-        return None
-    data = np.genfromtxt(csv_path, delimiter=",", names=True)
-    out = {}
-    for name in data.dtype.names:
-        out[name] = data[name]
-    if "beta1" in data.dtype.names:
-        beta_cols = [f"beta{i}" for i in range(1, 7)]
-        T_cols = [f"T{i}" for i in range(1, 7)]
-        out["beta_mean"] = np.mean([data[c] for c in beta_cols], axis=0)
-        out["T_mean"] = np.mean([data[c] for c in T_cols], axis=0)
-    if "pz" in data.dtype.names:
-        out["alt"] = -data["pz"]
-    return out
+def save(fig, name):
+    for ext in ("pdf", "png", "svg"):
+        fig.savefig(os.path.join(FIG_DIR, f"{name}.{ext}"), bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {name}")
 
 
-def plot_transition_overview(mpc, native=None, tag="mpc"):
-    """2x2 overview: altitude, airspeed, pitch, nacelle tilt."""
-    fig, axes = plt.subplots(2, 2, figsize=(10, 6.5))
-
-    # Altitude
-    ax = axes[0, 0]
-    ax.plot(mpc["t"], mpc["alt"], color=COLORS["mpc"], label="MPC (proposed)", lw=1.5)
-    if native:
-        ax.plot(native["t"], native["alt"], color=COLORS["native"], label="ArduPilot native", lw=1.5, alpha=0.8)
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Altitude (m)")
-    ax.set_title("(a) Altitude")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # Airspeed
-    ax = axes[0, 1]
-    ax.plot(mpc["t"], mpc["airspeed"], color=COLORS["mpc"], label="MPC", lw=1.5)
-    if native and "airspeed" in native:
-        ax.plot(native["t"], native["airspeed"], color=COLORS["native"], label="Native", lw=1.5, alpha=0.8)
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Airspeed (m/s)")
-    ax.set_title("(b) Airspeed")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # Pitch
-    ax = axes[1, 0]
-    ax.plot(mpc["t"], np.degrees(mpc["pitch"]), color=COLORS["mpc"], label="MPC", lw=1.5)
-    if native and "pitch" in native:
-        ax.plot(native["t"], np.degrees(native["pitch"]), color=COLORS["native"], label="Native", lw=1.5, alpha=0.8)
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Pitch angle (deg)")
-    ax.set_title("(c) Pitch attitude")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # Nacelle tilt
-    ax = axes[1, 1]
-    ax.plot(mpc["t"], np.degrees(mpc["beta_mean"]), color=COLORS["mpc"], label="MPC", lw=1.5)
-    if native and "beta_mean" in native:
-        ax.plot(native["t"], np.degrees(native["beta_mean"]), color=COLORS["native"], label="Native", lw=1.5, alpha=0.8)
-    ax.axhline(y=90, color="gray", ls="--", lw=0.8, alpha=0.5, label="Fixed-wing (90°)")
-    ax.axhline(y=0, color="gray", ls=":", lw=0.8, alpha=0.5, label="Hover (0°)")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Nacelle tilt β (deg)")
-    ax.set_title("(d) Nacelle tilt angle")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim(-10, 100)
-
-    plt.tight_layout()
-    path = os.path.join(FIG_DIR, f"fig_transition_overview_{tag}.png")
-    plt.savefig(path)
-    plt.savefig(path.replace(".png", ".pdf"))
-    plt.savefig(path.replace(".png", ".svg"))
-    plt.close()
-    print(f"  Saved {path}")
-    return path
+def fig_comparison(p, n):
+    """2x2: altitude, airspeed, pitch, nacelle tilt -- proposed (real SITL) vs stock native."""
+    fig, ax = plt.subplots(2, 2, figsize=(7.2, 5.2))
+    # limit native trace to before departure for a fair readability window
+    nroll = np.degrees(n["roll"])
+    bad = np.where(np.abs(nroll) > 60)[0]
+    ncut = bad[0] if len(bad) else len(n["t"])
+    panels = [
+        (ax[0, 0], p["alt"], n["alt"], "Altitude (m)", None),
+        (ax[0, 1], p["airspeed"], n["airspeed"], "Airspeed (m/s)", None),
+        (ax[1, 0], np.degrees(p["pitch"]), np.degrees(n["pitch"]), "Pitch (deg)", None),
+        (ax[1, 1], np.degrees(p["beta_mean"]), np.degrees(n["beta_mean"]),
+         "Mean nacelle tilt $\\beta$ (deg)", 90.0),
+    ]
+    titles = ["(a) Altitude", "(b) Airspeed", "(c) Pitch attitude", "(d) Nacelle tilt"]
+    for a, yp, yn, ylab, ref in panels:
+        a.plot(p["t"], yp, color=C_P, label="proposed MPC")
+        a.plot(n["t"][:ncut], yn[:ncut], color=C_N, label="stock native")
+        if ref is not None:
+            a.axhline(ref, color="gray", ls="--", lw=0.8, alpha=0.6)
+        a.set_title(titles.pop(0), fontsize=9)
+        a.set_xlabel("Time (s)"); a.set_ylabel(ylab)
+        a.legend(framealpha=0.9)
+    fig.tight_layout()
+    save(fig, "fig_transition_overview_comparison")
 
 
-def plot_controls(mpc, tag="mpc"):
-    """Control inputs: rotor thrust, surfaces."""
-    fig, axes = plt.subplots(2, 1, figsize=(10, 5))
-
-    ax = axes[0]
+def fig_controls(p):
+    """6 rotor thrust + 4 control surfaces over the real-SITL mission."""
+    fig, ax = plt.subplots(2, 1, figsize=(7.2, 4.6), sharex=True)
     for i in range(1, 7):
-        ax.plot(mpc["t"], mpc[f"T{i}"], lw=0.8, alpha=0.7, label=f"Rotor {i}")
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Rotor thrust (N)")
-    ax.set_title("(a) Individual rotor thrust")
-    ax.legend(ncol=3, fontsize=7)
-    ax.grid(True, alpha=0.3)
-
-    ax = axes[1]
-    ax.plot(mpc["t"], np.degrees(mpc["d_aL"]), label="Aileron L", lw=1)
-    ax.plot(mpc["t"], np.degrees(mpc["d_aR"]), label="Aileron R", lw=1)
-    ax.plot(mpc["t"], np.degrees(mpc["d_rvL"]), label="Ruddervator L", lw=1)
-    ax.plot(mpc["t"], np.degrees(mpc["d_rvR"]), label="Ruddervator R", lw=1)
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Deflection (deg)")
-    ax.set_title("(b) Control surface deflections")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    path = os.path.join(FIG_DIR, f"fig_controls_{tag}.png")
-    plt.savefig(path)
-    plt.savefig(path.replace(".png", ".pdf"))
-    plt.savefig(path.replace(".png", ".svg"))
-    plt.close()
-    print(f"  Saved {path}")
-    return path
+        ax[0].plot(p["t"], p[f"T{i}"], lw=0.8, alpha=0.75, label=f"rotor {i}")
+    ax[0].set_ylabel("Rotor thrust (N)"); ax[0].legend(ncol=6, fontsize=6.5, framealpha=0.9)
+    ax[1].plot(p["t"], np.degrees(p["d_aL"]), label="aileron L", lw=1.0)
+    ax[1].plot(p["t"], np.degrees(p["d_aR"]), label="aileron R", lw=1.0)
+    ax[1].plot(p["t"], np.degrees(p["d_rvL"]), label="ruddervator L", lw=1.0)
+    ax[1].plot(p["t"], np.degrees(p["d_rvR"]), label="ruddervator R", lw=1.0)
+    ax[1].set_ylabel("Surface deflection (deg)"); ax[1].set_xlabel("Time (s)")
+    ax[1].legend(ncol=2, fontsize=7, framealpha=0.9)
+    fig.tight_layout()
+    save(fig, "fig_controls_mpc")
 
 
-def plot_wrench(mpc, tag="mpc"):
-    """Wrench: Fx, Fz, My."""
-    fig, axes = plt.subplots(3, 1, figsize=(10, 6))
-
-    ax = axes[0]
-    ax.plot(mpc["t"], mpc["Fx_true"], label="Achieved", lw=1.2)
-    ax.plot(mpc["t"], mpc["Fx_prop"], label="Reference (propagated)", lw=1, ls="--", alpha=0.7)
-    ax.set_ylabel("Fx (N)")
-    ax.set_title("(a) Body-frame longitudinal force")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    ax = axes[1]
-    ax.plot(mpc["t"], -mpc["Fz_true"], label="Achieved (up)", lw=1.2)
-    ax.plot(mpc["t"], -mpc["Fz_prop"], label="Reference", lw=1, ls="--", alpha=0.7)
-    ax.set_ylabel("Fz (N, up)")
-    ax.set_title("(b) Body-frame vertical force")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    ax = axes[2]
-    ax.plot(mpc["t"], mpc["My_true"], label="Achieved", lw=1.2)
-    ax.plot(mpc["t"], mpc["My_prop"], label="Reference", lw=1, ls="--", alpha=0.7)
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("My (N·m)")
-    ax.set_title("(c) Pitch moment")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    path = os.path.join(FIG_DIR, f"fig_wrench_{tag}.png")
-    plt.savefig(path)
-    plt.savefig(path.replace(".png", ".pdf"))
-    plt.savefig(path.replace(".png", ".svg"))
-    plt.close()
-    print(f"  Saved {path}")
-    return path
+def fig_wrench(p):
+    """Realised vs propagated body wrench: Fx, Fz, My over the real-SITL mission."""
+    fig, ax = plt.subplots(3, 1, figsize=(7.2, 5.4), sharex=True)
+    ax[0].plot(p["t"], p["Fx_true"], color=C_P, lw=1.1, label="realised")
+    ax[0].plot(p["t"], p["Fx_prop"], color=C_N, lw=0.9, ls="--", alpha=0.7, label="propagated")
+    ax[0].set_ylabel("$F_x$ (N)"); ax[0].legend(framealpha=0.9, fontsize=7)
+    ax[1].plot(p["t"], -p["Fz_true"], color=C_P, lw=1.1, label="realised (up)")
+    ax[1].plot(p["t"], -p["Fz_prop"], color=C_N, lw=0.9, ls="--", alpha=0.7, label="propagated")
+    ax[1].set_ylabel("$F_z$ (N, up)")
+    ax[2].plot(p["t"], p["My_true"], color=C_P, lw=1.1, label="realised")
+    ax[2].plot(p["t"], p["My_prop"], color=C_N, lw=0.9, ls="--", alpha=0.7, label="propagated")
+    ax[2].set_ylabel(r"$M_y$ (N m)"); ax[2].set_xlabel("Time (s)")
+    fig.tight_layout()
+    save(fig, "fig_wrench_mpc")
 
 
 def main():
-    mpc_csv = os.path.join(ROOT, "results", "MPC", "fw_fix4_truth.csv")
-    if not os.path.exists(mpc_csv):
-        print(f"MPC truth not found: {mpc_csv}")
-        return 1
-
-    print("Reading MPC results...")
-    mpc = read_mpc_truth(mpc_csv)
-
-    # Optional native
-    native_csv = os.path.join(ROOT, "results", "E2", "transition_native_20ms_truth.csv")
-    native = read_native_truth(native_csv) if os.path.exists(native_csv) else None
-    if native:
-        print("  Native results found, will include in comparison")
-
-    print("Generating transition overview...")
-    tag = "comparison" if native else "mpc"
-    plot_transition_overview(mpc, native, tag=tag)
-
-    print("Generating controls figure...")
-    plot_controls(mpc, tag="mpc")
-
-    print("Generating wrench figure...")
-    plot_wrench(mpc, tag="mpc")
-
-    print("Done.")
-    return 0
+    p = load(PROPOSED)
+    n = load(NATIVE)
+    fig_comparison(p, n)
+    fig_controls(p)
+    fig_wrench(p)
+    print("done (real arduplane SITL truth)")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

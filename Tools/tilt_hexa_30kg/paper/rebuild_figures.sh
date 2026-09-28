@@ -6,12 +6,15 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 PY="${PYTHON:-/opt/python3.12/bin/python3}"
 cd "$ROOT"
+# 0. Real arduplane-binary SITL transition metrics (tab:main numbers)
+"$PY" experiments/analyze_full_paper.py
 # 1. AFMS attainable force/moment sets (4 figures)
 "$PY" analysis/run_wrench_vis.py
-# 2. Transition / controls / wrench comparison figures
+# 2. §8 body curves from REAL SITL truth: proposed vs stock-native comparison,
+#    control inputs and realised-vs-propagated wrench (both real arduplane SITL)
 "$PY" analysis/make_transition_figs.py
-# 3. Corridor, trim, profile, AWS, robustness, solve-time, Monte Carlo figures
+# 3. Corridor, trim, profile (real SITL), AWS, robustness, solve-time, MC
 "$PY" paper/regenerate_figures.py
-# 4. Real arduplane SITL figures (overview + native-vs-proposed) from truth CSVs
+# 4. Real arduplane SITL overview + native-vs-proposed attitude from truth CSVs
 "$PY" experiments/analyze_sitl.py
-echo "All figures regenerated into paper/figures/"
+echo "All figures + metrics regenerated into paper/figures/ and results/SITL_MPC/"

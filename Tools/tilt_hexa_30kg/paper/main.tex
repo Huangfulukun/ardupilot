@@ -468,7 +468,7 @@ B_{\tau T}(\delta_0) & B_{\tau\delta}(\delta_0) & B_{\tau s}(V)
 where the surface block $B_{\tau s}(V)\propto q(V)$ grows with airspeed and the
 rotor blocks rotate continuously with $\delta_0$. At hover $B_{\tau s}\approx0$
 and the rotors act in all six channels; in cruise $B_{\tau s}$ dominates the
-moment channels while the rotors mainly along $x_b$. The matrix is
+moment channels while the rotors act mainly along $x_b$. The matrix is
 re-evaluated at every control step.
 
 \subsection{Attainable wrench set and inscribed-sphere metric}\label{sec:awsmetric}
@@ -1199,7 +1199,7 @@ single desktop scheduling hiccup; the P99 remained below 2.4\,ms.
 \end{table}
 
 The campaign confirms the following. On the real \texttt{arduplane} binary the
-proposed controller completes the whole mission with zero explicit mode switches:
+proposed控制器 completes the whole mission with zero explicit mode switches:
 peak attitudes are $|\phi|_{\max}=0.13^\circ$ and $|\theta|_{\max}=15.0^\circ$,
 the terminal hover is held at $59.9$\,m with $0.01$\,m/s ground speed, and the
 cruise segment holds $\beta\approx90^\circ$ at $20$\,m/s and $60.5\pm0.2$\,m

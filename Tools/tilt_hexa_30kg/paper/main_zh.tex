@@ -207,7 +207,7 @@ B_{\tau T}(\delta_0) & B_{\tau\delta}(\delta_0) & B_{\tau s}(V)
 为一个有界的六维多面体。遵循~\cite{yang2026biaxial} 的被动容错构造，其大小用以标称 $w_0$ 为中心、所能包含的最大力/力矩球半径来概括，
 \begin{equation}
 \rho(\delta,V)=\max_{r\ge0}\ r\quad\text{s.t.}\quad
-\mathcal{B}_r(w_0)\subseteq\mathcal{M}(\delta).
+\mathcal{B}_r(w_0)\subseteq\mathcal{M}(\delta,V).
 \label{eq:rho}
 \end{equation}
 较大的 $\rho$ 表示各方向权限充足；$\rho\to0$ 预示即将饱和；且当 $\|w_{\mathrm{cmd}}-w_0\|_2>\rho$ 时所指令力/力矩不可行。本文采用效能矩阵的归一化最小奇异值作为 $\rho$ 的标量替代，并沿走廊评估以刻画权限（图~\ref{fig:aws}）；式~\eqref{eq:alloc} 的约束 QP 在线强制精确的作动器极限，因此显式的内切球 LP 不处于关键实时路径上。
@@ -240,7 +240,7 @@ V_{\min}(\delta)=
 \qquad V_{\min}=0\ \text{if }mg\le\sum_i T_{i,\max}\cos\delta .
 \label{eq:Vmin}
 \end{equation}
-对于 \SI{30}{\kilogram} 飞行器，$\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$。走廊将迎角限制为保守的 $\alpha_{\mathrm{stall}}=13^\circ$，对应 $C_{L,\mathrm{stall}}=C_{L_0}+C_L_\alpha\alpha_{\mathrm{stall}}=1.29$；所得 $\delta=90^\circ$ 处边界为 $17.2$~m/s，略高于表~\ref{tab:params} 中 $C_{L,\max}=1.45$ 的全翼载失速速度 $V_s=16.2$~m/s，因为走廊不使用完整升力系数。上边界由可用功率与法向载荷限制设定，
+对于 \SI{30}{\kilogram} 飞行器，$\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$。走廊将迎角限制为保守的 $\alpha_{\mathrm{stall}}=13^\circ$，对应 $C_{L,\mathrm{stall}}=C_{L_0}+C_{L_\alpha}\alpha_{\mathrm{stall}}=1.29$；所得 $\delta=90^\circ$ 处边界为 $17.2$~m/s，略高于表~\ref{tab:params} 中 $C_{L,\max}=1.45$ 的全翼载失速速度 $V_s=16.2$~m/s，因为走廊不使用完整升力系数。上边界由可用功率与法向载荷限制设定，
 \begin{equation}
 P_{\mathrm{avail}}\ge P_{\mathrm{ind}}+P_{\mathrm{prof}}+P_{\mathrm{par}}
  +V\!\sum_i T_i\sin\delta_i,\qquad |n|\le n_{\max},
@@ -372,7 +372,7 @@ ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\
 基线与提出控制器在完全相同的对象、扰动与任务下飞行相同场景。主场景是标称质量下完整的悬停--巡航--悬停任务，包含前向与后向两条转换段，因此作为标称前向/后向过渡用例；其余场景为鲁棒性变体：(S4) 标称任务加平缓协调转弯（偏航角速率 $5^\circ$/s，约 $10^\circ$ 倾斜）；(S5) 5\,m/s 离散阵风；(S6) 4\,m/s 稳态侧风；(S7) 质量 $+15\%$；(S8) 重心前移 0.025\,m；(S9) 控制模型失配扫描：(S9a) 推力 $-10\%$、(S9b) 控制舵面效能 $-20\%$、(S9c) 惯量 $+20\%$。专门的悬停与姿态阶跃场景不属于所报告的仿真，留待未来工作。20 次 Monte-Carlo 仿真（种子 1000--1019）联合随机化上述参数。仅当通过九项对象真值检查（达到高度与巡航、姿态低于 $60^\circ$、爬升后无掉高、位于走廊内、分配残差非负、转换对称、单调相位且零模态切换、末端悬停以地速判定）才接受一次运行。
 
 \subsection{指标}\label{sec:metrics}
-性能由以下指标度量：过渡时间 $t_f$；最大高度损失 $\Delta h_{\max}$；峰值与 RMS 姿态误差；总控制能量 $\int u^\top R_u u\,\mathrm dt$；路径跟踪 RMS；模态切换切换次数；以及沿过渡的 AWS 裕度最小值 $\rho_{\min}$。实时性能由 MPC 求解时间的均值、第 99 百分位与最坏值，以及截止期错过率度量。
+性能由以下指标度量：过渡时间 $t_f$；最大高度损失 $\Delta h_{\max}$；峰值与 RMS 姿态误差；总控制能量 $\int u^\top R_u u\,\mathrm dt$；路径跟踪 RMS；模态切换次数；以及沿过渡的 AWS 裕度最小值 $\rho_{\min}$。实时性能由 MPC 求解时间的均值、第 99 百分位与最坏值，以及截止期错过率度量。
 
 \subsection{结果协议}\label{sec:results}
 所有定量结果由评估脚本从对象真值日志重新计算；控制器从不读取真值。走廊与配平调度见图~\ref{fig:corridor}--\ref{fig:trim}，标称全剖面时间历程见图~\ref{fig:profile}，走廊消融见图~\ref{fig:ablation}，旋翼效能指标见图~\ref{fig:aws}，可达力/力矩多面体见图~\ref{fig:afms_poly}--\ref{fig:afms_curves}，跟踪与实时鲁棒性汇总见图~\ref{fig:robust}--\ref{fig:rt}。对比数值见表~\ref{tab:main}--\ref{tab:rt}。

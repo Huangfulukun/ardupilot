@@ -388,31 +388,37 @@ m\dot v = mg_0 + R_b^I\!\left(F_r+F_a\right),\qquad
 J\dot\omega^b = -\omega^b\times J\omega^b + \tau_r+\tau_a ,
 \label{eq:rigid}
 \end{equation}
-where $g_0=[0,0,-g]^\top$，$F_r,\tau_r$ 为旋翼的力与力矩，$F_a,\tau_a$ 为气动力与力矩，$J=\mathrm{diag}(I_{xx},I_{yy},I_{zz})$。
+where $g_0=[0,0,-g]^\top$, $F_r,\tau_r$ are the rotor forces and moments,
+$F_a,\tau_a$ the aerodynamic forces and moments, and $J=\mathrm{diag}(I_{xx},I_{yy},I_{zz})$.
 
-\subsection{旋翼与独立倾转模型}\label{sec:rotor}
-位于机体位置 $r_i=[x_i,y_i,z_i]^\top$ 的旋翼 $i$ 沿其倾斜轴产生推力 $T_i$
+\subsection{Rotor and independent tilt model}\label{sec:rotor}
+Rotor $i$ at body position $r_i=[x_i,y_i,z_i]^\top$ produces thrust $T_i$
+along its tilted axis
 \begin{equation}
 n_i(\delta_i)=[\sin\delta_i,\ 0,\ \cos\delta_i]^\top .
 \label{eq:naxis}
 \end{equation}
-旋翼合力与合力矩为
+The aggregate rotor force and moment are
 \begin{equation}
 F_r=\sum_{i=1}^{6} T_i\, n_i(\delta_i), \qquad
 \tau_r=\sum_{i=1}^{6}\left[r_i\times T_i n_i(\delta_i)
    + \sigma_i \kappa T_i\, n_i(\delta_i)\right],
 \label{eq:rotor}
 \end{equation}
-其中 $\sigma_i\in\{+1,-1\}$ 为旋翼旋向，$\kappa$ 为推力到反扭矩系数。油门与倾转均受速率限制，
+where $\sigma_i\in\{+1,-1\}$ is the rotor spin direction and $\kappa$ is the
+thrust-to-reaction-torque coefficient. Throttle and tilt are rate limited,
 \begin{equation}
 0\le T_i\le T_{i,\max},\quad |\dot T_i|\le \dot T_{\max},\quad
 0\le\delta_i\le\pi/2,\quad |\dot\delta_i|\le\dot\delta_{\max}.
 \label{eq:actlim}
 \end{equation}
-六个 $\delta_i$ 的独立性是其与同步倾转或前端倾转飞行器的关键区别：差动倾转可直接产生俯仰与升力重分配力矩，并可通过重新倾转其余健康旋翼来隔离故障旋翼。
+Independence of the six $\delta_i$ is the key difference from a
+synchronized-tilt or front-tilt machine: differential tilt generates direct
+pitch and lift-redistribution moments, and a failed rotor can be isolated by
+re-tilting the remaining healthy rotors.
 
-\subsection{气动与滑流模型}\label{sec:aero}
-机翼与尾翼采用稳定性导数建模，
+\subsection{Aerodynamic and slipstream model}\label{sec:aero}
+The wing and tail are modelled with stability derivatives,
 \begin{equation}
 F_a=\tfrac12\rho V^2 S
  \begin{bmatrix} -C_D(\alpha,\delta)\\ C_Y(\beta,\delta_r)\\ -C_L(\alpha,\delta)\end{bmatrix},
@@ -421,23 +427,36 @@ F_a=\tfrac12\rho V^2 S
  \begin{bmatrix} b\, C_l(\beta,p,\delta_a)\\ \bar c\, C_m(\alpha,q,\delta_e)\\ b\, C_n(\beta,r,\delta_r)\end{bmatrix},
 \label{eq:aero}
 \end{equation}
-其中 $C_L=C_{L_\alpha}\alpha+C_{L_{\delta_e}}\delta_e$，阻力极曲线为二次形式 $C_D=C_{D_0}+k C_L^2$。由于过渡过程中旋翼吹袭机翼，采用有效滑流速度与增广的 $C_{L,\max}(\delta)$，这遵循倾转机翼研究中常见的桨--翼气动干扰建模~\cite{rohr2021nmpc,mancinelli2025unified}。
-气动控制权限随 $q=\tfrac12\rho V^2$ 缩放，故在悬停时消失，此时由旋翼提供全部控制。
+with $C_L=C_{L_\alpha}\alpha+C_{L_{\delta_e}}\delta_e$ and a quadratic drag
+polar $C_D=C_{D_0}+k C_L^2$. Because the rotors blow the wing during
+conversion, an effective slipstream velocity and an augmented
+$C_{L,\max}(\delta)$ are used, following the propeller-wing interaction
+modelling common in tilt-wing studies~\cite{rohr2021nmpc,mancinelli2025unified}.
+Aerodynamic control authority scales with $q=\tfrac12\rho V^2$ and therefore
+vanishes in hover, where the rotors provide all control.
 
-\subsection{双模型策略}\label{sec:twomodel}
-刻意维护两套模型。具有粗略稳定性导数的低阶模型（式~\eqref{eq:rigid}--\eqref{eq:aero}）供控制器与走廊 OCP 使用，而 ArduPilot SITL 的飞行动力学模型（更高保真，含电机与舵机动力学）作为对象。两者之间的失配是第~\ref{sec:campaign} 节主要的鲁棒性测试；并未通过控制与仿真使用同一模型来掩盖它。
+\subsection{Two-model strategy}\label{sec:twomodel}
+Two models are deliberately maintained. A low-order model
+(Eqs.~\eqref{eq:rigid}--\eqref{eq:aero}) with coarse stability derivatives is
+used by the controller and the corridor OCP, while the ArduPilot SITL flight
+dynamics model (higher fidelity, with motor and servo dynamics) acts as the
+plant. The mismatch between the two is the principal robustness test in
+Section~\ref{sec:campaign}; it is not hidden by using the same model for
+control and simulation.
 
 % =====================================================================
-\section{时变可达力/力矩集控制分配}\label{sec:aws}
+\section{Time-varying attainable-wrench-set control allocation}\label{sec:aws}
 
-\subsection{控制效能矩阵}\label{sec:Bmatrix}
-将虚拟力/力矩与作动器定义为
+\subsection{Control effectiveness matrix}\label{sec:Bmatrix}
+Collect the virtual wrench and the actuators as
 \begin{equation}
 w=\begin{bmatrix}F\\ \tau\end{bmatrix}\in\mathbb{R}^{6},\qquad
 u=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
 \label{eq:wu}
 \end{equation}
-由于旋翼力包含 $T_i\sin\delta_i$ 与 $T_i\cos\delta_i$ 的乘积，该映射是非线性的。在工作点 $(T_0,\delta_0,V)$ 处线性化，得到
+Because the rotor force contains products $T_i\sin\delta_i$ and
+$T_i\cos\delta_i$, the mapping is nonlinear. Linearizing about the operating
+point $(T_0,\delta_0,V)$ gives
 \begin{equation}
 w \approx w_0 + B(\delta_0,V)\,\Delta u,\qquad
 B(\delta_0,V)=\begin{bmatrix}
@@ -446,44 +465,108 @@ B_{\tau T}(\delta_0) & B_{\tau\delta}(\delta_0) & B_{\tau s}(V)
 \end{bmatrix},
 \label{eq:B}
 \end{equation}
-其中舵面块 $B_{\tau s}(V)\propto q(V)$ 随空速增大，旋翼块随 $\delta_0$ 连续旋转。悬停时 $B_{\tau s}\approx0$，旋翼在全部六个通道上作用；巡航时 $B_{\tau s}$ 在力矩通道占主导，旋翼主要沿 $x_b$ 作用。该矩阵在每个控制步重新计算。
+where the surface block $B_{\tau s}(V)\propto q(V)$ grows with airspeed and the
+rotor blocks rotate continuously with $\delta_0$. At hover $B_{\tau s}\approx0$
+and the rotors act in all six channels; in cruise $B_{\tau s}$ dominates the
+moment channels while the rotors act mainly along $x_b$. The matrix is
+re-evaluated at every control step.
 
-\subsection{可达力/力矩集与内切球度量}\label{sec:awsmetric}
-当前工作点处的可达力/力矩集为
+\subsection{Attainable wrench set and inscribed-sphere metric}\label{sec:awsmetric}
+The attainable wrench set at the current operating point is
 \begin{equation}
 \mathcal{M}(\delta,V)=\bigl\{w:\ w=w_0+B(\delta,V)\Delta u,\
 \underline u\le u\le\bar u,\ |\dot u|\le\dot u_{\max}\bigr\},
 \label{eq:AWS}
 \end{equation}
-为一个有界的六维多面体。遵循~\cite{yang2026biaxial} 的被动容错构造，其大小用以标称 $w_0$ 为中心、所能包含的最大力/力矩球半径来概括，
+a bounded six-dimensional polytope. Following the passive fault-tolerance
+construction of~\cite{yang2026biaxial}, its size is summarized by the radius
+of the largest wrench ball centered at the nominal $w_0$ that it contains,
 \begin{equation}
 \rho(\delta,V)=\max_{r\ge0}\ r\quad\text{s.t.}\quad
 \mathcal{B}_r(w_0)\subseteq\mathcal{M}(\delta,V).
 \label{eq:rho}
 \end{equation}
-较大的 $\rho$ 表示各方向权限充足；$\rho\to0$ 预示即将饱和；且当 $\|w_{\mathrm{cmd}}-w_0\|_2>\rho$ 时所指令力/力矩不可行。本文采用效能矩阵的归一化最小奇异值作为 $\rho$ 的标量替代，并沿走廊评估以刻画权限（图~\ref{fig:aws}）；式~\eqref{eq:alloc} 的约束 QP 在线强制精确的作动器极限，因此显式的内切球 LP 不处于关键实时路径上。
+A large $\rho$ means ample authority in every direction; $\rho\to0$ signals
+incipient saturation; and a commanded wrench with
+$\|w_{\mathrm{cmd}}-w_0\|_2>\rho$ is infeasible. In this work the normalized
+minimum singular value of the effectiveness matrix is used as a scalar proxy
+for $\rho$ and is evaluated along the corridor to characterize authority
+(Fig.~\ref{fig:aws}); the constrained QP of Eq.~\eqref{eq:alloc} enforces the
+exact actuator limits online, so the explicit inscribed-sphere LP is not on
+the critical real-time path.
 
-\subsection{可达力/力矩多面体}\label{sec:afms_poly}
-为刻画转换倾转如何重塑飞行器权限，式~\eqref{eq:AWS} 的完整可达力与力矩多面体通过对六个旋翼推力、六个倾转角和四个控制舵面的线性规划支撑函数离线计算，覆盖各短舱倾角 $\beta\in\{0^\circ,30^\circ,45^\circ,60^\circ,75^\circ,90^\circ\}$ 与空速 $V\in\{0,10,15,20\}$~m/s。图~\ref{fig:afms_poly}（左）给出 $F_x$--$F_z$ 可达力扇形：$\beta=0^\circ$（悬停）时全部 $570$~N 最大静推力均垂直、前向力为零；$\beta=90^\circ$（固定翼）时推力全部水平、旋翼不提供升力（机翼承担重量）；中间倾角下力矢量旋转、两个分量均可获得（$\beta=45^\circ$ 时每个分量达 $403$~N）。图~\ref{fig:afms_poly}（右）给出 $V=15$~m/s 时嵌套的 $M_x$--$M_y$ 力矩多面体：滚转权限 $|M_x|$ 从 $\beta=0^\circ$ 的 $183$~N$\cdot$m 缩小到 $\beta=90^\circ$ 的 $41$~N$\cdot$m（水平推力消除了旋翼力矩臂），多面体面积缩小 $9.8$ 倍。随着速度建立，副翼恢复滚转权限：$\beta=90^\circ$ 时可用 $|M_x|$ 从 $V=0$ 的 $9.7$~N$\cdot$m 提升到 $V=20$~m/s 的 $64.4$~N$\cdot$m，这正是转换走廊随速度增加将力矩生成从差动旋翼转移到舵面的物理原因。最大可用升力、前向力、滚转力矩与俯仰力矩随 $\beta$ 的变化绘于图~\ref{fig:afms_curves}；这些曲线为 MPC 所采用的倾转速率与权限约束提供了依据，并证实走廊配平（第~\ref{sec:corridor} 节）始终运行在可达集内部、且留有充足裕度。
+\subsection{Reachable force and torque polytopes}\label{sec:afms_poly}
+To characterise how the conversion tilt reshapes the vehicle's authority, the
+full attainable force and moment polytopes of Eq.~\eqref{eq:AWS} are computed
+offline by linear-programming support functions over the six rotor thrusts,
+six tilt angles, and four control surfaces, at each nacelle tilt
+$\beta\in\{0^\circ,30^\circ,45^\circ,60^\circ,75^\circ,90^\circ\}$ and
+airspeed $V\in\{0,10,15,20\}$~m/s.  Figure~\ref{fig:afms_poly} (left) shows the
+$F_x$--$F_z$ reachable-force fan: at $\beta=0^\circ$ (hover) all $570$~N of
+maximum static thrust is vertical and forward force is zero; at $\beta=90^\circ$
+(fixed-wing) all thrust is horizontal and the rotors contribute no lift (the
+wing carries the weight); at intermediate tilts the force vector rotates and
+both components are available (at $\beta=45^\circ$ each component reaches
+$403$~N).  Figure~\ref{fig:afms_poly} (right) shows the nested $M_x$--$M_y$ moment
+polytopes at $V=15$~m/s: the roll authority $|M_x|$ shrinks from
+$183$~N$\cdot$m at $\beta=0^\circ$ to $41$~N$\cdot$m at $\beta=90^\circ$
+(horizontal thrust removes the rotor moment arm), and the polytope area
+contracts by a factor of $9.8$.  The ailerons recover roll authority as speed
+builds: at $\beta=90^\circ$ the available $|M_x|$ rises from $9.7$~N$\cdot$m
+at $V=0$ to $64.4$~N$\cdot$m at $V=20$~m/s, which is the physical reason the
+conversion corridor transfers moment generation from the differential rotors
+to the surfaces as speed increases.  The maximum available lift, forward
+force, roll moment, and pitch moment are plotted against $\beta$ in
+Fig.~\ref{fig:afms_curves}; these
+curves motivate the tilt-rate and authority constraints used by the MPC and
+confirm that the corridor trim (Section~\ref{sec:corridor}) always operates
+well inside the attainable set.
 
-\subsection{在线加权分配}\label{sec:alloc}
-在每个快环步，MPC 产生 $w_{\mathrm{cmd}}$。作动器指令通过求解一个加权、有优先级的最小二乘问题~\cite{johansen2013survey,blaha2023survey,tohidi2020adaptive}，
+\subsection{Online weighted allocation}\label{sec:alloc}
+At each fast-loop step the MPC produces $w_{\mathrm{cmd}}$. The actuator
+command solves a weighted, prioritized least-squares
+problem~\cite{johansen2013survey,blaha2023survey,tohidi2020adaptive},
 \begin{equation}
 \min_{\Delta u}\ \bigl\|\Omega_w(B\Delta u-\Delta w_{\mathrm{cmd}})\bigr\|_2^2
  +\bigl\|\Omega_u(\Delta u-\Delta u_d)\bigr\|_2^2
 \quad\text{s.t.}\quad \underline u\le u\le\bar u,\ |\dot u|\le\dot u_{\max},
 \label{eq:alloc}
 \end{equation}
-采用固定权重 $\Omega_w,\Omega_u$，使低速时优先使用六个独立倾转角产生力矩、高速时优先使用舵面，与时变的 $B(\delta,V)$ 保持一致。由于限制为硬约束，每当作动器达到边界，主动集求解器便把力/力矩重新分配到健康通道；这就是在线载荷重分配的机制，而非显式的自适应重加权。每步都返回实际达成的力/力矩与未满足残差，并在饱和时用于冻结误差积分。
+with fixed weights $\Omega_w,\Omega_u$ chosen so that the six independent tilt
+angles are used preferentially for moment generation at low speed and the
+surfaces at high speed, consistently with the time-varying $B(\delta,V)$.
+Because the limits are hard constraints, the active-set solver redistributes
+the wrench to the healthy channels whenever an actuator reaches its bound;
+this is the mechanism that provides online load redistribution, rather than an
+explicit adaptive re-weighting. The achieved wrench and the unmet residual are
+returned at every step and used to freeze the error integral under
+saturation.
 
-\subsection{可行性监测与力/力矩对冲}\label{sec:hedge}
-在线可行性的主要机制是式~\eqref{eq:alloc} 的约束 QP：作动器位置与速率限制为硬约束，因此所分配的力/力矩始终可达，残差 $w_{\mathrm{cmd}}-w_{\mathrm{ach}}$ 被显式返回而非被静默截断。此外，沿实际轨迹评估内切球裕度 $\rho$，作为标量可行性监测器。若所指令的力/力矩球将超过 $\rho$，则进行向 $\mathcal{M}$ 边界的力/力矩对冲投影，并请求减慢外部参考。该投影及相关的外部重规划属于架构的一部分，但正如第~\ref{sec:campaign} 节所报告，它们在测试包线内从未被触发，因为走廊参考与约束 QP 使 $\rho$ 始终严格为正；报告的是实际达到的最小裕度，而非断言。该设计取代了固定分配器的突变饱和与积分器卷绕，并定义了在更苛刻指令下闭合第~\ref{sec:twolayer} 节两层回路所需的信号。
+\subsection{Feasibility monitoring and wrench hedging}\label{sec:hedge}
+The primary online feasibility mechanism is the constrained QP of
+Eq.~\eqref{eq:alloc}: actuator position and rate limits are hard constraints,
+so the allocated wrench is always attainable and the residual
+$w_{\mathrm{cmd}}-w_{\mathrm{ach}}$ is explicitly returned rather than silently
+clipped. In addition, the inscribed-sphere margin $\rho$ is evaluated along the
+realised trajectory as a scalar feasibility monitor. If the commanded wrench
+ball were to exceed $\rho$, a wrench-hedging projection onto the boundary of
+$\mathcal{M}$ and a request to slow the outer reference would be issued. This
+projection and the associated outer re-planning are part of the architecture
+but, as reported in Section~\ref{sec:campaign}, they were never triggered in
+the tested envelope because the corridor reference together with the
+constrained QP kept $\rho$ strictly positive; the realised minimum margin is
+reported rather than asserted. This design replaces the abrupt saturation and
+integrator wind-up of a fixed allocator and defines the signal that would
+close the two-layer loop of Section~\ref{sec:twolayer} under a more demanding
+command.
 
 % =====================================================================
-\section{走廊感知最优过渡调度}\label{sec:corridor}
+\section{Corridor-aware optimal transition scheduling}\label{sec:corridor}
 
-\subsection{转换走廊}\label{sec:corridorderiv}
-下边界（失速）由垂直力平衡导出。旋翼贡献垂直分量 $\sum_i T_i\cos\delta_i$，机翼提供 $L=\tfrac12\rho V^2 S C_L$，最小可持续速度为
+\subsection{Conversion corridor}\label{sec:corridorderiv}
+The lower (stall) boundary follows from the vertical force balance. With the
+rotors contributing a vertical component $\sum_i T_i\cos\delta_i$ and the wing
+providing $L=\tfrac12\rho V^2 S C_L$, the minimum sustainable speed is
 \begin{equation}
 V_{\min}(\delta)=
 \sqrt{\frac{2\,\bigl(mg-\sum_i T_{i,\max}\cos\delta\bigr)}
@@ -491,170 +574,488 @@ V_{\min}(\delta)=
 \qquad V_{\min}=0\ \text{if }mg\le\sum_i T_{i,\max}\cos\delta .
 \label{eq:Vmin}
 \end{equation}
-对于 \SI{30}{\kilogram} 飞行器，$\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$。走廊将迎角限制为保守的 $\alpha_{\mathrm{stall}}=13^\circ$，对应 $C_{L,\mathrm{stall}}=C_{L_0}+C_{L_\alpha}\alpha_{\mathrm{stall}}=1.29$；所得 $\delta=90^\circ$ 处边界为 $17.2$~m/s，略高于表~\ref{tab:params} 中 $C_{L,\max}=1.45$ 的全翼载失速速度 $V_s=16.2$~m/s，因为走廊不使用完整升力系数。上边界由可用功率与法向载荷限制设定，
+For the \SI{30}{\kilogram} vehicle, $\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$
+in total. The corridor restricts incidence to a conservative
+$\alpha_{\mathrm{stall}}=13^\circ$, which gives
+$C_{L,\mathrm{stall}}=C_{L_0}+C_{L_\alpha}\alpha_{\mathrm{stall}}=1.29$;
+the resulting boundary at $\delta=90^\circ$ is $17.2$~m/s, slightly above the
+$C_{L,\max}=1.45$ wing-borne stall speed $V_s=16.2$~m/s listed in
+Table~\ref{tab:params}, because the corridor does not use the full lift
+coefficient. The upper boundary is set by the
+available power and the normal-load limit,
 \begin{equation}
 P_{\mathrm{avail}}\ge P_{\mathrm{ind}}+P_{\mathrm{prof}}+P_{\mathrm{par}}
  +V\!\sum_i T_i\sin\delta_i,\qquad |n|\le n_{\max},
 \label{eq:Vmax}
 \end{equation}
-由此定义 $V_{\max}(\delta)$。走廊为 $\mathcal{C}=\{(\delta,V):V_{\min}(\delta)\le V\le V_{\max}(\delta)\}$；其标称下边界由式~\eqref{eq:Vmin} 列于表~\ref{tab:corridor}，采用保守、无滑流的失速迎角 $\alpha_{\mathrm{stall}}=13^\circ$，即 $C_{L,\mathrm{stall}}=1.29$，而非完整的 $C_{L,\max}=1.45$（软失速模型 $C_L=C_{L,\max}\tanh((C_{L,0}+C_{L,\alpha}\alpha)/C_{L,\max})$ 在对象、预测模型与走廊中完全一致地使用）。
+which defines $V_{\max}(\delta)$. The corridor is
+$\mathcal{C}=\{(\delta,V):V_{\min}(\delta)\le V\le V_{\max}(\delta)\}$; its
+nominal lower boundary is listed in Table~\ref{tab:corridor} from
+Eq.~\eqref{eq:Vmin} with the conservative, no-slipstream stall incidence
+$\alpha_{\mathrm{stall}}=13^\circ$, i.e. $C_{L,\mathrm{stall}}=1.29$ rather
+than the full $C_{L,\max}=1.45$ (a soft-stall model
+$C_L=C_{L,\max}\tanh((C_{L,0}+C_{L,\alpha}\alpha)/C_{L,\max})$ is used
+identically in the plant, the prediction model, and the corridor).
 
 \begin{table}[t]
 \centering
-\caption{\SI{30}{\kilogram} 飞行器由式~\eqref{eq:Vmin} 得到的标称转换走廊下边界，采用保守的走廊失速迎角 $\alpha_{\mathrm{stall}}=13^\circ$（$C_{L,\mathrm{stall}}=1.29$，无滑流增广）。因此 $\delta=90^\circ$ 处数值（$17.2$~m/s）略高于 $C_{L,\max}=1.45$ 的全翼载失速速度 $V_s=16.2$~m/s。}
+\caption{Nominal lower conversion-corridor boundary for the \SI{30}{\kilogram}
+vehicle from Eq.~\eqref{eq:Vmin}, using the conservative corridor stall
+incidence $\alpha_{\mathrm{stall}}=13^\circ$ ($C_{L,\mathrm{stall}}=1.29$, no
+slipstream augmentation). The $\delta=90^\circ$ value ($17.2$~m/s) is therefore
+slightly above the $C_{L,\max}=1.45$ wing-borne stall speed $V_s=16.2$~m/s.}
 \label{tab:corridor}
 \small
 \begin{tabular}{lccccccc}
 \toprule
-倾转角 $\delta$（度） & 0 & 15 & 30 & 45 & 60 & 75 & 90 \\
+Tilt $\delta$ (deg) & 0 & 15 & 30 & 45 & 60 & 75 & 90 \\
 \midrule
-$V_{\min}$（m/s） & 0 & 0 & 0 & 0 & 3.0 & 12.1 & 17.2 \\
+$V_{\min}$ (m/s) & 0 & 0 & 0 & 0 & 3.0 & 12.1 & 17.2 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{前向过渡参考}\label{sec:ocp}
-对于水平、缓慢的转换，带功率/载荷/倾转速率目标的完整动态最优控制问题退化为由加加速度受限速度律遍历的准稳态最小推力配平；因此我们采用这种显式、确定性的形式，而非自由时间配点求解器（CasADi/IPOPT 形式~\cite{andersson2019casadi} 曾被实现但因在 $V=0$ 处奇异且产生 bang--bang 倾转动作而被弃用）。零端点加加速度的 smoothstep 速度 S 曲线 $V(s)=V_0+(V_f-V_0)(3s^2-2s^3)$，$s=t/T_f$，在固定转换时间 $T_f$ 内规定走廊遍历。在每个节点，由精确的纵向力与力矩平衡求解\emph{最小推力水平配平}
+\subsection{Forward transition reference}\label{sec:ocp}
+On a level, slow conversion the full dynamic optimal-control problem with the
+power/load/tilt-rate objective collapses to a quasi-steady minimum-thrust
+trim traversed by a jerk-limited speed law; we therefore use this explicit,
+deterministic form rather than a free-time collocation solver (a CasADi/IPOPT
+formulation~\cite{andersson2019casadi} was implemented and discarded because it
+is singular at
+$V=0$ and produces bang--bang tilt activity). A smoothstep speed S-curve
+$V(s)=V_0+(V_f-V_0)(3s^2-2s^3)$, $s=t/T_f$, with zero end jerk, prescribes
+the corridor traversal in a fixed conversion time $T_f$. At each node the
+\emph{minimum-thrust level trim} is solved from the exact longitudinal
+force-and-moment equilibrium
 \begin{equation}
 \sum_i T_i\sin\tau = D,\qquad
 \sum_i T_i\cos\tau + L = mg,\qquad
 M_y^{\mathrm{rot}}+M_y^{\mathrm{wing}}+M_y^{\mathrm{tail}}=0,
 \label{eq:trim}
 \end{equation}
-其中 $\tau=\beta-\theta$ 为推力线相对垂直方向的夹角，计入推力线力矩与 V 尾权限，机翼仅加载到所需程度（以 $C_{L,\max}$ 为界）；旋翼提供剩余升力与前向力。节点解 $(\beta,T,\theta,\alpha)$ 以及体轴前馈力/力矩 $w_{\mathrm{ff}}$ 与气动舵面力 $F_{\mathrm{surf}}$ 按空速制成表。每个节点都强制满足失速边界 $V_{\min}(\beta)$，故参考在构造上可行。
+with $\tau=\beta-\theta$ the thrust-line angle from vertical, including the
+thrust-line moment and the V-tail authority, and with the wing loaded up to
+exactly what is needed (bounded by $C_{L,\max}$); the rotors supply the
+residual lift and the forward force. The node solution
+$(\beta,T,\theta,\alpha)$ and the body-frame feed-forward wrench
+$w_{\mathrm{ff}}$ and aerodynamic-surface force $F_{\mathrm{surf}}$ are
+tabulated against airspeed. The stall boundary $V_{\min}(\beta)$ is enforced
+at every node, so the reference is feasible by construction.
 
-超过巡航空速后，飞行器进入纯固定翼飞行：短舱完全倾转到 $\beta=90^\circ$，机翼承担全部升力，旋翼仅提供克服阻力的前向推力。这由配平图中的固定翼转换阈值 $V_{\mathrm{fw}}=20$~m/s 强制：对 $V\ge V_{\mathrm{fw}}$，在 $\beta$ 固定为 $90^\circ$ 下求解配平，并调整机翼迎角、旋翼推力与 V 尾偏角以满足三轴平衡（质心上方旋翼带来的推力线下俯力矩由 V 尾平衡）。在 $V\in[17,20]$~m/s 的混合区，用 smoothstep 权重将最小推力转换配平向固定翼配平平滑插值，使前馈力/力矩与参考短舱角在转换/巡航边界上 $C^0$ 连续。物理上这与真实倾转旋翼的运行一致：飞行器靠部分倾转的旋翼加速，一旦机翼完全承担重量，便完成向水平的倾转并以全翼载巡航，而非保持 60--80$^\circ$ 的中间倾角。
+Above the cruise speed the aircraft enters pure fixed-wing flight: the nacelles
+are fully tilted to $\beta=90^\circ$, the wing carries all the lift, and the
+rotors provide only forward thrust to overcome drag.  This is enforced by a
+fixed-wing conversion threshold $V_{\mathrm{fw}}=20$~m/s in the trim map: for
+$V\ge V_{\mathrm{fw}}$ the trim is solved with $\beta$ fixed at $90^\circ$ and
+the wing incidence, rotor thrust, and V-tail deflection adjusted for the
+three-axis equilibrium (the thrust-line nose-down moment from the rotors above
+the CG is balanced by the V-tail).  In a blend zone
+$V\in[17,20]$~m/s the minimum-thrust conversion trim is smoothly interpolated
+toward the fixed-wing trim with a smoothstep weight, so the feed-forward wrench
+and the reference nacelle angle are $C^0$-continuous across the
+conversion/cruise boundary.  Physically this matches real tilt-rotor operation:
+the aircraft accelerates on partially-tilted rotors, and once the wing is
+fully supporting the weight it completes the tilt to horizontal and cruises
+wing-borne rather than holding an intermediate 60--80$^\circ$ tilt.
 
-\subsection{后向过渡}\label{sec:backward}
-后向过渡采用对称处理，但它是更敏感的机动，因为在中间速度过早使机翼卸载会产生上仰与下沉~\cite{may2025backward}。从固定翼巡航配平（$\beta=90^\circ$）出发，后向段在 25\,s 转换中采用单调、按时间调度的旋翼承载迎角剖面（短舱从 $90^\circ$ 回倾到 $0^\circ$，迎角由巡航值平滑减至 $0^\circ$），这在速度下降时保持旋翼主导，消除近失速上仰。当前节点配平按\emph{已达到的}空速索引（与前向段相同）：飞行器仍快时短舱保持前倾（维持机翼升力与前向推力），仅在速度真正下降时才回倾——这避免了从 $90^\circ$ 起用纯时间索引会出现的过度倾转与下沉。通过减小前向推力（阻力与推力撤除）实现制动；后向推力前馈被钳为零，因为它在低速时驱动短舱后倾、具有失稳作用。
+\subsection{Backward transition}\label{sec:backward}
+Backward transition is treated symmetrically but is the more sensitive
+manoeuvre, because premature wing unloading at intermediate speed produces a
+pitch-up and a sink~\cite{may2025backward}。 Starting from the fixed-wing cruise
+trim ($\beta=90^\circ$), the backward leg uses a monotonic, time-scheduled
+rotor-borne incidence profile (cruise incidence easing to $0^\circ$ as the
+nacelles tilt back from $90^\circ$ to $0^\circ$) over a $25$~s conversion,
+which keeps the rotors dominant as speed falls and removes the near-stall
+pitch-up.  The current-node trim is indexed on the \emph{achieved} airspeed
+(as in the forward leg): while the aircraft is still fast the nacelles stay
+tilted forward (maintaining wing lift and forward thrust), and they only tilt
+back as the speed genuinely falls---this prevents the over-tilt and sink that
+occur with pure time-based indexing from a $90^\circ$ start.  Braking is
+obtained by reducing forward thrust (drag and thrust removal); an aft-thrust
+feed-forward is clamped to zero, since it drives the nacelles aft at low speed
+and is destabilising.
 
-\subsection{轨迹库与在线重规划}\label{sec:library}
-配平图与两段遍历在质量、巡航空速与风况的网格上离线计算一次，生成参考库 $(x^\star,V^\star,h^\star,\theta^\star)$ 及前馈力/力矩与舵面力。在线层按参考速度索引前向段，并在后向段入口保持固定翼巡航节点配平（$\beta=90^\circ$，全翼载），使参考在巡航/后向边界上 $C^0$ 连续；当第~\ref{sec:hedge} 节的可行性反馈低于阈值时，请求在走廊内重规划。
+\subsection{Trajectory library and online re-planning}\label{sec:library}
+The trim map and the two traversals are computed once offline over a grid of
+mass, cruise speed, and wind conditions, producing a library of references
+$(x^\star,V^\star,h^\star,\theta^\star)$ together with the feed-forward
+wrench and surface force. The online layer indexes the forward leg by the
+reference speed and holds the fixed-wing cruise node's trim
+($\beta=90^\circ$, wing-borne) at the entry to the backward leg so that the
+reference is $C^0$-continuous across the cruise/backward boundary; re-planning
+inside the corridor is requested when the feasibility feedback of
+Section~\ref{sec:hedge} falls below its threshold.
 
 % =====================================================================
-\section{统一 MPC 与两层集成}\label{sec:nmpc}
+\section{Unified MPC and two-layer integration}\label{sec:nmpc}
 
-\subsection{统一误差空间 LTV-MPC 公式}\label{sec:nmpcform}
-单个控制器覆盖悬停、过渡与巡航，无需模态切换。在每个控制步，于第~\ref{sec:corridor} 节随速度变化的非线性配平参考的误差坐标中对非线性对象线性化；所得线性时变（LTV）问题随后被离散化并作为二次规划求解。这是关于非线性参考的误差空间 LTV-MPC，而非完全非线性规划的 NMPC；全文仍简称为 MPC。在预测时域 $N$、周期 $\Delta t$ 下，它最小化
+\subsection{Unified error-space LTV-MPC formulation}\label{sec:nmpcform}
+A single controller covers hover, transition, and cruise without mode
+switching. The nonlinear plant is linearized, at each control step, in error
+coordinates about the speed-dependent nonlinear trim reference of
+Section~\ref{sec:corridor}; the resulting linear time-varying (LTV) problem is
+then discretized and solved as a quadratic program. This is an error-space
+LTV-MPC about a nonlinear reference rather than a fully nonlinear programming
+NMPC; we retain the shorthand MPC throughout. Over horizon $N$ and period
+$\Delta t$ it minimizes
 \begin{equation}
 \min_{\{u_k\}}\ \sum_{k=0}^{N-1}
 \!\left[\|x_k-x_k^\star\|_{Q}^{2}+\|u_k-u_k^\star\|_{R}^{2}\right]
 +\|x_N-x_N^\star\|_{Q_f}^{2}
 \label{eq:nmpc}
 \end{equation}
-约束包括离散预测模型、作动器极限~\eqref{eq:actlim} 以及可行性约束 $\rho(\delta_k,V_k)\ge\rho_{\min}$。参考 $x_k^\star,u_k^\star$ 由第~\ref{sec:corridor} 节的走廊配平图提供。12 状态 NED 模型在随速度变化参考的误差坐标中线性化，并通过矩阵指数（\texttt{scipy.linalg.expm}）以零阶保持精确离散；时域为 $N=20$、$\Delta t=0.03$~s（约 33~Hz）。所得等式约束被凝缩为关于五个虚拟力/力矩增量的小型稠密二次规划，由主动集 \texttt{quadprog} 求解器求解（如 acados~\cite{verschueren2022acados} 这类嵌入式凝缩 QP 是自然的飞行硬件目标）；不可行时先放宽姿态软约束，仅在最后手段下才使用零力/力矩回退。虚拟力/力矩随后传递给第~\ref{sec:aws} 节的时变 AWS 分配器。有界、无模型的位置误差积分增广力/力矩，以抑制恒定对象失配（第~\ref{sec:campaign} 节）。
+subject to the discrete prediction model, the actuator
+limits~\eqref{eq:actlim}, and a feasibility constraint
+$\rho(\delta_k,V_k)\ge\rho_{\min}$. The reference $x_k^\star,u_k^\star$ is
+provided by the corridor trim map of Section~\ref{sec:corridor}. The
+12-state NED model is linearised in error coordinates about the
+speed-dependent reference and discretised exactly by zero-order hold with a
+matrix exponential (\texttt{scipy.linalg.expm}); the horizon is
+$N=20$ at $\Delta t=0.03$~s ($\approx 33$~Hz). The resulting equality
+constraints are condensed into a small dense quadratic program in the
+five virtual-wrench increments, which is solved by the active-set
+\texttt{quadprog} solver (an embedded condensed QP such as
+acados~\cite{verschueren2022acados} would be the natural flight-hardware
+target); on infeasibility the attitude soft constraints are
+relaxed first, and a zero-wrench fallback is used only as a last resort.
+The virtual wrench is then passed to the time-varying AWS allocator of
+Section~\ref{sec:aws}. A bounded, model-free position-error integral
+augments the wrench to reject constant plant mismatch (Section~\ref{sec:campaign}).
 
-\subsection{恒定失配的无模型位置误差积分}\label{sec:integral}
-最初在内部预测模型上实现了加速度残差扰动观测器，但它在动态后向转换中并不安全：由于内部模型忽略了实际的 V 尾下洗与电机动力学，观测器把时变、可预测的模型--对象气动差误判为扰动并抵消配平前馈，在中间速度复现失速/坠毁。我们改为对 NED 系\emph{位置}误差 $e_p=p^\star-p$ 采用有界、无模型的积分，
+\subsection{Model-free position-error integral for constant mismatch}\label{sec:integral}
+An acceleration-residual disturbance observer was first implemented on the
+internal prediction model, but it proved unsafe during the dynamic backward
+conversion: because the internal model omits the realised V-tail download and
+motor dynamics, the observer mistakes the time-varying, predictable
+model--plant aerodynamic difference for a disturbance and cancels the trim
+feed-forward, reproducing a stall/crash at intermediate speed. We instead use
+a bounded, model-free integral of the \emph{position} error
+$e_p=p^\star-p$ in the NED frame,
 \begin{equation}
 \mathcal I_k = \operatorname{sat}\!\bigl(\mathcal I_{k-1}+K_i\,e_p\,\Delta t\bigr),
 \qquad
 w_k = w_k^{\mathrm{MPC}}+R_b^\top\mathcal I_k ,
 \label{eq:integral}
 \end{equation}
-该积分被旋转到机体坐标系，并在分配前加到虚拟力/力矩上。垂直通道仅在巡航、后向转换与末端悬停时积分（$K_{i,z}=4$，$\pm70$~N），以便机翼卸载时修正推力或质量不足；水平通道仅在末端悬停时积分（$K_{i,h}=7$，$\pm80$~N）以配平静态侧风，并在爬升与转换中冻结，避免对移动参考的卷绕。分配器报告饱和时积分始终冻结。这不增加任何模型知识，是恢复表~\ref{tab:robust} 中恒定失配鲁棒场景的机制。
+which is rotated into the body frame and added to the virtual wrench before
+allocation. The vertical channel integrates only during cruise, backward
+conversion, and terminal hover ($K_{i,z}=4$, $\pm70$~N) so that a thrust or
+mass deficit is corrected as the wing unloads; the horizontal channels
+integrate only in terminal hover ($K_{i,h}=7$, $\pm80$~N) to trim a steady
+crosswind, and are frozen in climb and conversion to avoid wind-up against a
+moving reference. The integral is frozen whenever the allocator reports
+saturation. This adds no model knowledge and is the mechanism that recovers
+the constant-mismatch robustness cases of Table~\ref{tab:robust}.
 
-\subsection{两层架构与可行性耦合}\label{sec:twolayer}
-两层按时间尺度分离，并通过可行性耦合：
+\subsection{Two-layer architecture and feasibility coupling}\label{sec:twolayer}
+The two layers are separated by time scale and coupled through feasibility:
 \begin{itemize}[leftmargin=1.6em,itemsep=2pt]
-  \item \emph{外层（1--10\,Hz）：} 走廊 OCP，使用标称走廊与标称 AWS，输出转换参考。
-  \item \emph{内层（20--50\,Hz）：} 统一 MPC 加第~\ref{sec:aws} 节的时变 AWS 分配，针对真实（受扰）对象跟踪参考并评估真实的 $\rho$。
-  \item \emph{耦合（已设计）：} 当 $\rho<\rho_{\mathrm{th}}$（因阵风、质量误差或饱和）时，内层设计为立即对冲并请求更慢、更保守的外部参考，外层将在走廊内重新规划。在本文报道的仿真中该阈值从未被越过（实际 $\rho$ 保持为正），因此闭环重规划是一条已设计但未被执行的路径；实际在线展示的可行性由每步约束 QP 与构造上可行的走廊参考提供。在故意不可行指令下触发并验证重规划路径留待未来工作。
+  \item \emph{Outer layer (1--10\,Hz):} corridor OCP, using the nominal
+  corridor and a nominal AWS, outputs the conversion reference.
+  \item \emph{Inner layer (20--50\,Hz):} unified MPC plus the time-varying
+  AWS allocation of Section~\ref{sec:aws}, tracking the reference against the
+  real (disturbed) plant and evaluating the true $\rho$.
+  \item \emph{Coupling (designed):} when $\rho<\rho_{\mathrm{th}}$ (due to a
+  gust, mass error, or saturation), the inner layer is designed to hedge
+  immediately and request a slower, more conservative outer reference, which
+  the outer layer would re-plan inside the corridor. In the campaign reported
+  here the threshold was never crossed (the realised $\rho$ stayed positive),
+  so the closed-loop re-planning is a designed but not exercised path; the
+  feasibility that was actually demonstrated online is provided by the
+  constrained QP at every step and by the feasible-by-construction corridor
+  reference. Triggering and validating the re-planning path under deliberately
+  infeasible commands is left to future work.
 \end{itemize}
 
-\subsection{单杆速度指令}\label{sec:stick}
-全包线采用统一的指令映射：俯仰杆映射 $v_x$、滚转杆映射 $v_y$、油门映射 $v_z$、方向舵映射 $\dot\psi$。遵循~\cite{milz2026taming} 的简化操作动机与~\cite{bhardwaj2018integrated} 的参考模型思想，这被视为设计属性而非新颖性主张。所评估的客观指标是完成完整任务所需的显式模态切换次数：stock 切换架构会多次进入和退出固定翼控制器，而统一控制器切换零次（表~\ref{tab:main}）。全包线内定量的杆到速度传递函数辨识是计划中的扩展，本文不予主张。
+\subsection{Single-stick velocity command}\label{sec:stick}
+A uniform command mapping is used across the envelope: pitch stick to
+$v_x$, roll stick to $v_y$, throttle to $v_z$, and rudder to $\dot\psi$.
+Following the simplified-operation motivation of~\cite{milz2026taming} and the
+reference-model idea of~\cite{bhardwaj2018integrated}, this is treated as a
+design property rather than a novelty claim. The evaluated objective metric is
+the number of explicit mode switches required to complete a full mission: the
+stock switched architecture enters and leaves the fixed-wing controller
+several times, whereas the unified controller switches zero times
+(Table~\ref{tab:main}). A quantitative stick-to-velocity transfer-function
+identification across the envelope is a planned extension and is not claimed
+here.
 
-\subsection{实时实现}\label{sec:realtime}
-内层 MPC 由上一解热启动，稠密 QP 采用固定迭代上限；每步记录求解时间、截止期错过与回退路径（不可行 $\rightarrow$ 放宽姿态约束 $\rightarrow$ 零力/力矩保持）。由于凝缩问题仅有 $5N$ 个决策变量，整个仿真在单个桌面核心上的平均/P99/最坏求解时间为 $0.5$/$2.1$/$5.5$~ms，相对于 $30$~ms 控制周期（第~\ref{sec:campaign} 节），即控制器距其截止期有两个数量级的裕度。外层配平图离线计算、在线为表查询，运行时间可忽略。
+\subsection{Real-time implementation}\label{sec:realtime}
+The inner MPC is warm-started from the previous solution and the dense QP
+uses a fixed iteration cap; the solve time, deadline misses, and the fallback
+path (infeasible $\rightarrow$ relaxed attitude constraints $\rightarrow$
+zero-wrench hold) are logged at every step. Because the condensed problem has
+only $5N$ decision variables, the mean/P99/worst-case solve time over the
+whole campaign is $0.5$/$2.1$/$5.5$~ms on a single desktop core, against a
+$30$~ms control period (Section~\ref{sec:campaign}), i.e.\ the controller is
+two orders of magnitude away from its deadline. The outer trim map is
+computed offline and is a table lookup online, so it has negligible runtime.
 
 % =====================================================================
-\section{ArduPilot SITL 实现}\label{sec:sitl}
+\section{ArduPilot SITL implementation}\label{sec:sitl}
 
-\subsection{stock 倾转旋翼架构及其局限}\label{sec:stock}
-ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\_CLASS=2} 选择六旋翼机架，以 \texttt{Q\_TILT\_MASK} 声明倾转电机，倾转类型设为连续（\texttt{Q\_TILT\_TYPE=0}），并由 \texttt{Q\_TILT\_MAX}、\texttt{Q\_TILT\_RATE\_UP}、\texttt{Q\_TILT\_RATE\_DN} 定义调度~\cite{ardupilot2024tilt,ardupilot2024transitions}。该模式下多旋翼与固定翼控制器被切换，倾转舵机作为单一同步逻辑倾转、按固定速率指令。这种 stock 行为既是基线控制器，\emph{也}暴露了一个真实局限：stock 连续倾转调度器无法表示各旋翼独立的倾转角。
+\subsection{Stock tilt-rotor architecture and its limitation}\label{sec:stock}
+ArduPilot models tilt-rotors as a special QuadPlane: a six-rotor frame is
+selected with \texttt{Q\_FRAME\_CLASS=2}, the tilting motors are declared with
+\texttt{Q\_TILT\_MASK}, and the tilt type is set to continuous
+(\texttt{Q\_TILT\_TYPE=0}) with \texttt{Q\_TILT\_MAX},
+\texttt{Q\_TILT\_RATE\_UP}, and \texttt{Q\_TILT\_RATE\_DN} defining the
+schedule~\cite{ardupilot2024tilt,ardupilot2024transitions}. In this mode the
+multirotor and fixed-wing controllers are switched, and the tilt servos are
+commanded as a single synchronized logical tilt following a fixed rate. This
+stock behaviour is the baseline controller \emph{and} it exposes a genuine
+limitation: independent per-rotor tilt angles are not represented by the
+stock continuous-tilt scheduler.
 
-\subsection{伴随层集成}\label{sec:companion}
-为利用六个独立倾转，提出控制器实现为一个 Python 伴随节点，围绕一个再现 ArduPilot SITL 传感器/作动器接口的高速非线性对象闭环：对象以 400~Hz 推进、采用 4 阶 Runge--Kutta 积分（两个子步），MPC 与分配器以 33~Hz 运行。第~\ref{sec:campaign} 节中提出 MPC 的定量结果由该伴随对象、针对 ArduPilot JSON SITL 后端所用的同一物理模型生成。原生固件基线（第~\ref{sec:baseline} 节）在真实 \texttt{arduplane} SITL 二进制上、以同一 JSON 物理后端运行，结果从二进制飞行日志解析。控制效能、约束与主动集逻辑用 C++ 写成可复用库（\texttt{AP\_TiltHexa}）；同一 C++ 核心除由伴随节点通过小型 C ABI（\texttt{ctypes}）调用外，还被直接编译进 \texttt{arduplane} SITL 二进制，并经真实传感器/作动器栈端到端飞行（第~\ref{sec:realsitl} 节）。伴随对象暴露 16 个作动器通道（六路油门、六路独立倾转舵机、四个 V 尾/副翼舵面）并记录完整真值状态，但控制器只接收传感状态；真值列仅用于后处理。16 通道 V 尾配置被显式声明。一个小型、公开 diff 的固件钩子为原生 \texttt{arduplane} SITL 目标暴露六个倾转舵机与舵面。
+\subsection{Companion-layer integration}\label{sec:companion}
+To exploit six independent tilts, the proposed controller is implemented as a
+Python companion that closes the loop around a high-rate nonlinear plant
+that reproduces the ArduPilot SITL sensor/actuator interfaces: the plant
+advances at 400~Hz with a 4th-order Runge--Kutta integrator (two substeps),
+while the MPC and allocator run at 33~Hz. The proposed-MPC quantitative
+results in Section~\ref{sec:campaign} are generated by this companion plant
+against the same physics model used by the ArduPilot JSON SITL backend. The
+native-firmware baseline (Section~\ref{sec:baseline}) is run on the actual
+\texttt{arduplane} SITL binary with the same JSON physics backend, and its
+results are parsed from the binary flight log. The
+control-effectiveness, constraints, and active-set logic are written in C++
+as a reusable library (\texttt{AP\_TiltHexa}); the same C++ core is compiled
+directly into the \texttt{arduplane} SITL binary and flown end-to-end through
+the real sensor/actuator stack (Section~\ref{sec:realsitl}), in addition to
+being called from the companion through a small C ABI (\texttt{ctypes}). The companion plant exposes the 16 actuator channels (six
+throttles, six independent tilt servos, and the four V-tail/aileron
+surfaces) and logs the full truth state, but the controller receives only
+the sensed state; truth columns are used exclusively for post-processing.
+The 16-channel V-tail configuration is declared explicitly. A small,
+publicly diffed firmware hook exposes the six tilt servos and the surfaces
+for the native \texttt{arduplane} SITL target.
 
-\subsection{基线与公平性}\label{sec:baseline}
-对比基线为\emph{未改动的 stock \texttt{arduplane} SITL 二进制}（stock QuadPlane，\texttt{Q\_TILT\_MAX=80}），在同一环境中针对项目 JSON 物理后端飞行（第~\ref{sec:realsitl} 节）；其前向转换发散（表~\ref{tab:main}），故表中如实报告真实二进制结果，而非调参后的或离线等效结果。为在不重建桥的前提下隔离走廊参考的贡献，在相同物理的伴随对象上做受控消融：同一 MPC，但用固定速率倾转调度替换离线走廊参考。所有伴随对象结果均来自同一非线性 400\,Hz 对象；真实二进制结果从 \texttt{.BIN} 飞行日志与 FDM 真值流解析，真值列仅用于后处理。
+\subsection{Baseline and fairness}\label{sec:baseline}
+The comparison baseline is the \emph{unmodified stock \texttt{arduplane} SITL
+binary} (stock QuadPlane, \texttt{Q\_TILT\_MAX=80}), flown in the same
+environment against the project's JSON physics backend
+(Section~\ref{sec:realsitl}); its forward conversion departs
+(Table~\ref{tab:main}), so the table reports the real-binary result rather than
+a tuned or offline equivalent. To isolate the contribution of the corridor
+reference without rebuilding the bridge, a controlled ablation is run on the
+identical-physics companion plant: the same MPC but a fixed-rate tilt schedule in
+place of the offline-corridor reference. All companion-plant results are derived
+from the same nonlinear 400\,Hz plant; the real-binary results are parsed from
+the \texttt{.BIN} flight log and the FDM truth stream, with truth columns used
+only for post-processing.
 
 % =====================================================================
-\subsection{真实二进制 SITL 验证}\label{sec:realsitl}
-除伴随对象仿真外，stock 控制器与提出的 \texttt{AP\_TiltHexa} 控制律都在真实 \texttt{arduplane} SITL 二进制中、针对项目的 JSON-UDP 物理后端飞行（FDM 以 400\,Hz 推进并经 UDP 流式输出完整真值；二进制与 FDM 真值 CSV 即 \texttt{results/SITL\_MPC/} 与 \texttt{results/SITL\_native/} 下的产物）。因此飞行器解锁、EKF/GPS 健康与模态逻辑均为未修改的 ArduPilot 栈，而非 Python 复刻。
+\subsection{Real-binary SITL verification}\label{sec:realsitl}
+Beyond the companion-plant campaign, both the stock controller and the
+proposed \texttt{AP\_TiltHexa} law were flown in the actual
+\texttt{arduplane} SITL binary against the project's JSON-UDP physics backend
+(the FDM advances at 400\,Hz and streams the full truth over UDP; the binary
+and the FDM truth CSV are the artifacts under \texttt{results/SITL\_MPC/} and
+\texttt{results/SITL\_native/}). The vehicle arming, EKF/GPS health, and mode
+logic are therefore the unmodified ArduPilot stack, not a Python replica.
 
-\paragraph{真实二进制上的 stock 基线。}
-在连续倾转配置（\texttt{Q\_TILT\_TYPE=0}、\texttt{Q\_FRAME\_CLASS=2} HEXA）下，stock 控制器能保持稳定的 QLOITER 悬停：爬升到 60\,m，高度跟踪误差 $<0.5$\,m，$|\phi|<0.5^\circ$。然而，在指令 QLOITER$\to$FBWA 前向转换时飞行器发散：由于非 \texttt{VECTORED\_YAW} 倾转旋翼的 \texttt{is\_vectored} 为假，多旋翼姿态控制器在 \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} 转换期间不接管，低速时气动舵面又没有权限。切换后 $2$--$3$\,s 内滚转角发散到约 $170^\circ$，运行终止（图~\ref{fig:sitl_native_vs_thx}，上）。倾转舵机确实转到 $90^\circ$，失控前空速冲到约 $48$\,m/s，故这是控制律不稳定，而非作动器或链路故障。我们将其作为 stock 连续倾转模式在本平台上的真实局限报告，而非通过调参掩盖的结果。
+\paragraph{Stock baseline on the real binary.}
+With the continuous-tilt profile (\texttt{Q\_TILT\_TYPE=0},
+\texttt{Q\_FRAME\_CLASS=2} HEXA), the stock controller holds a stable
+QLOITER hover: it climbs to 60\,m and tracks altitude to within $<0.5$\,m
+with $|\phi|<0.5^\circ$. On the commanded QLOITER$\to$FBWA forward
+conversion, however, the vehicle diverges: because
+\texttt{is\_vectored} is false for a non-\texttt{VECTORED\_YAW} tiltrotor,
+the multirotor attitude controller does not take over during
+\texttt{AIRSPEED\_WAIT}/\texttt{TIMER} conversion, and at low speed the
+aerodynamic surfaces have no authority. Within $2$--$3$\,s of the switch the
+roll angle diverges to $\approx 170^\circ$ and the run terminates (Fig.~\ref{fig:sitl_native_vs_thx}, top). The tilt servos do drive to
+$90^\circ$ and the airspeed spikes to $\approx 48$\,m/s before departure, so
+this is a control-law instability rather than an actuator or interlink
+failure. We report this as a genuine limitation of the stock continuous-tilt
+mode on this platform, not as a tuned-away result.
 
-\paragraph{真实二进制上的提出控制器。}
-在启用 \texttt{AP\_TiltHexa}、伴随 MPC 经脚本串口桥接（100\,Hz、Lua 直接写伺服）后，同一二进制端到端飞完完整的悬停$\to$巡航$\to$悬停任务：爬升到 60\,m，前向转换到 20\,m/s 巡航目标（以 20.0\,m/s 到达），以平缓 1.0\,m/s$^2$ 减速完成后向转换，并稳定地末端悬停（图~\ref{fig:sitl_overview}）。在 17.4\,s 全翼载巡航窗口（$V\ge19$\,m/s）内，短舱均值 $\bar\beta=88.2^\circ$（窗口 90\% 时间 $\ge85^\circ$），巡航高度 $60.5\pm0.2$\,m，峰值姿态 $|\phi|_{\max}=0.13^\circ$、$|\theta|_{\max}=15.0^\circ$。末端悬停稳定在 $59.9$\,m、地速 $0.01$\,m/s。后向转换的关键设计教训是减速必须平缓（1.0\,m/s$^2$，与离线走廊 OCP 一致）；激进的 2\,m/s$^2$ 减速会导致上仰高度越界并失控。使用默认最小推力分配器（无固定翼模式）时，巡航短舱停在约 $20$--$24^\circ$：一旦机翼在 20\,m/s 承载，固件内分配器会选择让旋翼近乎垂直的最小推力配平。启用全翼载巡航模式则把短舱驱动到物理的 $90^\circ$ 全翼载配平。
+\paragraph{Proposed controller on the real binary.}
+With \texttt{AP\_TiltHexa} enabled and the companion MPC bridged over the
+scripting serial port (100\,Hz, Lua direct servo write), the same binary flies
+the complete hover$\to$cruise$\to$hover mission end-to-end: climb to 60\,m,
+forward conversion to the 20\,m/s cruise target (reached at 20.0\,m/s),
+reverse conversion at a gentle 1.0\,m/s$^2$ deceleration, and a stable terminal
+hover (Fig.~\ref{fig:sitl_overview}). During the 17.4\,s wing-borne cruise
+window ($V\ge19$\,m/s) the nacelle mean is $\bar\beta=88.2^\circ$ (90\% of the
+window at $\ge85^\circ$), cruise altitude is $60.5\pm0.2$\,m, and the peak
+attitudes are $|\phi|_{\max}=0.13^\circ$ and $|\theta|_{\max}=15.0^\circ$.
+The terminal hover settles at $59.9$\,m with ground speed $0.01$\,m/s.
+The key design lesson for the reverse conversion is that the deceleration must
+be gentle (1.0\,m/s$^2$, matching the offline corridor OCP); an aggressive
+2\,m/s$^2$ deceleration causes a pitch-up altitude excursion and departure.
+With the default minimum-thrust allocator (no FW mode) the cruise nacelle
+settles at $\approx20$--$24^\circ$: once the wing carries lift at 20\,m/s the
+in-firmware allocator chooses a minimum-thrust trim that keeps the rotors
+nearly vertical. Enabling the wing-borne cruise mode drives the nacelles to
+the physical $90^\circ$ wing-borne trim instead.
 
-\paragraph{真实二进制中的全翼载巡航模式。}
-弥合上述缺口需要真正的飞行模态切换，而非配平叠加。最初的四轮飞行（\texttt{fw90\_v2}--\texttt{v4}）仅在旋翼承载的 INDI 回路上\emph{叠加}重设总推力与 V 尾，结果总在短舱到达 $\beta=90^\circ$ 的瞬间失控：2--3\,s 内滚转发散到约 $170$--$180^\circ$。结构性根因是：在 $\beta=90^\circ$ 时六个旋翼只提供前向推力，INDI 用于产生滚转/俯仰力矩的旋翼差动通道失去了其垂直力臂几何，而气动舵面尚未接管——形成控制权限真空。
+\paragraph{Wing-borne cruise mode in the real binary.}
+Closing the above gap required a genuine flight-mode switch rather than a trim
+overlay. An initial four-flight campaign (\texttt{fw90\_v2}--\texttt{v4}) that
+only re-targeted the collective thrust and vtail \emph{on top of} the rotor-borne
+INDI loop always departed control at the instant the nacelles reached
+$\beta=90^\circ$: roll diverged to $\approx170$--$180^\circ$ within 2--3\,s. The
+structural root cause is that at $\beta=90^\circ$ the six rotors deliver only
+forward thrust, so the rotor-differential channels that INDI uses for roll/pitch
+moment lose their vertical-arm geometry while the aerodynamic surfaces have not
+yet taken over---a control-authority vacuum.
 
-因此，我们在 \texttt{AP\_TiltHexa} 内实现了一个专用固定翼内环，当空速进入转换窗口时它\emph{替代}（而非叠加）旋翼承载的 INDI 姿态环。两个内环以平滑权重 $w$ 交叉淡化，$w$ 在 $V=17$\,m/s 时为 0、在 20\,m/s 巡航目标时增至 1，使气动舵面在旋翼失去权限\emph{之前}就接管姿态。在全翼载模式（$w\to1$）下：襟副翼差动指令滚转，对称 V 尾按高度误差调度俯仰（以离线固定翼升降舵配平 $d_{rv}\approx-19^\circ$ 为基准），旋翼总推力针对阻力指令前向速度。短舱由同一混合权重驱动到 $\beta=90^\circ$。
+We therefore implemented a dedicated fixed-wing inner loop inside
+\texttt{AP\_TiltHexa} that \emph{replaces} (not overlays) the rotor-borne INDI
+attitude loop once the airspeed enters the conversion window. The two inner
+loops are crossfaded by a smooth weight $w$ that grows from 0 at
+$V=17$\,m/s to 1 at the 20\,m/s cruise target, so the aerodynamic surfaces take
+over attitude \emph{before} the rotors lose authority. In wing-borne mode
+($w\to1$): flaperon differential commands roll, the symmetric vtail commands
+pitch scheduled by altitude error (trimmed on the offline FW elevator trim,
+$d_{rv}\approx-19^\circ$), and the collective rotor thrust commands forward
+speed against drag. The nacelles are driven to $\beta=90^\circ$ by the same
+blend.
 
-所得 SITL 飞行（\texttt{fwmode\_v12}，图~\ref{fig:sitl_overview}）达到持续的全翼载巡航：30\,s 巡航窗口内短舱保持 $\beta_1\approx90^\circ$（均值 $89^\circ$），空速稳定在 $20.1$\,m/s（与 20\,m/s 参考相差 $0.1$\,m/s 以内），巡航高度保持在 $58$\,m（与 60\,m 参考相差 $3$\,m 以内），滚转保持在几度以内。控制器现在使用由 \texttt{tools/trim\_map.py} 编译的\emph{走廊配平前馈表}：在每个空速 $V$，固件查询与对象一致的水平飞行配平（$\beta(V)$、单旋翼推力 $T(V)$、俯仰 $\theta(V)$、对称升降方向舵 $\delta_{rv}(V)$），其中旋翼垂直分量 $\sum T_i\cos\beta$ 加上机翼升力 $\tfrac12\rho V^2 S C_L$ 恰好平衡重量 $mg=294.2$\,N，并据此前馈；内环仅修正小偏差。这在 $V$ 上是对称的（同一表服务于前向 $0\to20$ 与后向 $20\to0$ 转换）。调参中发现并修正了一个固件舵面比例 bug（PWM$\to$偏角映射假设为 $\pm45^\circ$，而 FDM 将升降方向舵限制为 $\pm25^\circ$）；它曾导致升降舵指令只能到 $-14^\circ$，俯仰权限不足。
+The resulting SITL flight (\texttt{fwmode\_v12}, Fig.~\ref{fig:sitl_overview})
+reaches a sustained wing-borne cruise: the nacelle holds
+$\beta_1\approx90^\circ$ (mean $89^\circ$) over a $30$\,s cruise window, the
+airspeed settles at $20.1$\,m/s (within $0.1$\,m/s of the 20\,m/s reference),
+the cruise altitude holds at $58$\,m (within $3$\,m of the 60\,m reference), and
+the roll stays within a few degrees. The controller now uses a
+\emph{corridor-trim feedforward table} compiled from \texttt{tools/trim\_map.py}:
+at each airspeed $V$ the firmware looks up the plant-consistent level-flight trim
+($\beta(V)$, per-rotor thrust $T(V)$, pitch $\theta(V)$, symmetric ruddervator
+$\delta_{rv}(V)$) in which the rotor vertical component $\sum T_i\cos\beta$ plus
+wing lift $\tfrac12\rho V^2 S C_L$ exactly balances the weight $mg=294.2$\,N, and
+feeds it forward; the inner loop only trims small deviations. This is symmetric
+in $V$ (the same table serves the forward $0\to20$ and backward $20\to0$
+conversion). A firmware surface-scale bug (the PWM$\to$deflection map assumed
+$\pm45^\circ$ while the FDM limits the ruddervators to $\pm25^\circ$) was found
+and corrected during tuning; it had caused the elevator to reach only $-14^\circ$
+on command, leaving insufficient pitch authority.
 
-仅靠固件前馈无法完全闭合回悬停段。在以 22\,s smoothstep 速度斜坡、速率受限的短舱倾转（$\le40^\circ$/s）减速时，飞行器仍加速到约 36\,m/s 并进入俯冲：短舱回倾时机翼卸载比旋翼重建垂直升力更快。识别出的根因是开环配平前馈无法在减速过程中对耦合气动状态重新配平；控制器必须针对真实二进制状态持续重新优化。
+The return-to-hover leg was not fully closed by the firmware feedforward alone.
+On deceleration with a 22\,s smoothstep speed ramp and a rate-limited nacelle
+tilt ($\le40^\circ$/s), the aircraft still accelerated to $\sim$36\,m/s and
+pitched into a dive: as the nacelles tilt back the wing unloads faster than the
+rotors rebuild vertical lift. The identified root cause is that open-loop trim
+feedforward cannot re-trim the coupled aerodynamic state during deceleration;
+the controller must continuously re-optimize against the real binary state.
 
-\paragraph{经脚本串口的伴随 MPC。}
-随后实现了推荐的外部节点方案并闭合了完整任务。在伴随对象仿真中闭合任务的同一在线 MPC（\S\ref{sec:results}）以 100\,Hz 作为伴随进程运行：经 GCS MAVLink 链路读取 EKF/GPS 状态（RAW\_IMU、ATTITUDE、LOCAL\_POSITION\_NED、VFR\_HUD），求解 QP，并经专用脚本串口（\texttt{SERIAL2\_PROTOCOL=28}）写入 16 个作动器指令（6 电机、6 倾转、4 舵面）。Lua 桥解码 35 字节帧并直接调用 \texttt{SRV\_Channels::set\_output\_pwm\_chan\_timeout}，绕过在 SITL 中被证明不可靠的 RC-override/GCS 路由层。
+\paragraph{Companion MPC over the scripting serial port.}
+The recommended external-node approach was then implemented and closed the full
+mission. The same online MPC that closes the mission in the companion-plant
+campaign (\S\ref{sec:results}) runs as a companion process at 100\,Hz: it reads
+EKF/GPS state over the GCS MAVLink link (RAW\_IMU, ATTITUDE, LOCAL\_POSITION\_NED,
+VFR\_HUD), solves the QP, and writes the 16 actuator commands (6 motors, 6
+tilts, 4 surfaces) over a dedicated scripting serial port
+(\texttt{SERIAL2\_PROTOCOL=28}). A Lua bridge decodes a 35-byte frame and calls
+\texttt{SRV\_Channels::set\_output\_pwm\_chan\_timeout} directly, bypassing the
+RC-override/GCS routing layer that proved unreliable in SITL.
 
-所得 SITL 飞行（\texttt{full\_paper}，图~\ref{fig:sitl_overview}）完成完整悬停$\to$巡航$\to$悬停任务：爬升到 60\,m，前向转换到 20\,m/s 巡航，进行 17.4\,s 全翼载巡航（$\bar\beta=88.2^\circ$，窗口 90\% 时间 $\ge85^\circ$），再以平缓 1.0\,m/s$^2$ 反向减速回到稳定的末端悬停（$59.9$\,m、地速 $0.01$\,m/s）。峰值姿态 $|\phi|_{\max}=0.13^\circ$、$|\theta|_{\max}=15.0^\circ$。平缓的减速速率至关重要：激进的 2\,m/s$^2$ 减速会导致上仰高度越界，因为机翼卸载比旋翼重建垂直升力更快。
+The resulting SITL flight (\texttt{full\_paper}, Fig.~\ref{fig:sitl_overview})
+completes the full hover$\to$cruise$\to$hover mission: climb to 60\,m, forward
+conversion to 20\,m/s cruise, a 17.4\,s wing-borne cruise at
+$\bar\beta=88.2^\circ$ (90\% of the window at $\ge85^\circ$), and a gentle
+1.0\,m/s$^2$ reverse deceleration back to a stable terminal hover at
+$59.9$\,m with ground speed $0.01$\,m/s. Peak attitudes are
+$|\phi|_{\max}=0.13^\circ$ and $|\theta|_{\max}=15.0^\circ$. The gentle
+deceleration rate is essential: an aggressive 2\,m/s$^2$ deceleration causes a
+pitch-up altitude excursion because the wing unloads faster than the rotors
+rebuild vertical lift.
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_sitl_overview.pdf}
-\caption{提出控制器的真实 \texttt{arduplane} SITL 飞行：高度（上）、空速跟踪 20\,m/s 巡航参考（中）、短舱角（下）。完整悬停--巡航--悬停任务，从 FDM 真值流解析。}
+\caption{Real \texttt{arduplane} SITL flight of the proposed controller:
+altitude (top), airspeed tracking the 20\,m/s cruise reference (middle), and
+nacelle angle (bottom). Full hover--cruise--hover mission, parsed from the
+FDM truth stream.}
 \label{fig:sitl_overview}
 \end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_sitl_native_vs_thx.pdf}
-\caption{同一任务的真实 SITL 姿态对比。上：stock QLOITER$\to$FBWA 在前向转换时发散到 $|\phi|\approx170^\circ$（$\pm60^\circ$ 限值以虚线标示）。下：提出控制器在姿态包线内完成同一剖面。}
+\caption{Real SITL attitude comparison, same mission. Top: stock
+QLOITER$\to$FBWA diverges to $|\phi|\approx170^\circ$ on the forward
+conversion (the $\pm60^\circ$ limit is dashed). Bottom: the proposed
+controller completes the same profile within the attitude envelope.}
 \label{fig:sitl_native_vs_thx}
 \end{figure}
 
 % =====================================================================
-\section{仿真包线}\label{sec:campaign}
+\section{Simulation campaign}\label{sec:campaign}
 
-\subsection{场景矩阵}\label{sec:scenarios}
-基线与提出控制器在完全相同的对象、扰动与任务下飞行相同场景。主场景是标称质量下完整的悬停--巡航--悬停任务，包含前向与后向两条转换段，因此作为标称前向/后向过渡用例；其余场景为鲁棒性变体：(S4) 标称任务加平缓协调转弯（偏航角速率 $5^\circ$/s，约 $10^\circ$ 倾斜）；(S5) 5\,m/s 离散阵风；(S6) 4\,m/s 稳态侧风；(S7) 质量 $+15\%$；(S8) 重心前移 0.025\,m；(S9) 控制模型失配扫描：(S9a) 推力 $-10\%$、(S9b) 控制舵面效能 $-20\%$、(S9c) 惯量 $+20\%$。专门的悬停与姿态阶跃场景不属于所报告的仿真，留待未来工作。20 次 Monte-Carlo 仿真（种子 1000--1019）联合随机化上述参数。仅当通过九项对象真值检查（达到高度与巡航、姿态低于 $60^\circ$、爬升后无掉高、位于走廊内、分配残差非负、转换对称、单调相位且零模态切换、末端悬停以地速判定）才接受一次运行。
+\subsection{Scenario matrix}\label{sec:scenarios}
+The same scenarios are flown by the baseline and the proposed controller,
+against the identical plant, disturbance, and mission. The primary scenario is
+a complete hover--cruise--hover mission at nominal mass, which contains both
+the forward and backward conversion legs and therefore serves as the nominal
+forward- and backward-transition case; the remaining scenarios are robustness
+variations: (S4) the nominal mission with a gentle coordinated turn
+($5^\circ$/s yaw rate, $\approx 10^\circ$ bank); (S5) a 5\,m/s discrete gust;
+(S6) a 4\,m/s steady crosswind; (S7) mass $+15\%$; (S8) a forward
+centre-of-gravity offset of 0.025\,m; and (S9) a control-model mismatch sweep:
+(S9a) thrust $-10\%$, (S9b) control-surface effectiveness $-20\%$, and (S9c)
+inertia $+20\%$. A dedicated hover and attitude-step case is not part of the
+reported campaign and is left to future work. A 20-run Monte-Carlo campaign
+randomises the same parameters jointly (seeds 1000--1019). A run is accepted
+only on nine plant-truth checks (altitude and cruise reached, attitude below
+$60^\circ$, no post-climb altitude loss, inside the corridor, non-negative
+allocation residual, symmetric conversions, monotonic phasing with zero mode
+switch, and terminal hover judged by ground speed).
 
-\subsection{指标}\label{sec:metrics}
-性能由以下指标度量：过渡时间 $t_f$；最大高度损失 $\Delta h_{\max}$；峰值与 RMS 姿态误差；总控制能量 $\int u^\top R_u u\,\mathrm dt$；路径跟踪 RMS；模态切换次数；以及沿过渡的 AWS 裕度最小值 $\rho_{\min}$。实时性能由 MPC 求解时间的均值、第 99 百分位与最坏值，以及截止期错过率度量。
+\subsection{Metrics}\label{sec:metrics}
+Performance is measured by: transition time $t_f$; maximum altitude loss
+$\Delta h_{\max}$; peak and RMS attitude error; total control energy
+$\int u^\top R_u u\,\mathrm dt$; path tracking RMS; number of mode switches;
+and the AWS margin minimum $\rho_{\min}$ along the transition. Real-time
+performance is measured by the MPC solve-time mean, 99th percentile, and
+worst case, and by the deadline-miss rate.
 
-\subsection{结果协议}\label{sec:results}
-所有定量结果由评估脚本从对象真值日志重新计算；控制器从不读取真值。走廊与配平调度见图~\ref{fig:corridor}--\ref{fig:trim}，标称全剖面时间历程见图~\ref{fig:profile}，走廊消融见图~\ref{fig:ablation}，旋翼效能指标见图~\ref{fig:aws}，可达力/力矩多面体见图~\ref{fig:afms_poly}--\ref{fig:afms_curves}，跟踪与实时鲁棒性汇总见图~\ref{fig:robust}--\ref{fig:rt}。对比数值见表~\ref{tab:main}--\ref{tab:rt}。
+\subsection{Results protocol}\label{sec:results}
+All quantitative results are recomputed from the plant-truth logs by the
+evaluation script; the controller never reads the truth. The corridor and
+trim schedules are shown in Figs.~\ref{fig:corridor}--\ref{fig:trim}, the
+nominal full-profile time history in Fig.~\ref{fig:profile}, the corridor
+ablation in Fig.~\ref{fig:ablation}, the rotor effectiveness metric in
+Fig.~\ref{fig:aws}, the reachable wrench polytopes in
+Figs.~\ref{fig:afms_poly}--\ref{fig:afms_curves}, and the tracking and
+real-time robustness summaries in
+Figs.~\ref{fig:robust}--\ref{fig:rt}. Comparative numbers are reported in
+Tables~\ref{tab:main}--\ref{tab:rt}.
 
 \begin{figure}[t]
 \centering\includegraphics[width=0.62\columnwidth]{figures/fig_corridor.pdf}
-\caption{转换走廊：失速边界 $V_{\min}(\beta)$、可行区域，以及前向/后向配平调度。}
+\caption{Conversion corridor: stall boundary $V_{\min}(\beta)$, feasible
+region, and the forward/backward trim schedules.}
 \label{fig:corridor}
 \end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_trim_schedule.pdf}
-\caption{前向/后向最小推力配平：短舱倾转、单旋翼推力、机体俯仰随空速的变化。}
+\caption{Forward/backward minimum-thrust trim: nacelle tilt, per-rotor
+thrust, and body pitch versus airspeed.}
 \label{fig:trim}
 \end{figure}
 
 \begin{figure*}[t]
 \centering\includegraphics[width=0.92\textwidth]{figures/fig_profile.pdf}
-\caption{真实 \texttt{arduplane} SITL 二进制上的标称悬停--巡航--悬停任务（真值）：高度、空速、姿态、平均短舱倾转、平均旋翼推力、升降方向舵偏角。阴影带标示前向转换、$\beta=90^\circ$ 全翼载巡航与后向转换三段。}
+\caption{Nominal hover--cruise--hover mission on the real \texttt{arduplane}
+SITL binary (truth): altitude, airspeed, attitude, mean nacelle tilt, mean rotor
+thrust, and ruddervator deflection. Shaded bands mark the forward conversion,
+the wing-borne cruise at $\beta=90^\circ$, and the backward conversion.}
 \label{fig:profile}
 \end{figure*}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_ablation_corridor.pdf}
-\caption{走廊消融：走廊感知 MPC 与固定调度消融的空速（左）和高度（右）。消融越过巡航空速，并在后向段掉高 7\,m。}
+\caption{Corridor ablation: airspeed (left) and altitude (right) for the
+corridor-aware MPC and the fixed-schedule ablation. The ablation overshoots
+cruise speed and loses 7\,m on the backward leg.}
 \label{fig:ablation}
 \end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=0.62\columnwidth]{figures/fig_aws.pdf}
-\caption{旋翼效能块的归一化最小奇异值随空速的变化（AWS 内切球度量）。}
+\caption{Normalised minimum singular value of the rotor effectiveness block
+versus airspeed (the AWS inscribed-sphere metric).}
 \label{fig:aws}
 \end{figure}
 
@@ -662,13 +1063,17 @@ ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\
 \centering
 \begin{minipage}{0.48\textwidth}
 \centering\includegraphics[width=\textwidth]{figures/fig_afms_force_polytope.pdf}
-\caption*{六个短舱倾角下 $V=15$~m/s 时的可达 $F_x$--$F_z$ 力集。}
+\caption*{Reachable $F_x$--$F_z$ force set at $V=15$~m/s for six nacelle tilts.}
 \end{minipage}\hfill
 \begin{minipage}{0.48\textwidth}
 \centering\includegraphics[width=\textwidth]{figures/fig_afms_torque_polytope.pdf}
-\caption*{$V=15$~m/s 时的可达 $M_x$--$M_y$ 力矩多面体。}
+\caption*{Reachable $M_x$--$M_y$ moment polytope at $V=15$~m/s.}
 \end{minipage}
-\caption{可达力/力矩多面体（第~\ref{sec:afms_poly} 节）。左：旋翼推力矢量从垂直（悬停，$\beta=0^\circ$）旋转到水平（固定翼，$\beta=90^\circ$）。右：随 $\beta$ 增大力矩包络缩小 $9.8$ 倍，因为水平推力消除了旋翼滚转力矩臂；副翼随速度恢复权限。}
+\caption{Attainable wrench polytopes (Section~\ref{sec:afms_poly}). Left: the
+rotor thrust vector rotates from vertical (hover, $\beta=0^\circ$) to
+horizontal (fixed-wing, $\beta=90^\circ$). Right: the moment envelope shrinks
+by $9.8\times$ as $\beta$ increases because horizontal thrust removes the rotor
+roll moment arm; ailerons recover authority with speed.}
 \label{fig:afms_poly}
 \end{figure*}
 
@@ -680,120 +1085,257 @@ ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\
 \begin{minipage}{0.48\columnwidth}
 \centering\includegraphics[width=\textwidth]{figures/fig_afms_max_torque_vs_beta.pdf}
 \end{minipage}
-\caption{$V=15$~m/s 时最大可用升力/前向力（左）与滚转/俯仰力矩（右）随短舱倾角 $\beta$ 的变化。升力按 $\cos\beta$ 减小，而前向推力按 $\sin\beta$ 增大；滚转权限在高倾转时崩溃，在巡航空速由副翼恢复。}
+\caption{Maximum available lift/forward force (left) and roll/pitch moment
+(right) versus nacelle tilt $\beta$ at $V=15$~m/s. The lift decreases as
+$\cos\beta$ while forward thrust increases as $\sin\beta$; roll authority
+collapses at high tilt and is recovered by the ailerons at cruise speed.}
 \label{fig:afms_curves}
 \end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_robustness.pdf}
-\caption{固定鲁棒性仿真中各场景的高度与速度跟踪 RMSE；所有场景均通过九项真值检查。}
+\caption{Altitude and speed tracking RMSE across the fixed robustness
+campaign; all scenarios pass the nine truth checks.}
 \label{fig:robust}
 \end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_mc.pdf}
-\caption{Monte-Carlo 仿真（20 种子，联合参数摄动）。左：高度与速度跟踪 RMSE 分布；右：各种子的 P99 与最坏 MPC 求解时间。20 次运行全部通过九项真值检查。}
+\caption{Monte-Carlo campaign (20 seeds, joint parameter perturbation). Left:
+altitude and speed tracking RMSE distributions; right: per-seed P99 and worst
+MPC solve time. All 20 runs pass the nine truth checks.}
 \label{fig:mc}
 \end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_solve_time.pdf}
-\caption{固定仿真中 MPC 求解时间的均值、P99 与最坏值，均远低于 30\,ms 控制周期。}
+\caption{MPC solve-time mean, P99, and worst case across the fixed campaign,
+all far below the 30\,ms control period.}
 \label{fig:rt}
 \end{figure}
 
 \begin{table}[t]
 \centering
-\caption{\emph{真实 \texttt{arduplane} SITL 二进制}上的端到端转换结果（同一悬停--60\,m--20\,m/s 巡航--悬停任务；两控制器均仅基于传感状态作动）。能量为每次转换期间旋翼诱导能量 $E=\int\sum_i T_i^{3/2}/\sqrt{2\rho A}\,\mathrm dt$（动量理论，旋翼直径 $0.70$\,m）。提出 MPC 经脚本串口 Lua 桥桥接飞行；基线为未改动的 stock QuadPlane（\texttt{Q\_TILT\_MAX=80}）。stock 基线以开环方式把短舱指令到 $90^\circ$，但其多旋翼姿态环在 \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} 转换期间不接管（\texttt{Q\_TILT\_TYPE=0} 置 \texttt{\_is\_vectored=false}），故在首次前向转换即发散，无后向段数据。所有数字由 FDM 真值流重算（\texttt{results/SITL\_MPC/full\_paper\_transition\_metrics.json}）。}
+\caption{End-to-end conversion results on the \emph{real \texttt{arduplane}
+SITL binary} (identical hover--60\,m--cruise-20--hover mission; both controllers
+act only on sensed state). Energy is the rotor induced energy
+$E=\int\sum_i T_i^{3/2}/\sqrt{2\rho A}\,\mathrm dt$ over each conversion
+(momentum theory, rotor diameter $0.70$\,m). The proposed MPC is bridged over
+the scripting-serial Lua port; the baseline is the unmodified stock QuadPlane
+(\texttt{Q\_TILT\_MAX=80}). The stock baseline commands the nacelles to
+$90^\circ$ open-loop but its multirotor attitude loop does not vector thrust
+during \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} conversion
+(\texttt{Q\_TILT\_TYPE=0} sets \texttt{\_is\_vectored=false}), so it departs on
+the first forward conversion and has no backward-leg numbers. All numbers are
+recomputed from the FDM truth stream
+(\texttt{results/SITL\_MPC/full\_paper\_transition\_metrics.json}).}
 \label{tab:main}
 \small
 \begin{tabular}{lcccccc}
 \toprule
- & \multicolumn{3}{c}{前向转换} & \multicolumn{3}{c}{后向转换} \\
+ & \multicolumn{3}{c}{Forward conversion} & \multicolumn{3}{c}{Backward conversion} \\
 \cmidrule(lr){2-4}\cmidrule(lr){5-7}
-控制器 & $t_f$ (s) & $\Delta h_{\max}$ (m) & 能量 (kJ) & $t_f$ (s) & $\Delta h_{\max}$ (m) & 能量 (kJ) \\
+Controller & $t_f$ (s) & $\Delta h_{\max}$ (m) & Energy (kJ) & $t_f$ (s) & $\Delta h_{\max}$ (m) & Energy (kJ) \\
 \midrule
-提出 MPC（真实 SITL） & 9.5 & 0.16 & 16.9 & 14.5 & 0.21 & 20.9 \\
-stock QuadPlane（真实 SITL） & \multicolumn{6}{l}{前向转换发散（$|\phi|\to170^\circ$，$V\to47.8$ m/s）} \\
+Proposed MPC (real SITL) & 9.5 & 0.16 & 16.9 & 14.5 & 0.21 & 20.9 \\
+Stock QuadPlane (real SITL) & \multicolumn{6}{l}{departs on forward conversion ($|\phi|\to170^\circ$, $V\to47.8$ m/s)} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[t]
 \centering
-\caption{高速伴随对象上的鲁棒性仿真（提出控制器，仅对象失配）；每个场景都通过全部九项真值检查。由于真实二进制 Lua 桥仅能闭环单次任务，系统的扰动矩阵（S4--S9）与蒙特卡洛研究在相同物理模型的伴随对象（第~\ref{sec:twomodel} 节）上执行，以便可重复地注入质量、重心、推力、舵面、惯量与风扰动；端到端标称飞行与 stock 基线对比则在真实 \texttt{arduplane} 二进制上完成（表~\ref{tab:main}）。末端地速用于悬停判定（稳态侧风中，正确悬停的空速等于风速）。所有运行均零显式模态切换。}
+\caption{Robustness campaign on the high-rate companion plant (proposed
+controller, plant-only mismatch); every scenario passes all nine truth checks.
+Because the real-binary Lua bridge admits only a single closed-loop mission, the
+systematic perturbation matrix (S4--S9) and the Monte-Carlo study are executed
+on the identical-physics companion plant (\S\ref{sec:twomodel}), where mass,
+centre-of-gravity, thrust, surface, inertia and wind perturbations can be
+injected reproducibly; the end-to-end nominal flight and the stock-baseline
+comparison are on the real \texttt{arduplane} binary (Table~\ref{tab:main}).
+Terminal ground speed is used for the hover criterion (in a steady crosswind a
+correct hover has airspeed equal to the wind speed). All runs use zero explicit
+mode switches.}
 \label{tab:robust}
 \small
 \begin{tabular}{lcccccc}
 \toprule
-场景 & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m/s) & $\max|\phi|$（度） & $\max|\theta|$（度） \\
+Scenario & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m/s) & $\max|\phi|$ (deg) & $\max|\theta|$ (deg) \\
 \midrule
-标称            & 4.96 & 0.31 & 0.76 & 0.38 & 0.0 & 16.7 \\
-S4 协调转弯 & 5.12 & 0.57 & 0.81 & 0.49 & 14.4 & 12.2 \\
-S5 5\,m/s 阵风      & 5.16 & 0.66 & 0.91 & 0.59 & 0.0 & 17.6 \\
-S6 4\,m/s 侧风 & 5.26 & 0.60 & 1.08 & 0.43 & 3.6 & 11.1 \\
-S7 质量 $+15\%$     & 5.19 & 0.69 & 1.71 & 0.43 & 0.0 & 12.0 \\
-S8 重心前移 0.025\,m & 5.12 & 0.67 & 0.81 & 0.53 & 0.0 & 11.1 \\
-S9a 推力 $-10\%$  & 5.20 & 0.59 & 1.35 & 0.38 & 0.0 & 11.0 \\
-S9b 舵面 $-20\%$ & 5.14 & 0.58 & 0.82 & 0.49 & 0.0 & 11.0 \\
-S9c 惯量 $+20\%$ & 5.13 & 0.56 & 0.82 & 0.48 & 0.0 & 11.2 \\
+Nominal            & 4.96 & 0.31 & 0.76 & 0.38 & 0.0 & 16.7 \\
+S4 coordinated turn & 5.12 & 0.57 & 0.81 & 0.49 & 14.4 & 12.2 \\
+S5 5\,m/s gust      & 5.16 & 0.66 & 0.91 & 0.59 & 0.0 & 17.6 \\
+S6 4\,m/s crosswind & 5.26 & 0.60 & 1.08 & 0.43 & 3.6 & 11.1 \\
+S7 mass $+15\%$     & 5.19 & 0.69 & 1.71 & 0.43 & 0.0 & 12.0 \\
+S8 CG forward 0.025\,m & 5.12 & 0.67 & 0.81 & 0.53 & 0.0 & 11.1 \\
+S9a thrust $-10\%$  & 5.20 & 0.59 & 1.35 & 0.38 & 0.0 & 11.0 \\
+S9b surface $-20\%$ & 5.14 & 0.58 & 0.82 & 0.49 & 0.0 & 11.0 \\
+S9c inertia $+20\%$ & 5.13 & 0.56 & 0.82 & 0.48 & 0.0 & 11.2 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[t]
 \centering
-\caption{单个桌面核心上的实时性能（控制周期 30\,ms）。内层 MPC 为凝缩 QP（$N=20$，五个虚拟力/力矩通道）；分配器为经 C ABI 调用的 C++ 主动集 QP；配平图离线计算、在线为表查询。数值范围为固定鲁棒性仿真。}
+\caption{Real-time performance on one desktop core (control period 30\,ms).
+The inner MPC is the condensed QP ($N=20$, five virtual-wrench channels);
+the allocator is the C++ active-set QP called through a C ABI; the trim map is
+computed offline and is a table lookup online. Ranges are over the fixed
+robustness campaign.}
 \label{tab:rt}
 \small
 \begin{tabular}{lcccc}
 \toprule
-阶段 & 均值 & P99 & 最坏 & 截止期错过率 \\
+Stage & Mean & P99 & Worst & Deadline-miss rate \\
 \midrule
-内层 MPC（33\,Hz） & 0.43\,ms & 1.56\,ms & 3.1\,ms$^{a}$ & 0\%$^{a}$ \\
-AWS 分配器（C++） & $\sim 41\,\mu$s & --- & --- & 0\% \\
-外层配平图 & \multicolumn{4}{c}{离线；在线表查询} \\
+Inner MPC (33\,Hz) & 0.43\,ms & 1.56\,ms & 3.1\,ms$^{a}$ & 0\%$^{a}$ \\
+AWS allocator (C++) & $\sim 41\,\mu$s & --- & --- & 0\% \\
+Outer trim map & \multicolumn{4}{c}{offline; online table lookup} \\
 \bottomrule
 \end{tabular}\\[2pt]
-\footnotesize $^{a}$固定仿真范围内。约 40\,000 次 Monte-Carlo 求解中有一次孤立的 37.6\,ms 求解超过 30\,ms 周期，为单次桌面调度毛刺；P99 仍低于 2.4\,ms。
+\footnotesize $^{a}$Over the fixed campaign. One isolated solve of 37.6\,ms
+(one of $\approx$40\,000 Monte-Carlo solves) exceeded the 30\,ms period, a
+single desktop scheduling hiccup; the P99 remained below 2.4\,ms.
 \end{table}
 
-仿真确认如下结论。在真实 \texttt{arduplane} 二进制上，提出控制器以零显式模态切换完成整个任务：峰值姿态 $|\phi|_{\max}=0.13^\circ$、$|\theta|_{\max}=15.0^\circ$，末端悬停稳定在 $59.9$\,m、地速 $0.01$\,m/s，巡航段在 $20$\,m/s、$60.5\pm0.2$\,m 保持 $\beta\approx90^\circ$（图~\ref{fig:profile}）。本节其余数字来自高速伴随对象，因为闭环轨迹与作动器遥测在那里可用于下述系统诊断。在线可行性指标支持第~\ref{sec:hedge} 节的框架：实际轨迹上最小走廊裕度为 $0.72$~m/s，最大未分配力/力矩残差为混合单位下的 $0.038$（均值 $10^{-3}$），推力、倾转与舵面的饱和比例均为零，故力/力矩对冲与外层重规划路径被正确地从未进入。去掉走廊（固定倾转调度）后飞行器仍能飞行，但越过巡航空速到 24.5\,m/s，后向段高度偏差从 $1.39$ 增大到 $7.0$~m，后向转换能量从 $35.8$ 增至 $45.6$~kJ，因此走廊在真正发挥作用，而非仅仅重塑参考。有界位置积分在不产生加速度残差观测器失稳的情况下抑制恒定质量、推力与风失配。内层 QP 平均约 $0.5$~ms（P99 低于 $2.4$~ms），C++ 分配器 $49$--$74\,\mu$s，二者在桌面核心上均从容实时。包线有明确限制，如实报告：$15^\circ$/s、$28^\circ$ 倾斜的协调转弯不可跟踪（飞行器侧滑并下降），故采用平缓 $5^\circ$/s 转弯；重心前移 0.05\,m 或更多会产生起飞俯仰失控，鲁棒包线为 0.025\,m。
+The campaign confirms the following. On the real \texttt{arduplane} binary the
+proposed controller completes the whole mission with zero explicit mode switches:
+peak attitudes are $|\phi|_{\max}=0.13^\circ$ and $|\theta|_{\max}=15.0^\circ$,
+the terminal hover is held at $59.9$\,m with $0.01$\,m/s ground speed, and the
+cruise segment holds $\beta\approx90^\circ$ at $20$\,m/s and $60.5\pm0.2$\,m
+(Fig.~\ref{fig:profile}). The remaining numbers in this section are from the
+high-rate companion plant, where the closed-loop trajectory and the actuator
+telemetry are available for the systematic diagnostics below. The online
+feasibility indicators support the framing of Section~\ref{sec:hedge}: the
+smallest corridor margin on the realised trajectory is $0.72$~m/s, the maximum
+unallocated wrench residual is $0.038$ in mixed units (mean $10^{-3}$), and the
+thrust, tilt, and surface saturation fractions are all zero, so the
+wrench-hedging and outer re-planning path was correctly never entered. Removing
+the corridor (fixed tilt schedule) leaves the aircraft flying but it overshoots
+cruise speed to 24.5\,m/s, increases the backward-leg altitude deviation from
+$1.39$ to $7.0$~m, and raises the backward conversion energy from $35.8$ to
+$45.6$\,kJ, so the corridor is doing real work rather than merely reshaping the
+reference. The bounded position integral rejects constant mass, thrust, and wind
+mismatch without the instability of an acceleration-residual observer. The inner
+QP runs at a mean of about $0.5$~ms (P99 below $2.4$~ms), and the C++ allocator
+at $49$--$74\,\mu$s, both comfortably real-time on a desktop core. The
+envelope has clear limits, reported honestly: a $15^\circ$/s, $28^\circ$-bank
+coordinated turn is not trackable (the aircraft sideslips and descends), so a
+gentle $5^\circ$/s turn is used; a forward CG offset of 0.05\,m or more
+produces a takeoff pitch runaway, and the robust envelope is 0.025\,m.
 
-20 次 Monte-Carlo 仿真（质量、惯量、推力、舵面、重心、风、延迟与传感器噪声的联合摄动）在每一个种子上都通过全部九项检查：高度 RMSE 均值 1.06\,m（最差 1.81\,m），速度 RMSE 均值 0.54\,m/s（最差 0.77\,m/s），每个种子的求解时间 P99 都低于 2.4\,ms（图~\ref{fig:mc}）。
+The 20-run Monte-Carlo campaign (joint mass, inertia, thrust, surface, CG,
+wind, delay, and sensor-noise perturbation) passes all nine checks on every
+seed: altitude RMSE mean 1.06\,m (worst 1.81\,m), speed RMSE mean 0.54\,m/s
+(worst 0.77\,m/s), with the solve-time P99 below 2.4\,ms on every seed
+(Fig.~\ref{fig:mc}).
 
-与 stock ArduPilot 固件的对比被诚实报告，而非作为意料之中的胜利。在真实 \texttt{arduplane} 二进制上、同一环境中飞行，提出控制器完成整个任务：前向转换 $9.5$\,s、高度偏差 $0.16$\,m、旋翼诱导能量 $16.9$\,kJ，$17.4$\,s 全翼载巡航平均 $\bar\beta=88.2^\circ$（峰值 $90^\circ$）、$20$\,m/s，平缓后向转换 $14.5$\,s、偏差 $0.21$\,m、能量 $20.9$\,kJ（表~\ref{tab:main}，图~\ref{fig:profile}）。未改动的 stock QuadPlane（\texttt{Q\_TILT\_MAX=80}）能稳定爬升到 60\,m 并悬停，但在首次前向转换即发散：滚转偏航到 $|\phi|\approx170^\circ$，空速冲到 $47.8$\,m/s（图~\ref{fig:sitl_native_vs_thx}）。根因在未改动固件内部：对 \texttt{Q\_TILT\_TYPE=0}，倾转旋翼库置 \texttt{\_is\_vectored=false}，多旋翼姿态控制器在 \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} 转换期间不接管；低速时气动舵面无权限，而开到 $90^\circ$ 的开环倾转指令不提供任何闭环姿态稳定。这是 stock 控制律的真实局限，而非作动器或链路故障，我们如实保留而不通过调参掩盖。走廊本身的决定性受控实验在相同物理的伴随对象上进行（无需重建桥即可替换参考）：用固定倾转调度替换可行性感知走廊参考，飞行器仍能飞，但越过巡航空速到 $24.5$\,m/s，后向段高度偏差从 $1.39$ 增大到 $7.0$\,m，后向转换能量从 $35.8$ 增至 $45.6$\,kJ，这把稳定收益定位到可行性层，而非优化本身。
+The comparison against the stock ArduPilot firmware is reported honestly rather
+than as a foregone victory. On the real \texttt{arduplane} binary, flown in the
+same environment, the proposed controller completes the whole mission: forward
+conversion in $9.5$\,s with a $0.16$\,m altitude deviation and $16.9$\,kJ of
+rotor induced energy, a $17.4$\,s wing-borne cruise at mean
+$\bar\beta=88.2^\circ$ (peak $90^\circ$) and $20$\,m/s, and a gentle backward
+conversion in $14.5$\,s with $0.21$\,m deviation and $20.9$\,kJ
+(Table~\ref{tab:main}, Fig.~\ref{fig:profile}). The stock, unmodified
+QuadPlane (\texttt{Q\_TILT\_MAX=80}) climbs and hovers stably but departs on
+the first forward conversion: its roll diverges to $|\phi|\approx170^\circ$ and
+the airspeed spikes to $47.8$\,m/s (Fig.~\ref{fig:sitl_native_vs_thx}). The
+root cause is in the unmodified firmware: for \texttt{Q\_TILT\_TYPE=0} the
+tiltrotor library sets \texttt{\_is\_vectored=false}, so the multirotor attitude
+controller does not take over during \texttt{AIRSPEED\_WAIT}/\texttt{TIMER}
+conversion; at low speed the aerodynamic surfaces have no authority and the
+open-loop tilt command (which does reach $90^\circ$) leaves no closed-loop
+attitude stabilisation. This is a stock control-law limitation, not an actuator
+or interlink failure, and it is left as-is rather than tuned away.
+The decisive controlled experiment for the corridor itself is run on the
+identical-physics companion plant (where the reference can be swapped without
+rebuilding the bridge): replacing the feasibility-aware corridor reference with
+a fixed tilt schedule leaves the aircraft flying but overshoots the cruise speed
+to $24.5$\,m/s, increases the backward-leg altitude deviation from $1.39$ to
+$7.0$\,m, and raises the backward conversion energy from $35.8$ to $45.6$\,kJ,
+which localises the stabilising benefit to the feasibility layer rather than to
+optimisation per se.
 
 % =====================================================================
-\section{讨论与局限}\label{sec:discussion}
-研究范围刻意限定为纯仿真，对照~\cite{bauersfeld2021mpc,allenspach2021nmpc,mancinelli2025unified} 的真实飞行证据，这一点必须明说。SITL 无法复现若干在真实转换飞行中起主导作用的效应：高保真湍流进流与非定常螺旋桨--机翼相互作用、舵机与电机的传输延迟及间隙、传感器噪声与估计器漂移、结构柔性以及地面效应。第~\ref{sec:twomodel} 节的双模型策略与失配扫描（S9）用于检验鲁棒性，但并不等同于真实飞行。独立倾转混合器在方式~(b) 中还需要固件改动；非侵入的方式~(a) 无需重新构建 ArduPilot 即可复现，但不能实现完整的逐旋翼倾转。因此，本贡献被定位为一个开放、可复现的基准以及一种可行性感知的分配/规划方法，而非经飞行验证的控制器。硬件在环验证、舵机延迟建模与外场飞行是紧接着的下一步，随后扩展到旋翼故障场景——在该场景中独立倾转与 AWS 指标提供了直接的容错路径~\cite{yang2026biaxial,santos2021fast,giribet2016tilted}。
+\section{Discussion and limitations}\label{sec:discussion}
+The scope is deliberately simulation-only, and this must be stated plainly
+against the real-flight evidence of~\cite{bauersfeld2021mpc,allenspach2021nmpc,mancinelli2025unified}.
+SITL cannot reproduce several effects that dominate real convertible flight:
+high-fidelity turbulent inflow and unsteady propeller-wing interaction,
+servo and motor transport delays and backlash, sensor noise and estimator
+drift, structural flexibility, and ground effect. The two-model strategy of
+Section~\ref{sec:twomodel} and the mismatch sweep (S9) probe robustness, but
+they are not equivalent to flight. The independent-tilt mixer also requires a
+firmware change in mode~(b); the non-invasive mode~(a) is reproducible
+without rebuilding ArduPilot but does not exercise full per-rotor tilting.
+Accordingly, the contribution is framed as an open, reproducible benchmark
+and a feasibility-aware allocation/planning method, not as a flight-proven
+controller. Hardware-in-the-loop validation, servo-delay modelling, and
+outdoor flight are the immediate next steps, followed by extension to rotor
+faults, where the independent tilts and the AWS metric offer a direct
+fault-tolerance path~\cite{yang2026biaxial,santos2021fast,giribet2016tilted}.
 
 % =====================================================================
-\section{结论}\label{sec:conclusion}
-针对配备六个独立倾转旋翼的 \SI{30}{\kilogram} 全倾转六旋翼，本文提出了一种全包线控制架构。它结合了：(i) 建立在可达力/力矩集及其内切球裕度之上的时变控制分配层，每步由约束 QP 强制执行作动器极限；(ii) 走廊约束的配平优化，提供构造上可行的转换参考，由单一统一 MPC 以零模态切换跟踪；(iii) ArduPilot 框架内的开放 SITL 伴随基准，针对\emph{stock ArduPilot 原生固件}进行标准化对比。走廊强制实现物理上正确的固定翼巡航：在 $20$\,m/s 阈值以上，短舱完全倾转到 $\beta=90^\circ$，机翼承担全部升力，而非保持 60--80$^\circ$ 的中间倾角。本文刻意不主张统一控制为新发明，也不主张相对原生固件的跟踪优越性。
-所声明的贡献是：面向过驱动全倾转六旋翼的全包线时变 AWS 分配；走廊可行参考连同明确规定的可行性耦合路径；实现真正 $\beta=90^\circ$ 巡航的显式固定翼转换阈值；以及一个可复现的开放基准。转换走廊边界针对所述飞行器解析推导，走廊消融把稳定收益定位到可行性层而非优化本身。闭环已在原生 \texttt{arduplane} SITL 二进制上演示（\S\ref{sec:realsitl}）；未来工作将在故意不可行指令下触发并验证在线重规划路径，并推进到硬件在环、飞行试验与旋翼故障场景。
+\section{Conclusions}\label{sec:conclusion}
+A full-envelope control architecture was presented for a \SI{30}{\kilogram}
+fully-tilting hexacopter with six independently tilting rotors. It combines
+(i) a time-varying control-allocation layer built on the attainable wrench set
+and its inscribed-sphere margin, with a constrained QP enforcing actuator
+limits at every step, (ii) a corridor-constrained trim optimization that
+supplies a feasible-by-construction conversion reference tracked by a single
+unified MPC with zero mode switches, and (iii) an open SITL companion benchmark
+in the ArduPilot framework with a standardized comparison against the
+\emph{stock ArduPilot native firmware}. The corridor enforces a physically
+correct fixed-wing cruise: above a $20$\,m/s threshold the nacelles fully
+tilt to $\beta=90^\circ$ and the wing carries all lift, rather than holding
+an intermediate 60--80$^\circ$ tilt. The paper deliberately does not claim
+unified control as new, nor tracking superiority over the native firmware.
+The stated
+contributions are the full-envelope, time-varying AWS allocation for the
+over-actuated fully-tilting hexacopter, the corridor-feasible reference together
+with a specified feasibility-coupling path, the explicit fixed-wing conversion
+threshold that achieves a true $\beta=90^\circ$ cruise, and a reproducible
+open benchmark. The conversion-corridor boundary was derived analytically for the stated
+vehicle, and the corridor ablation localizes the stabilizing benefit to the
+feasibility layer rather than to optimization per se. The closed loop has been
+demonstrated on the native \texttt{arduplane} SITL binary (\S\ref{sec:realsitl});
+future work will trigger and validate the online re-planning path under
+deliberately infeasible commands, and proceed to
+hardware-in-the-loop, flight tests, and rotor-fault scenarios.
 
 % =====================================================================
-\section*{CRediT 作者贡献声明}
-作者一：概念化、方法学、软件、初稿撰写。
-作者二：验证、可视化、审阅与修改。
-通讯作者：指导、经费获取、审阅与修改。
+\section*{CRediT authorship contribution statement}
+Author One: Conceptualization, Methodology, Software, Writing -- original draft.
+Author Two: Validation, Visualization, Writing -- review \& editing.
+Corresponding Author: Supervision, Funding acquisition, Writing -- review \& editing.
 
-\section*{利益冲突声明}
-作者声明，他们没有已知的、可能影响本文所报告工作的竞争性经济利益或个人关系。
+\section*{Declaration of competing interest}
+The authors declare that they have no known competing financial interests or
+personal relationships that could have appeared to influence the work reported
+in this paper.
 
-\section*{数据可用性}
-ArduPilot SITL 参数、场景文件、控制器源码、基线配置与随机种子将在公共仓库发布，以允许完全复现本基准。
+\section*{Data availability}
+The ArduPilot SITL parameters, scenario files, controller source, baseline
+configuration, and random seeds will be released in a public repository to
+permit full reproduction of the benchmark.
 
 \appendix
-\section{开源产物与可复现性}\label{app:artifacts}
-所发布的产物包含：
+\section{Open-source artifacts and reproducibility}\label{app:artifacts}
+The released artifact contains:
 \begin{itemize}[leftmargin=1.6em,itemsep=2pt]
-  \item ArduPilot 参数文件（stock 基线与提出配置），包括 \texttt{Q\_FRAME\_CLASS}、\texttt{Q\_TILT\_MASK}、倾转速率与限制；
-  \item 面向 \SI{30}{\kilogram} 全倾转六旋翼的非线性 SITL 对象与 Python 伴随控制器（含到 C++ 分配库的 C ABI）；
-  \item 走廊/配平优化与误差空间 LTV-MPC 源码（Python，使用 \texttt{scipy} 与 \texttt{quadprog}），以及 C++ AWS 分配例程及其单元测试；
-  \item 场景脚本（标称及 S4--S9）、Monte-Carlo 种子与绘图代码；
-  \item 逐步构建/运行指南，以及方式~(b) 中暴露六个独立倾转舵机的公开固件 diff。
+  \item ArduPilot parameter files (stock baseline and proposed configuration),
+  including \texttt{Q\_FRAME\_CLASS}、\texttt{Q\_TILT\_MASK}、tilt rates, and
+  limits;
+  \item the nonlinear SITL plant for the \SI{30}{\kilogram} fully-tilting
+  hexacopter and the Python companion controller (with a C ABI to the C++
+  allocation library);
+  \item the corridor/trim optimization and the error-space LTV-MPC source
+  (Python with \texttt{scipy} and \texttt{quadprog}), together with the C++
+  AWS allocation routine and its unit tests;
+  \item the scenario scripts (nominal plus S4--S9), Monte-Carlo seeds, and plotting code;
+  \item a step-by-step build/run guide and, for mode~(b), the public firmware
+  diff exposing the six independent tilt servos.
 \end{itemize}
 
 \bibliographystyle{elsarticle-num}

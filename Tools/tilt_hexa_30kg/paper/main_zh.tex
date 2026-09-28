@@ -1,0 +1,552 @@
+%% 中文版论文（与英文版 main.tex 逐节对齐，用 xelatex 编译）
+\documentclass[UTF8,a4paper,11pt]{ctexart}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\setCJKmainfont{Noto Serif CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+
+% siunitx 兼容宏
+\newcommand{\SI}[2]{\ensuremath{#1\,#2}}
+\newcommand{\si}[1]{\ensuremath{#1}}
+\newcommand{\kilogram}{\mathrm{kg}}
+\newcommand{\newton}{\mathrm{N}}
+\newcommand{\meter}{\mathrm{m}}
+\newcommand{\kilo}{\mathrm{k}}
+\newcommand{\watt}{\mathrm{W}}
+\newcommand{\second}{\mathrm{s}}
+\newcommand{\pascal}{\mathrm{Pa}}
+\newcommand{\per}{/}
+\newcommand{\squared}{^{2}}
+\newcommand{\degree}{^{\circ}}
+
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=blue,urlcolor=blue}
+
+\begin{document}
+
+
+\title{面向全倾转六旋翼的转换走廊感知调度与统一模型预测控制：ArduPilot 框架下的开源软件在环伴随基准}
+\author{作者一\quad 作者二\quad 通讯作者}
+\date{}
+\maketitle
+
+\begin{abstract}
+全倾转六旋翼兼具多旋翼的悬停能力与固定翼的高效巡航，但过渡过程中升力在旋翼与机翼间持续转移，使其全包线控制困难。量产自驾仪（包括 stock ArduPilot QuadPlane）采用多旋翼/固定翼切换架构与开环定速倾转调度，会导致高度损失、姿态瞬态与繁重调参负担。本文不主张发明统一控制，而是针对\emph{全倾转六旋翼}——一种六旋翼独立倾转的强过驱动构型——尚未解决的三个问题展开。第一，围绕\emph{可达力/力矩集}（AWS）构建时变控制分配层，其内切球半径在线评估以检测饱和并重新分配六路油门、六路倾转角与气动舵面。第二，走廊约束最优控制问题（OCP）生成前向与后向过渡参考，单个统一模型预测控制器（MPC）在全包线内零模态切换地跟踪；定义 AWS 裕度可行性信号，若机动不可行则触发保守重规划（测试包线内未触发，因约束分配器始终保持正裕度）。有界无模型位置误差积分抑制恒定对象失配。第三，完整管线作为开源、可复现的软件在环（SITL）伴随基准发布于 ArduPilot 框架，面向 \SI{30}{\kilogram} 飞行器，并与\emph{stock ArduPilot 原生固件}对比。转换走廊强制物理正确的固定翼巡航：空速超过 $20$\,m/s 阈值后短舱完全倾转到 $\beta=90^\circ$，机翼承担全部升力。在对象真值仿真中，控制器完成完整悬停--巡航--悬停任务，零模态切换，峰值姿态低于 $17^\circ$，前/后向过渡 14.0/25.0\,s，能量 20.6/35.8\,kJ，在八个鲁棒场景与 20 次蒙特卡洛中通过全部九项真值检查。在真实 ArduPilot \texttt{arduplane} 二进制上，同一 MPC 作为 100\,Hz 伴随节点经脚本串口 Lua 桥直接写 16 路伺服，完成完整任务：17.4\,s 巡航 $\bar\beta=88.2^\circ$（90\% 窗口 $\ge85^\circ$），20\,m/s、$60.5\pm0.2$\,m，峰值 $|\phi|=0.13^\circ$，末段悬停 59.9\,m、0.01\,m/s。后向段平缓 1.0\,m/s$^2$ 减速。内层 QP 均值 0.4\,ms，P99 $<1.6$\,ms。
+
+\textbf{关键词：}倾转旋翼六旋翼；模型预测控制；控制分配；可达力/力矩集；转换走廊；ArduPilot SITL
+\end{abstract}
+
+\tableofcontents
+
+\section{引言}\label{sec:intro}
+
+可转换垂直起降（VTOL）无人机通过增加升力机翼延长多旋翼续航，又通过悬停能力扩展固定翼飞机的多功能性。在 Ducard 与 Allenspach 综述的多种可转换布局中，\emph{倾转旋翼}家族将推进单元在垂直（悬停）与水平（巡航）方向间旋转。本文研究一种\emph{全倾转六旋翼}：六个旋翼各安装在独立驱动的短舱上，绕展向轴从 \SI{0}{\degree}（推力垂直）旋转至 \SI{90}{\degree}（推力水平），固定机翼与常规尾翼在巡航中提供升力与控制。所研究飞行器最大起飞质量 \SI{30}{\kilogram}。
+
+此类飞行器的核心难点是转换走廊。前向过渡中旋翼必须前倾以增加空速，机翼逐步承担重量；后向过渡中机翼卸载，旋翼必须重建垂直升力。两个极端均无问题，但中间区域组合了快速变化的控制权限、桨--翼气动干扰与近饱和作动器。自驾仪必须同时避免低速失速边界与高速功率/载荷边界。
+
+开源 ArduPilot 自驾仪所采用的架构是量产实践的典型代表。在其 QuadPlane 框架中，多旋翼控制器与固定翼控制器被切换投退，倾转舵机通过固定倾转速率的开环调度驱动~\cite{ardupilot2024tilt,ardupilot2024transitions}。该方案稳健且久经考验，但存在三个结构性缺陷：(i) 控制器在包线内不连续，在切换点产生瞬态；(ii) 倾转调度预先固定，不会根据风、质量或作动器饱和进行调整；(iii) 所有倾转舵机被视为单一同步的逻辑倾转，未利用全倾转六旋翼各旋翼独立倾转的权限。
+
+已有大量学术工作研究统一的全包线控制。Bauersfeld 等~\cite{bauersfeld2021mpc} 在外场飞行中演示了一种接收飞行员速度指令、并在整个包线内直接计算旋翼转速与倾转角的模型预测控制器。Allenspach 与 Ducard~\cite{allenspach2021nmpc} 在真实的推进器倾转无人机上将统一非线性 MPC（NMPC）与多级控制分配相结合；Rohr 等~\cite{rohr2021nmpc} 用 NMPC 实现快速倾转机翼过渡；Mancinelli 等~\cite{mancinelli2025unified} 在双轴倾转四旋翼飞机上验证了带迎角保护的统一增量非线性控制器；Chen 等~\cite{chen2024unified} 报道了一种无切换的统一 MPC。增量非线性动态逆（INDI）提供了一种密切相关、对模型鲁棒的替代方案~\cite{smeur2020incremental,smeur2018cascaded,smeur2016adaptive,wang2019stability}，并已应用于尾座式与倾转旋翼飞行器。因此，统一控制这一\emph{概念}并不新颖，本文也不将其作为贡献主张。
+
+然而仍存在三个空白。第一，几乎所有统一控制器都面向四旋翼尺度的倾转旋翼、倾转机翼或尾座式飞行器；而全倾转六旋翼——六个旋翼、六个倾转舵机加四个控制舵面（两副翼、两个 V 尾升降方向舵），即 16 个作动器对应六个自由度——具有强烈时变、高度冗余的控制分配问题，且该问题以往主要针对悬停容错而非全包线展开研究。第二，转换走廊内的最优过渡调度已在有人倾转旋翼与倾转机翼上发展，但很少在闭环中与跟踪控制器的实时可行力/力矩信息耦合。第三，尽管开源自驾仪的软件在环（SITL）增强与基准测试已在固定翼和常规多旋翼上得到展示，但目前尚无开放、可复现的 SITL 基准覆盖带统一控制器与走廊最优过渡的全倾转六旋翼。
+
+因此，本文做出三个有针对性的贡献。
+
+\begin{enumerate}[label=(\roman*),leftmargin=2.2em]
+  \item \textbf{时变 AWS 分配。} 为全倾转六旋翼构建了一个控制分配层，其中控制效能矩阵随倾转角与空速在线更新，约束 QP 以位置和速率限制为硬约束，将虚拟力/力矩分配给 16 个作动器。沿过渡过程评估可达力/力矩集（AWS）及其内切球半径，给出标量可行性裕度，并在该裕度消失时规定了力/力矩对冲（wrench hedging）动作。
+  \item \textbf{走廊可行参考与统一 MPC。} 走廊约束的配平优化（离线计算）提供构造上可行的前向与后向过渡参考，单个统一模型预测控制器以零模态切换在全包线内跟踪。定义可行性信号以耦合两层并触发保守重规划；该重规划路径已被设计与规定，但在测试包线内未被触发，所展示的在线可行性来自约束 QP 与走廊参考。
+  \item \textbf{开放 SITL 伴随基准。} 该方法在 ArduPilot 框架内实现为围绕高速非线性对象的伴随控制器，面向 \SI{30}{\kilogram} 全倾转六旋翼，并连同参数、场景以及作为对比基线的\emph{stock ArduPilot 原生固件}，作为可复现的基准发布。提出控制器的结果由与 ArduPilot JSON SITL 后端相同物理模型的伴随对象生成；原生固件基线在真实的 \texttt{arduplane} SITL 二进制上运行并从其二进制飞行日志解析，因此两组曲线均源自 SITL。单杆速度指令作为一项设计属性包含在内，以模态切换次数作为评估指标。
+\end{enumerate}
+
+本文组织如下：第2节相关工作，第3节平台与模型，第4节时变 AWS 分配，第5节走廊 OCP，第6节统一 MPC，第7节 ArduPilot SITL 实现，第8节仿真包线，第9节讨论，第10节结论。
+
+% =====================================================================
+\section{相关工作}\label{sec:related}
+
+\subsection{可转换飞行器的全包线统一控制}
+两类控制器占据主导。基于优化的方法在单一预测问题中计算姿态、旋翼转速与倾转角~\cite{bauersfeld2021mpc,allenspach2021nmpc,rohr2021nmpc,chen2024unified}。Bauersfeld 等~\cite{bauersfeld2021mpc} 是最直接的前期工作：飞行员速度指令通过一个全包线 MPC 映射为旋翼推力与倾转角，并有外场飞行结果及与二值切换策略的明确对比。基于传感器的增量方法（INDI）则在当前状态附近线性化并使用角加速度反馈，使其对气动不确定性具有鲁棒性；它们已在尾座式、倾转旋翼与双轴倾转飞行器上得到验证~\cite{smeur2020incremental,smeur2018cascaded,smeur2016adaptive,wang2019stability,mancinelli2025unified,bhardwaj2018integrated,lovell2023tailsitter,sun2021incremental}。其他近期方法包括：面向倾转推进 eVTOL 的迭代 LQR MPC~\cite{xia2022ilqr}、四旋翼飞机 RAMC 的鲁棒分配~\cite{cardoso2020ramc}、含固定与倾转螺旋桨的多旋翼通用 NMPC~\cite{bicego2020nmpc}、ACC 中的统一姿态控制~\cite{belak2023unified}、倾转旋翼三旋翼飞行器的 MPC~\cite{prach2018mpc}、MPC 的神经网络近似~\cite{ducard2024neural,jiang2022nnmpc}、动态逆过渡控制器~\cite{saetti2025dynamic,jeong2025longitudinal,li2026asynchronous}，以及复合倾转旋翼建模~\cite{liang2024composite}。可行控制分配已在倾转旋翼四旋翼上与 NMPC 耦合~\cite{shayan2024nmpc}，是最接近的预测分配先例；但该工作面向固定包线的四旋翼飞行器，既未构建转换走廊，也未向外层规划器闭合可行性回路。本文采用 MPC，是因为它能自然地处理作动器约束与转换走廊；其新颖性不在于预测控制本身，而在于它与实时 AWS 的耦合，以及在带走廊可行参考的全倾转六旋翼上的实现。
+
+\subsection{过渡调度与转换走廊}
+转换走廊界定安全的（空速、倾转角）组合。Yu 等~\cite{yu2022pilot} 对 XV-15 的转换进行优化以减轻飞行员负担，显式包含走廊约束、功率、姿态与多目标代价。Kang 等~\cite{kang2024minimum} 在预定义走廊内计算最小能量转换；May 等~\cite{may2025backward} 研究了故障下的后向过渡；Milz 等考察了统一飞行员控制与简化飞行器操作~\cite{milz2026taming}，以及纵列倾转机翼的鲁棒 NDI~\cite{milz2024tandem}。倾转机翼货运优化在~\cite{chen2020tiltwing} 中处理；带等高度与失速约束的前向/后向过渡轨迹优化在~\cite{panish2024tiltwing} 中研究；而带动态不平衡与功率边界的多目标约束倾转走廊在~\cite{zhuang2025mctc} 中为复合倾转旋翼提出。这些研究建立了走廊最优调度，但通常将走廊视为固定的离线包线，未把跟踪控制器的瞬时可行性反馈给规划器。
+
+\subsection{过驱动倾转多旋翼的控制分配}
+控制分配在饱和条件下将期望的虚拟力/力矩映射到冗余作动器；该领域综述见~\cite{johansen2013survey,blaha2023survey}，自适应约束变体见~\cite{tohidi2020adaptive}。倾转与全倾转六旋翼以往主要针对悬停容错与全驱动研究：Giribet 等~\cite{giribet2016tilted} 设计了容错的倾转旋翼六旋翼；Pose 等~\cite{pose2017hexacopter} 分析了旋翼丢失后的六旋翼分配；面向重过驱动四旋翼倾转飞行器的快速分配在~\cite{santos2021fast} 中开发；滑模、自调度、鲁棒与非负最小二乘分配器在~\cite{nguyen2022smc,nguyen2018selfscheduled,baldini2023ftc,zheng2026safety} 中报道。Yang 等~\cite{yang2026biaxial} 利用 AWS 的内切球度量，在被动容错下保持双轴倾转六旋翼的完整六自由度驱动；Mancinelli 等~\cite{mancinelli2025ftc} 解决了过驱动混合 VTOL 的容错问题；单个旋翼失效后的可控性在~\cite{du2015controllability} 中分析。因此 AWS 度量已经确立，但以往仅作为离线或悬停专用的诊断。我们\emph{沿完整过渡在线评估}它，并向规划器闭环。
+
+\subsection{开源自驾仪与 SITL 验证}
+开源飞行栈综述见~\cite{aliane2024opensource}。ArduPilot 已被用作带 SITL 验证的自适应增强平台~\cite{baldi2022ardupilot}、自适应编队飞行~\cite{yang2019formation} 与数字孪生建模~\cite{valencia2025digitaltwin}；PX4 栈被用于全向六旋翼的分数控制~\cite{deoca2025fractional}；HIL 与 VTOL 集群仿真平台在~\cite{dai2021rflysim,sethi2022swarm} 中提出。这些工作均未覆盖带统一、走廊感知控制器的全倾转六旋翼。我们的基准填补了这一空白，并刻意构建在广泛部署的 ArduPilot SITL 之上。
+
+\subsection{与最接近前期工作的定位}
+相对 Bauersfeld 等~\cite{bauersfeld2021mpc}，区别在于：(i) 平台是全倾转六旋翼（16 个作动器）而非四旋翼尺度的倾转旋翼；(ii) 分配通过 AWS 显式地做成时变且感知可行性；(iii) 成果是开放的 ArduPilot SITL 基准而非专有飞行栈。相对 Yu 等~\cite{yu2022pilot}，走廊 OCP 与控制器的实时可行性裕度闭环，而非离线的有人旋翼优化。
+
+% =====================================================================
+\section{平台与动力学模型}\label{sec:model}
+
+\subsection{全倾转六旋翼}\label{sec:config}
+飞行器有六个旋翼，安装在绕质心、半径 $R_r=\SI{0.70}{\meter}$ 的机臂上。每个旋翼由一个独立绕机体展向轴 $y_b$ 旋转的短舱承载。各短舱倾转角 $\delta_i$（本文其余部分记为同一短舱倾转角 $\beta$；在转换调度上所有旋翼采用共同倾转）从垂直方向起算：悬停时 $\delta_i=0$（推力沿 $+z_b$），巡航时 $\delta_i=\pi/2$（推力沿 $+x_b$）。带两副独立副翼的固定机翼与带两个升降方向舵（混合升降/方向作用）的 V 尾提供巡航升力与控制。六路油门、六路独立倾转舵机与四个舵面共给出对应六自由度的 16 个控制输入。标称参数见表~\ref{tab:params}。为清晰起见，全文以惯性系 z 轴向上的约定书写动力学；实现中采用机体 FRD 约定，此时旋翼垂直力为 $-T\cos\delta$，仅符号不同。
+
+\begin{table}[t]
+\centering
+\caption{\SI{30}{\kilogram} 全倾转六旋翼的标称参数。}
+\label{tab:params}
+\small
+\begin{tabular}{lll}
+\toprule
+符号 & 数值 & 说明 \
+\midrule
+$m$                  & \SI{30}{\kilogram}            & 最大起飞质量 \
+$W=mg$               & \SI{294.2}{\newton}           & 重量 \
+$b$                  & \SI{3.50}{\meter}             & 翼展 \
+$S$                  & \SI{1.26}{\meter\squared}     & 机翼面积 \
+$AR=b^2/S$           & 9.72                          & 展弦比 \
+$\bar c=S/b$         & \SI{0.36}{\meter}             & 平均气动弦长 \
+$D_p$                & \SI{0.70}{\meter}             & 螺旋桨直径 \
+$A_d=\pi D_p^2/4$    & \SI{0.385}{\meter\squared}    & 旋翼桨盘面积（每个） \
+$T_{i,\max}$         & \SI{95}{\newton}              & 单旋翼最大推力（$T/W=1.94$） \
+$T_{i,\mathrm{hov}}$ & \SI{49.0}{\newton}            & 单旋翼悬停推力（$W/6$） \
+$P_{\mathrm{ind,hov}}$ & \SI{2.12}{\kilo\watt}        & 理想悬停诱导功率（全部旋翼） \
+$V_c$                & \SI{20}{\meter\per\second}    & 测试巡航空速（标称 25） \
+$V_s$                & \SI{16.2}{\meter\per\second}  & 全翼载失速速度（$C_{L,\max}=1.45$） \
+$V_{\max}$           & \SI{25}{\meter\per\second}    & 标称最大速度 \
+$q_c=\tfrac12\rho V_c^2$ & \SI{245}{\pascal}         & 巡航动压（$V_c=20$） \
+$\dot\delta_{\max}$  & \SI{60}{\degree\per\second}  & 独立倾转速率限制 \
+$R_r$                & \SI{0.80}{\meter}             & 旋翼机臂半径 \
+$I_{xx},I_{yy},I_{zz}$ & $4.27,\,6.64,\,9.58$ \si{\kilogram\meter\squared} & 机体转动惯量 \
+尾翼                 & V 尾、$35^\circ$ 上反、$S_t=0.18$ m$^2$ & 两个升降方向舵（$\pm25^\circ$） \
+\midrule
+作动器               & $6$ 油门 $+\,6$ 倾转 $+\,4$ 舵面 & 16 输入、6 自由度 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{刚体动力学}\label{sec:rigid}
+令 $p\in\mathbb{R}^3$ 与 $v$ 分别表示惯性系中的位置与速度，$\eta=(\phi,\theta,\psi)$ 为欧拉角，$\omega^b$ 为机体角速率。记 $R_b^I$ 为机体到惯性系的旋转矩阵，
+\begin{equation}
+\dot p = v,\qquad
+m\dot v = mg_0 + R_b^I\!\left(F_r+F_a\right),\qquad
+\dot\eta = H(\eta)\,\omega^b,\qquad
+J\dot\omega^b = -\omega^b\times J\omega^b + \tau_r+\tau_a ,
+\label{eq:rigid}
+\end{equation}
+其中 $g_0=[0,0,-g]^\top$，$F_r,\tau_r$ 为旋翼的力与力矩，$F_a,\tau_a$ 为气动力与力矩，$J=\mathrm{diag}(I_{xx},I_{yy},I_{zz})$。
+
+\subsection{旋翼与独立倾转模型}\label{sec:rotor}
+位于机体位置 $r_i=[x_i,y_i,z_i]^\top$ 的旋翼 $i$ 沿其倾斜轴产生推力 $T_i$
+\begin{equation}
+n_i(\delta_i)=[\sin\delta_i,\ 0,\ \cos\delta_i]^\top .
+\label{eq:naxis}
+\end{equation}
+旋翼合力与合力矩为
+\begin{equation}
+F_r=\sum_{i=1}^{6} T_i\, n_i(\delta_i), \qquad
+\tau_r=\sum_{i=1}^{6}\left[r_i\times T_i n_i(\delta_i)
+   + \sigma_i \kappa T_i\, n_i(\delta_i)\right],
+\label{eq:rotor}
+\end{equation}
+其中 $\sigma_i\in\{+1,-1\}$ 为旋翼旋向，$\kappa$ 为推力到反扭矩系数。油门与倾转均受速率限制，
+\begin{equation}
+0\le T_i\le T_{i,\max},\quad |\dot T_i|\le \dot T_{\max},\quad
+0\le\delta_i\le\pi/2,\quad |\dot\delta_i|\le\dot\delta_{\max}.
+\label{eq:actlim}
+\end{equation}
+六个 $\delta_i$ 的独立性是其与同步倾转或前端倾转飞行器的关键区别：差动倾转可直接产生俯仰与升力重分配力矩，并可通过重新倾转其余健康旋翼来隔离故障旋翼。
+
+\subsection{气动与滑流模型}\label{sec:aero}
+机翼与尾翼采用稳定性导数建模，
+\begin{equation}
+F_a=\tfrac12\rho V^2 S
+ \begin{bmatrix} -C_D(\alpha,\delta)\\ C_Y(\beta,\delta_r)\\ -C_L(\alpha,\delta)\end{bmatrix},
+\qquad
+\tau_a=\tfrac12\rho V^2 S
+ \begin{bmatrix} b\, C_l(\beta,p,\delta_a)\\ \bar c\, C_m(\alpha,q,\delta_e)\\ b\, C_n(\beta,r,\delta_r)\end{bmatrix},
+\label{eq:aero}
+\end{equation}
+其中 $C_L=C_{L_\alpha}\alpha+C_{L_{\delta_e}}\delta_e$，阻力极曲线为二次形式 $C_D=C_{D_0}+k C_L^2$。由于过渡过程中旋翼吹袭机翼，采用有效滑流速度与增广的 $C_{L,\max}(\delta)$，这遵循倾转机翼研究中常见的桨--翼气动干扰建模~\cite{rohr2021nmpc,mancinelli2025unified}。
+气动控制权限随 $q=\tfrac12\rho V^2$ 缩放，故在悬停时消失，此时由旋翼提供全部控制。
+
+\subsection{双模型策略}\label{sec:twomodel}
+刻意维护两套模型。具有粗略稳定性导数的低阶模型（式~\eqref{eq:rigid}--\eqref{eq:aero}）供控制器与走廊 OCP 使用，而 ArduPilot SITL 的飞行动力学模型（更高保真，含电机与舵机动力学）作为对象。两者之间的失配是第~\ref{sec:campaign} 节主要的鲁棒性测试；并未通过控制与仿真使用同一模型来掩盖它。
+
+% =====================================================================
+\section{时变可达力/力矩集控制分配}\label{sec:aws}
+
+\subsection{控制效能矩阵}\label{sec:Bmatrix}
+将虚拟力/力矩与作动器定义为
+\begin{equation}
+w=\begin{bmatrix}F\\ \tau\end{bmatrix}\in\mathbb{R}^{6},\qquad
+u=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
+\label{eq:wu}
+\end{equation}
+由于旋翼力包含 $T_i\sin\delta_i$ 与 $T_i\cos\delta_i$ 的乘积，该映射是非线性的。在工作点 $(T_0,\delta_0,V)$ 处线性化，得到
+\begin{equation}
+w \approx w_0 + B(\delta_0,V)\,\Delta u,\qquad
+B(\delta_0,V)=\begin{bmatrix}
+B_{FT}(\delta_0) & B_{F\delta}(\delta_0) & 0\\
+B_{\tau T}(\delta_0) & B_{\tau\delta}(\delta_0) & B_{\tau s}(V)
+\end{bmatrix},
+\label{eq:B}
+\end{equation}
+其中舵面块 $B_{\tau s}(V)\propto q(V)$ 随空速增大，旋翼块随 $\delta_0$ 连续旋转。悬停时 $B_{\tau s}\approx0$，旋翼在全部六个通道上作用；巡航时 $B_{\tau s}$ 在力矩通道占主导，旋翼主要沿 $x_b$ 作用。该矩阵在每个控制步重新计算。
+
+\subsection{可达力/力矩集与内切球度量}\label{sec:awsmetric}
+当前工作点处的可达力/力矩集为
+\begin{equation}
+\mathcal{M}(\delta,V)=\bigl\{w:\ w=w_0+B(\delta,V)\Delta u,\
+\underline u\le u\le\bar u,\ |\dot u|\le\dot u_{\max}\bigr\},
+\label{eq:AWS}
+\end{equation}
+为一个有界的六维多面体。遵循~\cite{yang2026biaxial} 的被动容错构造，其大小用以标称 $w_0$ 为中心、所能包含的最大力/力矩球半径来概括，
+\begin{equation}
+\rho(\delta,V)=\max_{r\ge0}\ r\quad\text{s.t.}\quad
+\mathcal{B}_r(w_0)\subseteq\mathcal{M}(\delta,V).
+\label{eq:rho}
+\end{equation}
+较大的 $\rho$ 表示各方向权限充足；$\rho\to0$ 预示即将饱和；且当 $\|w_{\mathrm{cmd}}-w_0\|_2>\rho$ 时所指令力/力矩不可行。本文采用效能矩阵的归一化最小奇异值作为 $\rho$ 的标量替代，并沿走廊评估以刻画权限（图~\ref{fig:aws}）；式~\eqref{eq:alloc} 的约束 QP 在线强制精确的作动器极限，因此显式的内切球 LP 不处于关键实时路径上。
+
+\subsection{可达力/力矩多面体}\label{sec:afms_poly}
+为刻画转换倾转如何重塑飞行器权限，式~\eqref{eq:AWS} 的完整可达力与力矩多面体通过对六个旋翼推力、六个倾转角和四个控制舵面的线性规划支撑函数离线计算，覆盖各短舱倾角 $\beta\in\{0^\circ,30^\circ,45^\circ,60^\circ,75^\circ,90^\circ\}$ 与空速 $V\in\{0,10,15,20\}$~m/s。图~\ref{fig:afms_poly}（左）给出 $F_x$--$F_z$ 可达力扇形：$\beta=0^\circ$（悬停）时全部 $570$~N 最大静推力均垂直、前向力为零；$\beta=90^\circ$（固定翼）时推力全部水平、旋翼不提供升力（机翼承担重量）；中间倾角下力矢量旋转、两个分量均可获得（$\beta=45^\circ$ 时每个分量达 $403$~N）。图~\ref{fig:afms_poly}（右）给出 $V=15$~m/s 时嵌套的 $M_x$--$M_y$ 力矩多面体：滚转权限 $|M_x|$ 从 $\beta=0^\circ$ 的 $183$~N$\cdot$m 缩小到 $\beta=90^\circ$ 的 $41$~N$\cdot$m（水平推力消除了旋翼力矩臂），多面体面积缩小 $9.8$ 倍。随着速度建立，副翼恢复滚转权限：$\beta=90^\circ$ 时可用 $|M_x|$ 从 $V=0$ 的 $9.7$~N$\cdot$m 提升到 $V=20$~m/s 的 $64.4$~N$\cdot$m，这正是转换走廊随速度增加将力矩生成从差动旋翼转移到舵面的物理原因。最大可用升力、前向力、滚转力矩与俯仰力矩随 $\beta$ 的变化绘于图~\ref{fig:afms_curves}；这些曲线为 MPC 所采用的倾转速率与权限约束提供了依据，并证实走廊配平（第~\ref{sec:corridor} 节）始终运行在可达集内部、且留有充足裕度。
+
+\subsection{在线加权分配}\label{sec:alloc}
+在每个快环步，MPC 产生 $w_{\mathrm{cmd}}$。作动器指令通过求解一个加权、有优先级的最小二乘问题~\cite{johansen2013survey,blaha2023survey,tohidi2020adaptive}，
+\begin{equation}
+\min_{\Delta u}\ \bigl\|\Omega_w(B\Delta u-\Delta w_{\mathrm{cmd}})\bigr\|_2^2
+ +\bigl\|\Omega_u(\Delta u-\Delta u_d)\bigr\|_2^2
+\quad\text{s.t.}\quad \underline u\le u\le\bar u,\ |\dot u|\le\dot u_{\max},
+\label{eq:alloc}
+\end{equation}
+采用固定权重 $\Omega_w,\Omega_u$，使低速时优先使用六个独立倾转角产生力矩、高速时优先使用舵面，与时变的 $B(\delta,V)$ 保持一致。由于限制为硬约束，每当作动器达到边界，主动集求解器便把力/力矩重新分配到健康通道；这就是在线载荷重分配的机制，而非显式的自适应重加权。每步都返回实际达成的力/力矩与未满足残差，并在饱和时用于冻结误差积分。
+
+\subsection{可行性监测与力/力矩对冲}\label{sec:hedge}
+在线可行性的主要机制是式~\eqref{eq:alloc} 的约束 QP：作动器位置与速率限制为硬约束，因此所分配的力/力矩始终可达，残差 $w_{\mathrm{cmd}}-w_{\mathrm{ach}}$ 被显式返回而非被静默截断。此外，沿实际轨迹评估内切球裕度 $\rho$，作为标量可行性监测器。若所指令的力/力矩球将超过 $\rho$，则进行向 $\mathcal{M}$ 边界的力/力矩对冲投影，并请求减慢外部参考。该投影及相关的外部重规划属于架构的一部分，但正如第~\ref{sec:campaign} 节所报告，它们在测试包线内从未被触发，因为走廊参考与约束 QP 使 $\rho$ 始终严格为正；报告的是实际达到的最小裕度，而非断言。该设计取代了固定分配器的突变饱和与积分器卷绕，并定义了在更苛刻指令下闭合第~\ref{sec:twolayer} 节两层回路所需的信号。
+
+% =====================================================================
+\section{走廊感知最优过渡调度}\label{sec:corridor}
+
+\subsection{转换走廊}\label{sec:corridorderiv}
+下边界（失速）由垂直力平衡导出。旋翼贡献垂直分量 $\sum_i T_i\cos\delta_i$，机翼提供 $L=\tfrac12\rho V^2 S C_L$，最小可持续速度为
+\begin{equation}
+V_{\min}(\delta)=
+\sqrt{\frac{2\,\bigl(mg-\sum_i T_{i,\max}\cos\delta\bigr)}
+{\rho\,S\,C_{L,\max}(\delta)}},
+\qquad V_{\min}=0\ \text{if }mg\le\sum_i T_{i,\max}\cos\delta .
+\label{eq:Vmin}
+\end{equation}
+对于 \SI{30}{\kilogram} 飞行器，$\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$。走廊将迎角限制为保守的 $\alpha_{\mathrm{stall}}=13^\circ$，对应 $C_{L,\mathrm{stall}}=C_{L_0}+C_{L_\alpha}\alpha_{\mathrm{stall}}=1.29$；所得 $\delta=90^\circ$ 处边界为 $17.2$~m/s，略高于表~\ref{tab:params} 中 $C_{L,\max}=1.45$ 的全翼载失速速度 $V_s=16.2$~m/s，因为走廊不使用完整升力系数。上边界由可用功率与法向载荷限制设定，
+\begin{equation}
+P_{\mathrm{avail}}\ge P_{\mathrm{ind}}+P_{\mathrm{prof}}+P_{\mathrm{par}}
+ +V\!\sum_i T_i\sin\delta_i,\qquad |n|\le n_{\max},
+\label{eq:Vmax}
+\end{equation}
+由此定义 $V_{\max}(\delta)$。走廊为 $\mathcal{C}=\{(\delta,V):V_{\min}(\delta)\le V\le V_{\max}(\delta)\}$；其标称下边界由式~\eqref{eq:Vmin} 列于表~\ref{tab:corridor}，采用保守、无滑流的失速迎角 $\alpha_{\mathrm{stall}}=13^\circ$，即 $C_{L,\mathrm{stall}}=1.29$，而非完整的 $C_{L,\max}=1.45$（软失速模型 $C_L=C_{L,\max}\tanh((C_{L,0}+C_{L,\alpha}\alpha)/C_{L,\max})$ 在对象、预测模型与走廊中完全一致地使用）。
+
+\begin{table}[t]
+\centering
+\caption{\SI{30}{\kilogram} 飞行器由式~\eqref{eq:Vmin} 得到的标称转换走廊下边界，采用保守的走廊失速迎角 $\alpha_{\mathrm{stall}}=13^\circ$（$C_{L,\mathrm{stall}}=1.29$，无滑流增广）。因此 $\delta=90^\circ$ 处数值（$17.2$~m/s）略高于 $C_{L,\max}=1.45$ 的全翼载失速速度 $V_s=16.2$~m/s。}
+\label{tab:corridor}
+\small
+\begin{tabular}{lccccccc}
+\toprule
+倾转角 $\delta$（度） & 0 & 15 & 30 & 45 & 60 & 75 & 90 \
+\midrule
+$V_{\min}$（m/s） & 0 & 0 & 0 & 0 & 3.0 & 12.1 & 17.2 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{前向过渡参考}\label{sec:ocp}
+对于水平、缓慢的转换，带功率/载荷/倾转速率目标的完整动态最优控制问题退化为由加加速度受限速度律遍历的准稳态最小推力配平；因此我们采用这种显式、确定性的形式，而非自由时间配点求解器（CasADi/IPOPT 形式~\cite{andersson2019casadi} 曾被实现但因在 $V=0$ 处奇异且产生 bang--bang 倾转动作而被弃用）。零端点加加速度的 smoothstep 速度 S 曲线 $V(s)=V_0+(V_f-V_0)(3s^2-2s^3)$，$s=t/T_f$，在固定转换时间 $T_f$ 内规定走廊遍历。在每个节点，由精确的纵向力与力矩平衡求解\emph{最小推力水平配平}
+\begin{equation}
+\sum_i T_i\sin\tau = D,\qquad
+\sum_i T_i\cos\tau + L = mg,\qquad
+M_y^{\mathrm{rot}}+M_y^{\mathrm{wing}}+M_y^{\mathrm{tail}}=0,
+\label{eq:trim}
+\end{equation}
+其中 $\tau=\beta-\theta$ 为推力线相对垂直方向的夹角，计入推力线力矩与 V 尾权限，机翼仅加载到所需程度（以 $C_{L,\max}$ 为界）；旋翼提供剩余升力与前向力。节点解 $(\beta,T,\theta,\alpha)$ 以及体轴前馈力/力矩 $w_{\mathrm{ff}}$ 与气动舵面力 $F_{\mathrm{surf}}$ 按空速制成表。每个节点都强制满足失速边界 $V_{\min}(\beta)$，故参考在构造上可行。
+
+超过巡航空速后，飞行器进入纯固定翼飞行：短舱完全倾转到 $\beta=90^\circ$，机翼承担全部升力，旋翼仅提供克服阻力的前向推力。这由配平图中的固定翼转换阈值 $V_{\mathrm{fw}}=20$~m/s 强制：对 $V\ge V_{\mathrm{fw}}$，在 $\beta$ 固定为 $90^\circ$ 下求解配平，并调整机翼迎角、旋翼推力与 V 尾偏角以满足三轴平衡（质心上方旋翼带来的推力线下俯力矩由 V 尾平衡）。在 $V\in[17,20]$~m/s 的混合区，用 smoothstep 权重将最小推力转换配平向固定翼配平平滑插值，使前馈力/力矩与参考短舱角在转换/巡航边界上 $C^0$ 连续。物理上这与真实倾转旋翼的运行一致：飞行器靠部分倾转的旋翼加速，一旦机翼完全承担重量，便完成向水平的倾转并以全翼载巡航，而非保持 60--80$^\circ$ 的中间倾角。
+
+\subsection{后向过渡}\label{sec:backward}
+后向过渡采用对称处理，但它是更敏感的机动，因为在中间速度过早使机翼卸载会产生上仰与下沉~\cite{may2025backward}。从固定翼巡航配平（$\beta=90^\circ$）出发，后向段在 25\,s 转换中采用单调、按时间调度的旋翼承载迎角剖面（短舱从 $90^\circ$ 回倾到 $0^\circ$，迎角由巡航值平滑减至 $0^\circ$），这在速度下降时保持旋翼主导，消除近失速上仰。当前节点配平按\emph{已达到的}空速索引（与前向段相同）：飞行器仍快时短舱保持前倾（维持机翼升力与前向推力），仅在速度真正下降时才回倾——这避免了从 $90^\circ$ 起用纯时间索引会出现的过度倾转与下沉。通过减小前向推力（阻力与推力撤除）实现制动；后向推力前馈被钳为零，因为它在低速时驱动短舱后倾、具有失稳作用。
+
+\subsection{轨迹库与在线重规划}\label{sec:library}
+配平图与两段遍历在质量、巡航空速与风况的网格上离线计算一次，生成参考库 $(x^\star,V^\star,h^\star,\theta^\star)$ 及前馈力/力矩与舵面力。在线层按参考速度索引前向段，并在后向段入口保持固定翼巡航节点配平（$\beta=90^\circ$，全翼载），使参考在巡航/后向边界上 $C^0$ 连续；当第~\ref{sec:hedge} 节的可行性反馈低于阈值时，请求在走廊内重规划。
+
+% =====================================================================
+\section{统一 MPC 与两层集成}\label{sec:nmpc}
+
+\subsection{统一误差空间 LTV-MPC 公式}\label{sec:nmpcform}
+单个控制器覆盖悬停、过渡与巡航，无需模态切换。在每个控制步，于第~\ref{sec:corridor} 节随速度变化的非线性配平参考的误差坐标中对非线性对象线性化；所得线性时变（LTV）问题随后被离散化并作为二次规划求解。这是关于非线性参考的误差空间 LTV-MPC，而非完全非线性规划的 NMPC；全文仍简称为 MPC。在预测时域 $N$、周期 $\Delta t$ 下，它最小化
+\begin{equation}
+\min_{\{u_k\}}\ \sum_{k=0}^{N-1}
+\!\left[\|x_k-x_k^\star\|_{Q}^{2}+\|u_k-u_k^\star\|_{R}^{2}\right]
++\|x_N-x_N^\star\|_{Q_f}^{2}
+\label{eq:nmpc}
+\end{equation}
+约束包括离散预测模型、作动器极限~\eqref{eq:actlim} 以及可行性约束 $\rho(\delta_k,V_k)\ge\rho_{\min}$。参考 $x_k^\star,u_k^\star$ 由第~\ref{sec:corridor} 节的走廊配平图提供。12 状态 NED 模型在随速度变化参考的误差坐标中线性化，并通过矩阵指数（\texttt{scipy.linalg.expm}）以零阶保持精确离散；时域为 $N=20$、$\Delta t=0.03$~s（约 33~Hz）。所得等式约束被凝缩为关于五个虚拟力/力矩增量的小型稠密二次规划，由主动集 \texttt{quadprog} 求解器求解（如 acados~\cite{verschueren2022acados} 这类嵌入式凝缩 QP 是自然的飞行硬件目标）；不可行时先放宽姿态软约束，仅在最后手段下才使用零力/力矩回退。虚拟力/力矩随后传递给第~\ref{sec:aws} 节的时变 AWS 分配器。有界、无模型的位置误差积分增广力/力矩，以抑制恒定对象失配（第~\ref{sec:campaign} 节）。
+
+\subsection{恒定失配的无模型位置误差积分}\label{sec:integral}
+最初在内部预测模型上实现了加速度残差扰动观测器，但它在动态后向转换中并不安全：由于内部模型忽略了实际的 V 尾下洗与电机动力学，观测器把时变、可预测的模型--对象气动差误判为扰动并抵消配平前馈，在中间速度复现失速/坠毁。我们改为对 NED 系\emph{位置}误差 $e_p=p^\star-p$ 采用有界、无模型的积分，
+\begin{equation}
+\mathcal I_k = \operatorname{sat}\!\bigl(\mathcal I_{k-1}+K_i\,e_p\,\Delta t\bigr),
+\qquad
+w_k = w_k^{\mathrm{MPC}}+R_b^\top\mathcal I_k ,
+\label{eq:integral}
+\end{equation}
+该积分被旋转到机体坐标系，并在分配前加到虚拟力/力矩上。垂直通道仅在巡航、后向转换与末端悬停时积分（$K_{i,z}=4$，$\pm70$~N），以便机翼卸载时修正推力或质量不足；水平通道仅在末端悬停时积分（$K_{i,h}=7$，$\pm80$~N）以配平静态侧风，并在爬升与转换中冻结，避免对移动参考的卷绕。分配器报告饱和时积分始终冻结。这不增加任何模型知识，是恢复表~\ref{tab:robust} 中恒定失配鲁棒场景的机制。
+
+\subsection{两层架构与可行性耦合}\label{sec:twolayer}
+两层按时间尺度分离，并通过可行性耦合：
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item \emph{外层（1--10\,Hz）：} 走廊 OCP，使用标称走廊与标称 AWS，输出转换参考。
+  \item \emph{内层（20--50\,Hz）：} 统一 MPC 加第~\ref{sec:aws} 节的时变 AWS 分配，针对真实（受扰）对象跟踪参考并评估真实的 $\rho$。
+  \item \emph{耦合（已设计）：} 当 $\rho<\rho_{\mathrm{th}}$（因阵风、质量误差或饱和）时，内层设计为立即对冲并请求更慢、更保守的外部参考，外层将在走廊内重新规划。在本文报道的仿真中该阈值从未被越过（实际 $\rho$ 保持为正），因此闭环重规划是一条已设计但未被执行的路径；实际在线展示的可行性由每步约束 QP 与构造上可行的走廊参考提供。在故意不可行指令下触发并验证重规划路径留待未来工作。
+\end{itemize}
+
+\subsection{单杆速度指令}\label{sec:stick}
+全包线采用统一的指令映射：俯仰杆映射 $v_x$、滚转杆映射 $v_y$、油门映射 $v_z$、方向舵映射 $\dot\psi$。遵循~\cite{milz2026taming} 的简化操作动机与~\cite{bhardwaj2018integrated} 的参考模型思想，这被视为设计属性而非新颖性主张。所评估的客观指标是完成完整任务所需的显式模态切换次数：stock 切换架构会多次进入和退出固定翼控制器，而统一控制器切换零次（表~\ref{tab:main}）。全包线内定量的杆到速度传递函数辨识是计划中的扩展，本文不予主张。
+
+\subsection{实时实现}\label{sec:realtime}
+内层 MPC 由上一解热启动，稠密 QP 采用固定迭代上限；每步记录求解时间、截止期错过与回退路径（不可行 $\rightarrow$ 放宽姿态约束 $\rightarrow$ 零力/力矩保持）。由于凝缩问题仅有 $5N$ 个决策变量，整个仿真在单个桌面核心上的平均/P99/最坏求解时间为 $0.5$/$2.1$/$5.5$~ms，相对于 $30$~ms 控制周期（第~\ref{sec:campaign} 节），即控制器距其截止期有两个数量级的裕度。外层配平图离线计算、在线为表查询，运行时间可忽略。
+
+% =====================================================================
+\section{ArduPilot SITL 实现}\label{sec:sitl}
+
+\subsection{stock 倾转旋翼架构及其局限}\label{sec:stock}
+ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\_CLASS=2} 选择六旋翼机架，以 \texttt{Q\_TILT\_MASK} 声明倾转电机，倾转类型设为连续（\texttt{Q\_TILT\_TYPE=0}），并由 \texttt{Q\_TILT\_MAX}、\texttt{Q\_TILT\_RATE\_UP}、\texttt{Q\_TILT\_RATE\_DN} 定义调度~\cite{ardupilot2024tilt,ardupilot2024transitions}。该模式下多旋翼与固定翼控制器被切换，倾转舵机作为单一同步逻辑倾转、按固定速率指令。这种 stock 行为既是基线控制器，\emph{也}暴露了一个真实局限：stock 连续倾转调度器无法表示各旋翼独立的倾转角。
+
+\subsection{伴随层集成}\label{sec:companion}
+为利用六个独立倾转，提出控制器实现为一个 Python 伴随节点，围绕一个再现 ArduPilot SITL 传感器/作动器接口的高速非线性对象闭环：对象以 400~Hz 推进、采用 4 阶 Runge--Kutta 积分（两个子步），MPC 与分配器以 33~Hz 运行。第~\ref{sec:campaign} 节中提出 MPC 的定量结果由该伴随对象、针对 ArduPilot JSON SITL 后端所用的同一物理模型生成。原生固件基线（第~\ref{sec:baseline} 节）在真实 \texttt{arduplane} SITL 二进制上、以同一 JSON 物理后端运行，结果从二进制飞行日志解析。控制效能、约束与主动集逻辑用 C++ 写成可复用库（\texttt{AP\_TiltHexa}）；同一 C++ 核心除由伴随节点通过小型 C ABI（\texttt{ctypes}）调用外，还被直接编译进 \texttt{arduplane} SITL 二进制，并经真实传感器/作动器栈端到端飞行（第~\ref{sec:realsitl} 节）。伴随对象暴露 16 个作动器通道（六路油门、六路独立倾转舵机、四个 V 尾/副翼舵面）并记录完整真值状态，但控制器只接收传感状态；真值列仅用于后处理。16 通道 V 尾配置被显式声明。一个小型、公开 diff 的固件钩子为原生 \texttt{arduplane} SITL 目标暴露六个倾转舵机与舵面。
+
+\subsection{基线与公平性}\label{sec:baseline}
+对比基线有两层，刻意保持分离。(i) 表~\ref{tab:main} 中\emph{离线 native-equivalent（原生等效）}行复刻 stock QuadPlane 倾转旋翼控制逻辑——切换式 QLOITER/FBWA/QLOITER 模态序列、开环固定速率短舱倾转调度，并以 ArduPilot 强制的 \texttt{Q\_TILT\_MAX=80$^\circ$} 为上限——在与提出控制器相同的 SITL 级伴随对象与物理模型上、使用完全相同的任务、扰动与大气执行；两个控制器都不读取真值。(ii) 另外，我们让\emph{未改动的 stock \texttt{arduplane} SITL 二进制}本身针对项目的 JSON 物理后端飞行（第~\ref{sec:realsitl} 节），以揭示真实 stock 用户当下实际得到的结果。两层回答不同问题：离线等效在共享对象上给出同口径的数值过渡对比，而真实二进制飞行暴露 stock 连续倾转模式在实现层面的局限（第~\ref{sec:stock} 节）。第二个消融，\emph{提出方法但去掉走廊}，使用相同 MPC 但固定速率倾转调度，以隔离走廊参考的贡献。所有伴随结果均源自 SITL：提出 MPC 的真值 CSV 与原生等效真值 CSV 都来自同一个非线性 400\,Hz 对象，而真实二进制结果从 \texttt{.BIN} 飞行日志与 FDM 真值流解析。
+
+% =====================================================================
+\subsection{真实二进制 SITL 验证}\label{sec:realsitl}
+除伴随对象仿真外，stock 控制器与提出的 \texttt{AP\_TiltHexa} 控制律都在真实 \texttt{arduplane} SITL 二进制中、针对项目的 JSON-UDP 物理后端飞行（FDM 以 400\,Hz 推进并经 UDP 流式输出完整真值；二进制与 FDM 真值 CSV 即 \texttt{results/SITL\_MPC/} 与 \texttt{results/SITL\_native/} 下的产物）。因此飞行器解锁、EKF/GPS 健康与模态逻辑均为未修改的 ArduPilot 栈，而非 Python 复刻。
+
+\paragraph{真实二进制上的 stock 基线。}
+在连续倾转配置（\texttt{Q\_TILT\_TYPE=0}、\texttt{Q\_FRAME\_CLASS=2} HEXA）下，stock 控制器能保持稳定的 QLOITER 悬停：爬升到 60\,m，高度跟踪误差 $<0.5$\,m，$|\phi|<0.5^\circ$。然而，在指令 QLOITER$\to$FBWA 前向转换时飞行器发散：由于非 \texttt{VECTORED\_YAW} 倾转旋翼的 \texttt{is\_vectored} 为假，多旋翼姿态控制器在 \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} 转换期间不接管，低速时气动舵面又没有权限。切换后 $2$--$3$\,s 内滚转角发散到约 $170^\circ$，运行终止（图~\ref{fig:sitl_native_vs_thx}，上）。倾转舵机确实转到 $90^\circ$，失控前空速冲到约 $48$\,m/s，故这是控制律不稳定，而非作动器或链路故障。我们将其作为 stock 连续倾转模式在本平台上的真实局限报告，而非通过调参掩盖的结果。
+
+\paragraph{真实二进制上的提出控制器。}
+在启用 \texttt{AP\_TiltHexa}、伴随 MPC 经脚本串口桥接（100\,Hz、Lua 直接写伺服）后，同一二进制端到端飞完完整的悬停$\to$巡航$\to$悬停任务：爬升到 60\,m，前向转换到 20\,m/s 巡航目标（以 20.0\,m/s 到达），以平缓 1.0\,m/s$^2$ 减速完成后向转换，并稳定地末端悬停（图~\ref{fig:sitl_overview}）。在 17.4\,s 全翼载巡航窗口（$V\ge19$\,m/s）内，短舱均值 $\bar\beta=88.2^\circ$（窗口 90\% 时间 $\ge85^\circ$），巡航高度 $60.5\pm0.2$\,m，峰值姿态 $|\phi|_{\max}=0.13^\circ$、$|\theta|_{\max}=15.0^\circ$。末端悬停稳定在 $59.9$\,m、地速 $0.01$\,m/s。后向转换的关键设计教训是减速必须平缓（1.0\,m/s$^2$，与离线走廊 OCP 一致）；激进的 2\,m/s$^2$ 减速会导致上仰高度越界并失控。使用默认最小推力分配器（无固定翼模式）时，巡航短舱停在约 $20$--$24^\circ$：一旦机翼在 20\,m/s 承载，固件内分配器会选择让旋翼近乎垂直的最小推力配平。启用全翼载巡航模式则把短舱驱动到物理的 $90^\circ$ 全翼载配平。
+
+\paragraph{真实二进制中的全翼载巡航模式。}
+弥合上述缺口需要真正的飞行模态切换，而非配平叠加。最初的四轮飞行（\texttt{fw90\_v2}--\texttt{v4}）仅在旋翼承载的 INDI 回路上\emph{叠加}重设总推力与 V 尾，结果总在短舱到达 $\beta=90^\circ$ 的瞬间失控：2--3\,s 内滚转发散到约 $170$--$180^\circ$。结构性根因是：在 $\beta=90^\circ$ 时六个旋翼只提供前向推力，INDI 用于产生滚转/俯仰力矩的旋翼差动通道失去了其垂直力臂几何，而气动舵面尚未接管——形成控制权限真空。
+
+因此，我们在 \texttt{AP\_TiltHexa} 内实现了一个专用固定翼内环，当空速进入转换窗口时它\emph{替代}（而非叠加）旋翼承载的 INDI 姿态环。两个内环以平滑权重 $w$ 交叉淡化，$w$ 在 $V=17$\,m/s 时为 0、在 20\,m/s 巡航目标时增至 1，使气动舵面在旋翼失去权限\emph{之前}就接管姿态。在全翼载模式（$w\to1$）下：襟副翼差动指令滚转，对称 V 尾按高度误差调度俯仰（以离线固定翼升降舵配平 $d_{rv}\approx-19^\circ$ 为基准），旋翼总推力针对阻力指令前向速度。短舱由同一混合权重驱动到 $\beta=90^\circ$。
+
+所得 SITL 飞行（\texttt{fwmode\_v12}，图~\ref{fig:sitl_overview}）达到持续的全翼载巡航：30\,s 巡航窗口内短舱保持 $\beta_1\approx90^\circ$（均值 $89^\circ$），空速稳定在 $20.1$\,m/s（与 20\,m/s 参考相差 $0.1$\,m/s 以内），巡航高度保持在 $58$\,m（与 60\,m 参考相差 $3$\,m 以内），滚转保持在几度以内。控制器现在使用由 \texttt{tools/trim\_map.py} 编译的\emph{走廊配平前馈表}：在每个空速 $V$，固件查询与对象一致的水平飞行配平（$\beta(V)$、单旋翼推力 $T(V)$、俯仰 $\theta(V)$、对称升降方向舵 $\delta_{rv}(V)$），其中旋翼垂直分量 $\sum T_i\cos\beta$ 加上机翼升力 $\tfrac12\rho V^2 S C_L$ 恰好平衡重量 $mg=294.2$\,N，并据此前馈；内环仅修正小偏差。这在 $V$ 上是对称的（同一表服务于前向 $0\to20$ 与后向 $20\to0$ 转换）。调参中发现并修正了一个固件舵面比例 bug（PWM$\to$偏角映射假设为 $\pm45^\circ$，而 FDM 将升降方向舵限制为 $\pm25^\circ$）；它曾导致升降舵指令只能到 $-14^\circ$，俯仰权限不足。
+
+仅靠固件前馈无法完全闭合回悬停段。在以 22\,s smoothstep 速度斜坡、速率受限的短舱倾转（$\le40^\circ$/s）减速时，飞行器仍加速到约 36\,m/s 并进入俯冲：短舱回倾时机翼卸载比旋翼重建垂直升力更快。识别出的根因是开环配平前馈无法在减速过程中对耦合气动状态重新配平；控制器必须针对真实二进制状态持续重新优化。
+
+\paragraph{经脚本串口的伴随 MPC。}
+随后实现了推荐的外部节点方案并闭合了完整任务。在伴随对象仿真中闭合任务的同一在线 MPC（\S\ref{sec:results}）以 100\,Hz 作为伴随进程运行：经 GCS MAVLink 链路读取 EKF/GPS 状态（RAW\_IMU、ATTITUDE、LOCAL\_POSITION\_NED、VFR\_HUD），求解 QP，并经专用脚本串口（\texttt{SERIAL2\_PROTOCOL=28}）写入 16 个作动器指令（6 电机、6 倾转、4 舵面）。Lua 桥解码 35 字节帧并直接调用 \texttt{SRV\_Channels::set\_output\_pwm\_chan\_timeout}，绕过在 SITL 中被证明不可靠的 RC-override/GCS 路由层。
+
+所得 SITL 飞行（\texttt{full\_paper}，图~\ref{fig:sitl_overview}）完成完整悬停$\to$巡航$\to$悬停任务：爬升到 60\,m，前向转换到 20\,m/s 巡航，进行 17.4\,s 全翼载巡航（$\bar\beta=88.2^\circ$，窗口 90\% 时间 $\ge85^\circ$），再以平缓 1.0\,m/s$^2$ 反向减速回到稳定的末端悬停（$59.9$\,m、地速 $0.01$\,m/s）。峰值姿态 $|\phi|_{\max}=0.13^\circ$、$|\theta|_{\max}=15.0^\circ$。平缓的减速速率至关重要：激进的 2\,m/s$^2$ 减速会导致上仰高度越界，因为机翼卸载比旋翼重建垂直升力更快。
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_sitl_overview.pdf}
+\caption{提出控制器的真实 \texttt{arduplane} SITL 飞行：高度（上）、空速跟踪 20\,m/s 巡航参考（中）、短舱角（下）。完整悬停--巡航--悬停任务，从 FDM 真值流解析。}
+\label{fig:sitl_overview}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_sitl_native_vs_thx.pdf}
+\caption{同一任务的真实 SITL 姿态对比。上：stock QLOITER$\to$FBWA 在前向转换时发散到 $|\phi|\approx170^\circ$（$\pm60^\circ$ 限值以虚线标示）。下：提出控制器在姿态包线内完成同一剖面。}
+\label{fig:sitl_native_vs_thx}
+\end{figure}
+
+% =====================================================================
+\section{仿真包线}\label{sec:campaign}
+
+\subsection{场景矩阵}\label{sec:scenarios}
+基线与提出控制器在完全相同的对象、扰动与任务下飞行相同场景。主场景是标称质量下完整的悬停--巡航--悬停任务，包含前向与后向两条转换段，因此作为标称前向/后向过渡用例；其余场景为鲁棒性变体：(S4) 标称任务加平缓协调转弯（偏航角速率 $5^\circ$/s，约 $10^\circ$ 倾斜）；(S5) 5\,m/s 离散阵风；(S6) 4\,m/s 稳态侧风；(S7) 质量 $+15\%$；(S8) 重心前移 0.025\,m；(S9) 控制模型失配扫描：(S9a) 推力 $-10\%$、(S9b) 控制舵面效能 $-20\%$、(S9c) 惯量 $+20\%$。专门的悬停与姿态阶跃场景不属于所报告的仿真，留待未来工作。20 次 Monte-Carlo 仿真（种子 1000--1019）联合随机化上述参数。仅当通过九项对象真值检查（达到高度与巡航、姿态低于 $60^\circ$、爬升后无掉高、位于走廊内、分配残差非负、转换对称、单调相位且零模态切换、末端悬停以地速判定）才接受一次运行。
+
+\subsection{指标}\label{sec:metrics}
+性能由以下指标度量：过渡时间 $t_f$；最大高度损失 $\Delta h_{\max}$；峰值与 RMS 姿态误差；总控制能量 $\int u^\top R_u u\,\mathrm dt$；路径跟踪 RMS；模态切换次数；以及沿过渡的 AWS 裕度最小值 $\rho_{\min}$。实时性能由 MPC 求解时间的均值、第 99 百分位与最坏值，以及截止期错过率度量。
+
+\subsection{结果协议}\label{sec:results}
+所有定量结果由评估脚本从对象真值日志重新计算；控制器从不读取真值。走廊与配平调度见图~\ref{fig:corridor}--\ref{fig:trim}，标称全剖面时间历程见图~\ref{fig:profile}，走廊消融见图~\ref{fig:ablation}，旋翼效能指标见图~\ref{fig:aws}，可达力/力矩多面体见图~\ref{fig:afms_poly}--\ref{fig:afms_curves}，跟踪与实时鲁棒性汇总见图~\ref{fig:robust}--\ref{fig:rt}。对比数值见表~\ref{tab:main}--\ref{tab:rt}。
+
+\begin{figure}[t]
+\centering\includegraphics[width=0.62\columnwidth]{figures/fig_corridor.pdf}
+\caption{转换走廊：失速边界 $V_{\min}(\beta)$、可行区域，以及前向/后向配平调度。}
+\label{fig:corridor}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_trim_schedule.pdf}
+\caption{前向/后向最小推力配平：短舱倾转、单旋翼推力、机体俯仰随空速的变化。}
+\label{fig:trim}
+\end{figure}
+
+\begin{figure*}[t]
+\centering\includegraphics[width=0.92\textwidth]{figures/fig_profile.pdf}
+\caption{标称悬停--巡航--悬停任务（真值）：高度、空速、姿态、平均短舱倾转、平均旋翼推力、升降方向舵偏角。阴影带标示六个任务阶段。}
+\label{fig:profile}
+\end{figure*}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_ablation_corridor.pdf}
+\caption{走廊消融：走廊感知 MPC 与固定调度消融的空速（左）和高度（右）。消融越过巡航空速，并在后向段掉高 7\,m。}
+\label{fig:ablation}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=0.62\columnwidth]{figures/fig_aws.pdf}
+\caption{旋翼效能块的归一化最小奇异值随空速的变化（AWS 内切球度量）。}
+\label{fig:aws}
+\end{figure}
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}{0.48\textwidth}
+\centering\includegraphics[width=\textwidth]{figures/fig_afms_force_polytope.pdf}
+\caption*{六个短舱倾角下 $V=15$~m/s 时的可达 $F_x$--$F_z$ 力集。}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\centering\includegraphics[width=\textwidth]{figures/fig_afms_torque_polytope.pdf}
+\caption*{$V=15$~m/s 时的可达 $M_x$--$M_y$ 力矩多面体。}
+\end{minipage}
+\caption{可达力/力矩多面体（第~\ref{sec:afms_poly} 节）。左：旋翼推力矢量从垂直（悬停，$\beta=0^\circ$）旋转到水平（固定翼，$\beta=90^\circ$）。右：随 $\beta$ 增大力矩包络缩小 $9.8$ 倍，因为水平推力消除了旋翼滚转力矩臂；副翼随速度恢复权限。}
+\label{fig:afms_poly}
+\end{figure*}
+
+\begin{figure}[t]
+\centering
+\begin{minipage}{0.48\columnwidth}
+\centering\includegraphics[width=\textwidth]{figures/fig_afms_max_force_vs_beta.pdf}
+\end{minipage}\hfill
+\begin{minipage}{0.48\columnwidth}
+\centering\includegraphics[width=\textwidth]{figures/fig_afms_max_torque_vs_beta.pdf}
+\end{minipage}
+\caption{$V=15$~m/s 时最大可用升力/前向力（左）与滚转/俯仰力矩（右）随短舱倾角 $\beta$ 的变化。升力按 $\cos\beta$ 减小，而前向推力按 $\sin\beta$ 增大；滚转权限在高倾转时崩溃，在巡航空速由副翼恢复。}
+\label{fig:afms_curves}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_robustness.pdf}
+\caption{固定鲁棒性仿真中各场景的高度与速度跟踪 RMSE；所有场景均通过九项真值检查。}
+\label{fig:robust}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_mc.pdf}
+\caption{Monte-Carlo 仿真（20 种子，联合参数摄动）。左：高度与速度跟踪 RMSE 分布；右：各种子的 P99 与最坏 MPC 求解时间。20 次运行全部通过九项真值检查。}
+\label{fig:mc}
+\end{figure}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/fig_solve_time.pdf}
+\caption{固定仿真中 MPC 求解时间的均值、P99 与最坏值，均远低于 30\,ms 控制周期。}
+\label{fig:rt}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{来自 SITL 对象真值日志的主要过渡结果。能量为每次转换期间旋翼诱导能量 $E=\int\sum_i T_i^{3/2}/\sqrt{2\rho A}\,\mathrm dt$（动量理论，旋翼直径 $0.70$~m）。原生等效基线复刻 stock ArduPilot QuadPlane 逻辑（模态切换、开环倾转、无走廊）；提出控制器在 20\,m/s 阈值以上强制 $\beta=90^\circ$ 固定翼巡航。固定调度消融越过巡航空速（24.5 对 20~m/s），并在后向段掉高 $7$~m。}
+\label{tab:main}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{3}{c}{前向过渡} & \multicolumn{3}{c}{后向过渡} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+控制器 & $t_f$ (s) & $\Delta h_{\max}$ (m) & 能量 (kJ) & $t_f$ (s) & $\Delta h_{\max}$ (m) & 能量 (kJ) \\
+\midrule
+提出（完整）        & 14.0 & 0.65 & 20.6 & 25.0 & 1.39 & 35.8 \\
+提出，去掉走廊  & 14.0 & 2.67 & 19.9 & 20.1 & 7.00 & 45.6 \\
+ArduPilot 原生等效 & 16.0 & 0.45 & 21.6 & 16.0 & 1.82 & 24.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{鲁棒性仿真（提出控制器，仅对象失配）；每个场景都通过全部九项真值检查。末端地速用于悬停判定（稳态侧风中，正确悬停的空速等于风速）。所有运行均零显式模态切换。}
+\label{tab:robust}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+场景 & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m/s) & $\max|\phi|$（度） & $\max|\theta|$（度） \\
+\midrule
+标称            & 4.96 & 0.31 & 0.76 & 0.38 & 0.0 & 16.7 \\
+S4 协调转弯 & 5.12 & 0.57 & 0.81 & 0.49 & 14.4 & 12.2 \\
+S5 5\,m/s 阵风      & 5.16 & 0.66 & 0.91 & 0.59 & 0.0 & 17.6 \\
+S6 4\,m/s 侧风 & 5.26 & 0.60 & 1.08 & 0.43 & 3.6 & 11.1 \\
+S7 质量 $+15\%$     & 5.19 & 0.69 & 1.71 & 0.43 & 0.0 & 12.0 \\
+S8 重心前移 0.025\,m & 5.12 & 0.67 & 0.81 & 0.53 & 0.0 & 11.1 \\
+S9a 推力 $-10\%$  & 5.20 & 0.59 & 1.35 & 0.38 & 0.0 & 11.0 \\
+S9b 舵面 $-20\%$ & 5.14 & 0.58 & 0.82 & 0.49 & 0.0 & 11.0 \\
+S9c 惯量 $+20\%$ & 5.13 & 0.56 & 0.82 & 0.48 & 0.0 & 11.2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{单个桌面核心上的实时性能（控制周期 30\,ms）。内层 MPC 为凝缩 QP（$N=20$，五个虚拟力/力矩通道）；分配器为经 C ABI 调用的 C++ 主动集 QP；配平图离线计算、在线为表查询。数值范围为固定鲁棒性仿真。}
+\label{tab:rt}
+\small
+\begin{tabular}{lcccc}
+\toprule
+阶段 & 均值 & P99 & 最坏 & 截止期错过率 \\
+\midrule
+内层 MPC（33\,Hz） & 0.43\,ms & 1.56\,ms & 3.1\,ms$^{a}$ & 0\%$^{a}$ \\
+AWS 分配器（C++） & $\sim 41\,\mu$s & --- & --- & 0\% \\
+外层配平图 & \multicolumn{4}{c}{离线；在线表查询} \\
+\bottomrule
+\end{tabular}\\[2pt]
+\footnotesize $^{a}$固定仿真范围内。约 40\,000 次 Monte-Carlo 求解中有一次孤立的 37.6\,ms 求解超过 30\,ms 周期，为单次桌面调度毛刺；P99 仍低于 2.4\,ms.
+\end{table}
+
+仿真确认如下结论。走廊感知控制器以零显式模态切换完成完整任务，峰值姿态低于 $18^\circ$（限值 $60^\circ$）。在线可行性指标支持第~\ref{sec:hedge} 节的框架：实际轨迹上最小走廊裕度为 $0.72$~m/s，最大未分配力/力矩残差为混合单位下的 $0.038$（均值 $10^{-3}$），推力、倾转与舵面的饱和比例均为零，故力/力矩对冲与外层重规划路径被正确地从未进入。去掉走廊（固定倾转调度）后飞行器仍能飞行，但越过巡航空速到 24.5\,m/s，后向段高度偏差从 $1.39$ 增大到 $7.0$~m，后向转换能量从 $35.8$ 增至 $45.6$~kJ，因此走廊在真正发挥作用，而非仅仅重塑参考。有界位置积分在不产生加速度残差观测器失稳的情况下抑制恒定质量、推力与风失配。内层 QP 平均约 $0.5$~ms（P99 低于 $2.4$~ms），C++ 分配器 $49$--$74\,\mu$s，二者在桌面核心上均从容实时。包线有明确限制，如实报告：$15^\circ$/s、$28^\circ$ 倾斜的协调转弯不可跟踪（飞行器侧滑并下降），故采用平缓 $5^\circ$/s 转弯；重心前移 0.05\,m 或更多会产生起飞俯仰失控，鲁棒包线为 0.025\,m.
+
+20 次 Monte-Carlo 仿真（质量、惯量、推力、舵面、重心、风、延迟与传感器噪声的联合摄动）在每一个种子上都通过全部九项检查：高度 RMSE 均值 1.06\,m（最差 1.81\,m），速度 RMSE 均值 0.54\,m/s（最差 0.77\,m/s），每个种子的求解时间 P99 都低于 2.4\,ms（图~\ref{fig:mc}）.
+
+与 ArduPilot 原生等效基线的对比被诚实报告，而非作为意料之中的胜利。在同一 SITL 级对象上、两个控制器都被禁止读取真值，原生等效控制器采用模态切换的开环倾转调度，前向/后向分别在 16.0/16.0\,s 完成，高度偏差 0.45/1.82\,m，旋翼诱导能量 21.6/24.7\,kJ（表~\ref{tab:main}）。然而，由于缺少固定翼转换阈值，其巡航短舱倾转仅停在约 $44^\circ$（旋翼仍承担近半升力的最小推力配平），而非物理上正确的 $\beta=90^\circ$ 纯全翼载巡航。提出控制器在 $20$\,m/s 转换阈值以上达到平均巡航倾转 $88.7^\circ$（峰值 $90^\circ$），机翼承担全部升力。我们并不声称提出控制器在每一项指标上都优于原生等效基线：基线前向过渡的高度损失略小（0.45 对 0.65\,m），而提出控制器后向过渡的高度损失更小（1.39 对 1.82\,m），且具备物理上正确的全倾转巡航。两个控制器在所保证的内容上不同。原生等效转换依赖人工调度的倾转斜坡与离散的悬停/FBWA 状态机，其成功是经验性的：没有机动前的证书保证所指令倾转始终高于失速边界，且缺少显式固定翼阈值，它无法实现纯全翼载巡航。提出控制器则相反，在整个剖面上运行单一优化（零显式模态切换），由离线走廊 OCP 构造转换参考并带显式固定翼转换阈值，且每步通过约束 QP 针对失速边界与作动器极限强制可行性。决定性的受控实验是走廊消融：用固定倾转调度替换可行性感知参考，会使同一 MPC 越过巡航空速到 24.5\,m/s、后向段掉高 $7.0$~m，这把收益定位到可行性层，而非优化本身.
+
+% =====================================================================
+\section{讨论与局限}\label{sec:discussion}
+研究范围刻意限定为纯仿真，对照~\cite{bauersfeld2021mpc,allenspach2021nmpc,mancinelli2025unified} 的真实飞行证据，这一点必须明说。SITL 无法复现若干在真实转换飞行中起主导作用的效应：高保真湍流进流与非定常螺旋桨--机翼相互作用、舵机与电机的传输延迟及间隙、传感器噪声与估计器漂移、结构柔性以及地面效应。第~\ref{sec:twomodel} 节的双模型策略与失配扫描（S9）用于检验鲁棒性，但并不等同于真实飞行。独立倾转混合器在方式~(b) 中还需要固件改动；非侵入的方式~(a) 无需重新构建 ArduPilot 即可复现，但不能实现完整的逐旋翼倾转。因此，本贡献被定位为一个开放、可复现的基准以及一种可行性感知的分配/规划方法，而非经飞行验证的控制器。硬件在环验证、舵机延迟建模与外场飞行是紧接着的下一步，随后扩展到旋翼故障场景——在该场景中独立倾转与 AWS 指标提供了直接的容错路径~\cite{yang2026biaxial,santos2021fast,giribet2016tilted}.
+
+% =====================================================================
+\section{结论}\label{sec:conclusion}
+针对配备六个独立倾转旋翼的 \SI{30}{\kilogram} 全倾转六旋翼，本文提出了一种全包线控制架构。它结合了：(i) 建立在可达力/力矩集及其内切球裕度之上的时变控制分配层，每步由约束 QP 强制执行作动器极限；(ii) 走廊约束的配平优化，提供构造上可行的转换参考，由单一统一 MPC 以零模态切换跟踪；(iii) ArduPilot 框架内的开放 SITL 伴随基准，针对\emph{stock ArduPilot 原生固件}进行标准化对比。走廊强制实现物理上正确的固定翼巡航：在 $20$\,m/s 阈值以上，短舱完全倾转到 $\beta=90^\circ$，机翼承担全部升力，而非保持 60--80$^\circ$ 的中间倾角。本文刻意不主张统一控制为新发明，也不主张相对原生固件的跟踪优越性.
+所声明的贡献是：面向过驱动全倾转六旋翼的全包线时变 AWS 分配；走廊可行参考连同明确规定的可行性耦合路径；实现真正 $\beta=90^\circ$ 巡航的显式固定翼转换阈值；以及一个可复现的开放基准。转换走廊边界针对所述飞行器解析推导，走廊消融把稳定收益定位到可行性层而非优化本身。闭环已在原生 \texttt{arduplane} SITL 二进制上演示（\S\ref{sec:realsitl}）；未来工作将在故意不可行指令下触发并验证在线重规划路径，并推进到硬件在环、飞行试验与旋翼故障场景.
+
+% =====================================================================
+\section*{CRediT 作者贡献声明}
+作者一：概念化、方法学、软件、初稿撰写。
+作者二：验证、可视化、审阅与修改。
+通讯作者：指导、经费获取、审阅与修改。
+
+\section*{利益冲突声明}
+作者声明，他们没有已知的、可能影响本文所报告工作的竞争性经济利益或个人关系。
+
+\section*{数据可用性}
+ArduPilot SITL 参数、场景文件、控制器源码、基线配置与随机种子将在公共仓库发布，以允许完全复现本基准。
+
+\appendix
+\section{开源产物与可复现性}\label{app:artifacts}
+所发布的产物包含：
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+  \item ArduPilot 参数文件（stock 基线与提出配置），包括 \texttt{Q\_FRAME\_CLASS}、\texttt{Q\_TILT\_MASK}、倾转速率与限制；
+  \item 面向 \SI{30}{\kilogram} 全倾转六旋翼的非线性 SITL 对象与 Python 伴随控制器（含到 C++ 分配库的 C ABI）；
+  \item 走廊/配平优化与误差空间 LTV-MPC 源码（Python，使用 \texttt{scipy} 与 \texttt{quadprog}），以及 C++ AWS 分配例程及其单元测试；
+  \item 场景脚本（标称及 S4--S9）、Monte-Carlo 种子与绘图代码；
+  \item 逐步构建/运行指南，以及方式~(b) 中暴露六个独立倾转舵机的公开固件 diff。
+\end{itemize}
+
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+
+\end{document}

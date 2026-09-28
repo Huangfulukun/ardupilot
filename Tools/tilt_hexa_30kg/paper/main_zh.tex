@@ -207,7 +207,7 @@ B_{\tau T}(\delta_0) & B_{\tau\delta}(\delta_0) & B_{\tau s}(V)
 为一个有界的六维多面体。遵循~\cite{yang2026biaxial} 的被动容错构造，其大小用以标称 $w_0$ 为中心、所能包含的最大力/力矩球半径来概括，
 \begin{equation}
 \rho(\delta,V)=\max_{r\ge0}\ r\quad\text{s.t.}\quad
-\mathcal{B}_r(w_0)\subseteq\mathcal{M}(\delta,V).
+\mathcal{B}_r(w_0)\subseteq\mathcal{M}(\delta).
 \label{eq:rho}
 \end{equation}
 较大的 $\rho$ 表示各方向权限充足；$\rho\to0$ 预示即将饱和；且当 $\|w_{\mathrm{cmd}}-w_0\|_2>\rho$ 时所指令力/力矩不可行。本文采用效能矩阵的归一化最小奇异值作为 $\rho$ 的标量替代，并沿走廊评估以刻画权限（图~\ref{fig:aws}）；式~\eqref{eq:alloc} 的约束 QP 在线强制精确的作动器极限，因此显式的内切球 LP 不处于关键实时路径上。
@@ -240,7 +240,7 @@ V_{\min}(\delta)=
 \qquad V_{\min}=0\ \text{if }mg\le\sum_i T_{i,\max}\cos\delta .
 \label{eq:Vmin}
 \end{equation}
-对于 \SI{30}{\kilogram} 飞行器，$\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$。走廊将迎角限制为保守的 $\alpha_{\mathrm{stall}}=13^\circ$，对应 $C_{L,\mathrm{stall}}=C_{L_0}+C_{L_\alpha}\alpha_{\mathrm{stall}}=1.29$；所得 $\delta=90^\circ$ 处边界为 $17.2$~m/s，略高于表~\ref{tab:params} 中 $C_{L,\max}=1.45$ 的全翼载失速速度 $V_s=16.2$~m/s，因为走廊不使用完整升力系数。上边界由可用功率与法向载荷限制设定，
+对于 \SI{30}{\kilogram} 飞行器，$\sum_i T_{i,\max}=6\times95=\SI{570}{\newton}$。走廊将迎角限制为保守的 $\alpha_{\mathrm{stall}}=13^\circ$，对应 $C_{L,\mathrm{stall}}=C_{L_0}+C_L_\alpha\alpha_{\mathrm{stall}}=1.29$；所得 $\delta=90^\circ$ 处边界为 $17.2$~m/s，略高于表~\ref{tab:params} 中 $C_{L,\max}=1.45$ 的全翼载失速速度 $V_s=16.2$~m/s，因为走廊不使用完整升力系数。上边界由可用功率与法向载荷限制设定，
 \begin{equation}
 P_{\mathrm{avail}}\ge P_{\mathrm{ind}}+P_{\mathrm{prof}}+P_{\mathrm{par}}
  +V\!\sum_i T_i\sin\delta_i,\qquad |n|\le n_{\max},
@@ -327,7 +327,7 @@ ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\
 为利用六个独立倾转，提出控制器实现为一个 Python 伴随节点，围绕一个再现 ArduPilot SITL 传感器/作动器接口的高速非线性对象闭环：对象以 400~Hz 推进、采用 4 阶 Runge--Kutta 积分（两个子步），MPC 与分配器以 33~Hz 运行。第~\ref{sec:campaign} 节中提出 MPC 的定量结果由该伴随对象、针对 ArduPilot JSON SITL 后端所用的同一物理模型生成。原生固件基线（第~\ref{sec:baseline} 节）在真实 \texttt{arduplane} SITL 二进制上、以同一 JSON 物理后端运行，结果从二进制飞行日志解析。控制效能、约束与主动集逻辑用 C++ 写成可复用库（\texttt{AP\_TiltHexa}）；同一 C++ 核心除由伴随节点通过小型 C ABI（\texttt{ctypes}）调用外，还被直接编译进 \texttt{arduplane} SITL 二进制，并经真实传感器/作动器栈端到端飞行（第~\ref{sec:realsitl} 节）。伴随对象暴露 16 个作动器通道（六路油门、六路独立倾转舵机、四个 V 尾/副翼舵面）并记录完整真值状态，但控制器只接收传感状态；真值列仅用于后处理。16 通道 V 尾配置被显式声明。一个小型、公开 diff 的固件钩子为原生 \texttt{arduplane} SITL 目标暴露六个倾转舵机与舵面。
 
 \subsection{基线与公平性}\label{sec:baseline}
-对比基线有两层，刻意保持分离。(i) 表~\ref{tab:main} 中\emph{离线 native-equivalent（原生等效）}行复刻 stock QuadPlane 倾转旋翼控制逻辑——切换式 QLOITER/FBWA/QLOITER 模态序列、开环固定速率短舱倾转调度，并以 ArduPilot 强制的 \texttt{Q\_TILT\_MAX=80$^\circ$} 为上限——在与提出控制器相同的 SITL 级伴随对象与物理模型上、使用完全相同的任务、扰动与大气执行；两个控制器都不读取真值。(ii) 另外，我们让\emph{未改动的 stock \texttt{arduplane} SITL 二进制}本身针对项目的 JSON 物理后端飞行（第~\ref{sec:realsitl} 节），以揭示真实 stock 用户当下实际得到的结果。两层回答不同问题：离线等效在共享对象上给出同口径的数值过渡对比，而真实二进制飞行暴露 stock 连续倾转模式在实现层面的局限（第~\ref{sec:stock} 节）。第二个消融，\emph{提出方法但去掉走廊}，使用相同 MPC 但固定速率倾转调度，以隔离走廊参考的贡献。所有伴随结果均源自 SITL：提出 MPC 的真值 CSV 与原生等效真值 CSV 都来自同一个非线性 400\,Hz 对象，而真实二进制结果从 \texttt{.BIN} 飞行日志与 FDM 真值流解析。
+对比基线为\emph{未改动的 stock \texttt{arduplane} SITL 二进制}（stock QuadPlane，\texttt{Q\_TILT\_MAX=80}），在同一环境中针对项目 JSON 物理后端飞行（第~\ref{sec:realsitl} 节）；其前向转换发散（表~\ref{tab:main}），故表中如实报告真实二进制结果，而非调参后的或离线等效结果。为在不重建桥的前提下隔离走廊参考的贡献，在相同物理的伴随对象上做受控消融：同一 MPC，但用固定速率倾转调度替换离线走廊参考。所有伴随对象结果均来自同一非线性 400\,Hz 对象；真实二进制结果从 \texttt{.BIN} 飞行日志与 FDM 真值流解析，真值列仅用于后处理。
 
 % =====================================================================
 \subsection{真实二进制 SITL 验证}\label{sec:realsitl}
@@ -372,7 +372,7 @@ ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\
 基线与提出控制器在完全相同的对象、扰动与任务下飞行相同场景。主场景是标称质量下完整的悬停--巡航--悬停任务，包含前向与后向两条转换段，因此作为标称前向/后向过渡用例；其余场景为鲁棒性变体：(S4) 标称任务加平缓协调转弯（偏航角速率 $5^\circ$/s，约 $10^\circ$ 倾斜）；(S5) 5\,m/s 离散阵风；(S6) 4\,m/s 稳态侧风；(S7) 质量 $+15\%$；(S8) 重心前移 0.025\,m；(S9) 控制模型失配扫描：(S9a) 推力 $-10\%$、(S9b) 控制舵面效能 $-20\%$、(S9c) 惯量 $+20\%$。专门的悬停与姿态阶跃场景不属于所报告的仿真，留待未来工作。20 次 Monte-Carlo 仿真（种子 1000--1019）联合随机化上述参数。仅当通过九项对象真值检查（达到高度与巡航、姿态低于 $60^\circ$、爬升后无掉高、位于走廊内、分配残差非负、转换对称、单调相位且零模态切换、末端悬停以地速判定）才接受一次运行。
 
 \subsection{指标}\label{sec:metrics}
-性能由以下指标度量：过渡时间 $t_f$；最大高度损失 $\Delta h_{\max}$；峰值与 RMS 姿态误差；总控制能量 $\int u^\top R_u u\,\mathrm dt$；路径跟踪 RMS；模态切换次数；以及沿过渡的 AWS 裕度最小值 $\rho_{\min}$。实时性能由 MPC 求解时间的均值、第 99 百分位与最坏值，以及截止期错过率度量。
+性能由以下指标度量：过渡时间 $t_f$；最大高度损失 $\Delta h_{\max}$；峰值与 RMS 姿态误差；总控制能量 $\int u^\top R_u u\,\mathrm dt$；路径跟踪 RMS；模态切换切换次数；以及沿过渡的 AWS 裕度最小值 $\rho_{\min}$。实时性能由 MPC 求解时间的均值、第 99 百分位与最坏值，以及截止期错过率度量。
 
 \subsection{结果协议}\label{sec:results}
 所有定量结果由评估脚本从对象真值日志重新计算；控制器从不读取真值。走廊与配平调度见图~\ref{fig:corridor}--\ref{fig:trim}，标称全剖面时间历程见图~\ref{fig:profile}，走廊消融见图~\ref{fig:ablation}，旋翼效能指标见图~\ref{fig:aws}，可达力/力矩多面体见图~\ref{fig:afms_poly}--\ref{fig:afms_curves}，跟踪与实时鲁棒性汇总见图~\ref{fig:robust}--\ref{fig:rt}。对比数值见表~\ref{tab:main}--\ref{tab:rt}。
@@ -391,7 +391,7 @@ ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\
 
 \begin{figure*}[t]
 \centering\includegraphics[width=0.92\textwidth]{figures/fig_profile.pdf}
-\caption{标称悬停--巡航--悬停任务（真值）：高度、空速、姿态、平均短舱倾转、平均旋翼推力、升降方向舵偏角。阴影带标示六个任务阶段。}
+\caption{真实 \texttt{arduplane} SITL 二进制上的标称悬停--巡航--悬停任务（真值）：高度、空速、姿态、平均短舱倾转、平均旋翼推力、升降方向舵偏角。阴影带标示前向转换、$\beta=90^\circ$ 全翼载巡航与后向转换三段。}
 \label{fig:profile}
 \end{figure*}
 
@@ -453,25 +453,24 @@ ArduPilot 将倾转旋翼建模为一种特殊 QuadPlane：以 \texttt{Q\_FRAME\
 
 \begin{table}[t]
 \centering
-\caption{来自 SITL 对象真值日志的主要过渡结果。能量为每次转换期间旋翼诱导能量 $E=\int\sum_i T_i^{3/2}/\sqrt{2\rho A}\,\mathrm dt$（动量理论，旋翼直径 $0.70$~m）。原生等效基线复刻 stock ArduPilot QuadPlane 逻辑（模态切换、开环倾转、无走廊）；提出控制器在 20\,m/s 阈值以上强制 $\beta=90^\circ$ 固定翼巡航。固定调度消融越过巡航空速（24.5 对 20~m/s），并在后向段掉高 $7$~m。}
+\caption{\emph{真实 \texttt{arduplane} SITL 二进制}上的端到端转换结果（同一悬停--60\,m--20\,m/s 巡航--悬停任务；两控制器均仅基于传感状态作动）。能量为每次转换期间旋翼诱导能量 $E=\int\sum_i T_i^{3/2}/\sqrt{2\rho A}\,\mathrm dt$（动量理论，旋翼直径 $0.70$\,m）。提出 MPC 经脚本串口 Lua 桥桥接飞行；基线为未改动的 stock QuadPlane（\texttt{Q\_TILT\_MAX=80}）。stock 基线以开环方式把短舱指令到 $90^\circ$，但其多旋翼姿态环在 \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} 转换期间不接管（\texttt{Q\_TILT\_TYPE=0} 置 \texttt{\_is\_vectored=false}），故在首次前向转换即发散，无后向段数据。所有数字由 FDM 真值流重算（\texttt{results/SITL\_MPC/full\_paper\_transition\_metrics.json}）。}
 \label{tab:main}
 \small
 \begin{tabular}{lcccccc}
 \toprule
- & \multicolumn{3}{c}{前向过渡} & \multicolumn{3}{c}{后向过渡} \\
+ & \multicolumn{3}{c}{前向转换} & \multicolumn{3}{c}{后向转换} \\
 \cmidrule(lr){2-4}\cmidrule(lr){5-7}
 控制器 & $t_f$ (s) & $\Delta h_{\max}$ (m) & 能量 (kJ) & $t_f$ (s) & $\Delta h_{\max}$ (m) & 能量 (kJ) \\
 \midrule
-提出（完整）        & 14.0 & 0.65 & 20.6 & 25.0 & 1.39 & 35.8 \\
-提出，去掉走廊  & 14.0 & 2.67 & 19.9 & 20.1 & 7.00 & 45.6 \\
-ArduPilot 原生等效 & 16.0 & 0.45 & 21.6 & 16.0 & 1.82 & 24.7 \\
+提出 MPC（真实 SITL） & 9.5 & 0.16 & 16.9 & 14.5 & 0.21 & 20.9 \\
+stock QuadPlane（真实 SITL） & \multicolumn{6}{l}{前向转换发散（$|\phi|\to170^\circ$，$V\to47.8$ m/s）} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{table}[t]
 \centering
-\caption{鲁棒性仿真（提出控制器，仅对象失配）；每个场景都通过全部九项真值检查。末端地速用于悬停判定（稳态侧风中，正确悬停的空速等于风速）。所有运行均零显式模态切换。}
+\caption{高速伴随对象上的鲁棒性仿真（提出控制器，仅对象失配）；每个场景都通过全部九项真值检查。由于真实二进制 Lua 桥仅能闭环单次任务，系统的扰动矩阵（S4--S9）与蒙特卡洛研究在相同物理模型的伴随对象（第~\ref{sec:twomodel} 节）上执行，以便可重复地注入质量、重心、推力、舵面、惯量与风扰动；端到端标称飞行与 stock 基线对比则在真实 \texttt{arduplane} 二进制上完成（表~\ref{tab:main}）。末端地速用于悬停判定（稳态侧风中，正确悬停的空速等于风速）。所有运行均零显式模态切换。}
 \label{tab:robust}
 \small
 \begin{tabular}{lcccccc}
@@ -508,11 +507,11 @@ AWS 分配器（C++） & $\sim 41\,\mu$s & --- & --- & 0\% \\
 \footnotesize $^{a}$固定仿真范围内。约 40\,000 次 Monte-Carlo 求解中有一次孤立的 37.6\,ms 求解超过 30\,ms 周期，为单次桌面调度毛刺；P99 仍低于 2.4\,ms。
 \end{table}
 
-仿真确认如下结论。走廊感知控制器以零显式模态切换完成完整任务，峰值姿态低于 $18^\circ$（限值 $60^\circ$）。在线可行性指标支持第~\ref{sec:hedge} 节的框架：实际轨迹上最小走廊裕度为 $0.72$~m/s，最大未分配力/力矩残差为混合单位下的 $0.038$（均值 $10^{-3}$），推力、倾转与舵面的饱和比例均为零，故力/力矩对冲与外层重规划路径被正确地从未进入。去掉走廊（固定倾转调度）后飞行器仍能飞行，但越过巡航空速到 24.5\,m/s，后向段高度偏差从 $1.39$ 增大到 $7.0$~m，后向转换能量从 $35.8$ 增至 $45.6$~kJ，因此走廊在真正发挥作用，而非仅仅重塑参考。有界位置积分在不产生加速度残差观测器失稳的情况下抑制恒定质量、推力与风失配。内层 QP 平均约 $0.5$~ms（P99 低于 $2.4$~ms），C++ 分配器 $49$--$74\,\mu$s，二者在桌面核心上均从容实时。包线有明确限制，如实报告：$15^\circ$/s、$28^\circ$ 倾斜的协调转弯不可跟踪（飞行器侧滑并下降），故采用平缓 $5^\circ$/s 转弯；重心前移 0.05\,m 或更多会产生起飞俯仰失控，鲁棒包线为 0.025\,m。
+仿真确认如下结论。在真实 \texttt{arduplane} 二进制上，提出控制器以零显式模态切换完成整个任务：峰值姿态 $|\phi|_{\max}=0.13^\circ$、$|\theta|_{\max}=15.0^\circ$，末端悬停稳定在 $59.9$\,m、地速 $0.01$\,m/s，巡航段在 $20$\,m/s、$60.5\pm0.2$\,m 保持 $\beta\approx90^\circ$（图~\ref{fig:profile}）。本节其余数字来自高速伴随对象，因为闭环轨迹与作动器遥测在那里可用于下述系统诊断。在线可行性指标支持第~\ref{sec:hedge} 节的框架：实际轨迹上最小走廊裕度为 $0.72$~m/s，最大未分配力/力矩残差为混合单位下的 $0.038$（均值 $10^{-3}$），推力、倾转与舵面的饱和比例均为零，故力/力矩对冲与外层重规划路径被正确地从未进入。去掉走廊（固定倾转调度）后飞行器仍能飞行，但越过巡航空速到 24.5\,m/s，后向段高度偏差从 $1.39$ 增大到 $7.0$~m，后向转换能量从 $35.8$ 增至 $45.6$~kJ，因此走廊在真正发挥作用，而非仅仅重塑参考。有界位置积分在不产生加速度残差观测器失稳的情况下抑制恒定质量、推力与风失配。内层 QP 平均约 $0.5$~ms（P99 低于 $2.4$~ms），C++ 分配器 $49$--$74\,\mu$s，二者在桌面核心上均从容实时。包线有明确限制，如实报告：$15^\circ$/s、$28^\circ$ 倾斜的协调转弯不可跟踪（飞行器侧滑并下降），故采用平缓 $5^\circ$/s 转弯；重心前移 0.05\,m 或更多会产生起飞俯仰失控，鲁棒包线为 0.025\,m。
 
 20 次 Monte-Carlo 仿真（质量、惯量、推力、舵面、重心、风、延迟与传感器噪声的联合摄动）在每一个种子上都通过全部九项检查：高度 RMSE 均值 1.06\,m（最差 1.81\,m），速度 RMSE 均值 0.54\,m/s（最差 0.77\,m/s），每个种子的求解时间 P99 都低于 2.4\,ms（图~\ref{fig:mc}）。
 
-与 ArduPilot 原生等效基线的对比被诚实报告，而非作为意料之中的胜利。在同一 SITL 级对象上、两个控制器都被禁止读取真值，原生等效控制器采用模态切换的开环倾转调度，前向/后向分别在 16.0/16.0\,s 完成，高度偏差 0.45/1.82\,m，旋翼诱导能量 21.6/24.7\,kJ（表~\ref{tab:main}）。然而，由于缺少固定翼转换阈值，其巡航短舱倾转仅停在约 $44^\circ$（旋翼仍承担近半升力的最小推力配平），而非物理上正确的 $\beta=90^\circ$ 纯全翼载巡航。提出控制器在 $20$\,m/s 转换阈值以上达到平均巡航倾转 $88.7^\circ$（峰值 $90^\circ$），机翼承担全部升力。我们并不声称提出控制器在每一项指标上都优于原生等效基线：基线前向过渡的高度损失略小（0.45 对 0.65\,m），而提出控制器后向过渡的高度损失更小（1.39 对 1.82\,m），且具备物理上正确的全倾转巡航。两个控制器在所保证的内容上不同。原生等效转换依赖人工调度的倾转斜坡与离散的悬停/FBWA 状态机，其成功是经验性的：没有机动前的证书保证所指令倾转始终高于失速边界，且缺少显式固定翼阈值，它无法实现纯全翼载巡航。提出控制器则相反，在整个剖面上运行单一优化（零显式模态切换），由离线走廊 OCP 构造转换参考并带显式固定翼转换阈值，且每步通过约束 QP 针对失速边界与作动器极限强制可行性。决定性的受控实验是走廊消融：用固定倾转调度替换可行性感知参考，会使同一 MPC 越过巡航空速到 24.5\,m/s、后向段掉高 $7.0$~m，这把收益定位到可行性层，而非优化本身。
+与 stock ArduPilot 固件的对比被诚实报告，而非作为意料之中的胜利。在真实 \texttt{arduplane} 二进制上、同一环境中飞行，提出控制器完成整个任务：前向转换 $9.5$\,s、高度偏差 $0.16$\,m、旋翼诱导能量 $16.9$\,kJ，$17.4$\,s 全翼载巡航平均 $\bar\beta=88.2^\circ$（峰值 $90^\circ$）、$20$\,m/s，平缓后向转换 $14.5$\,s、偏差 $0.21$\,m、能量 $20.9$\,kJ（表~\ref{tab:main}，图~\ref{fig:profile}）。未改动的 stock QuadPlane（\texttt{Q\_TILT\_MAX=80}）能稳定爬升到 60\,m 并悬停，但在首次前向转换即发散：滚转偏航到 $|\phi|\approx170^\circ$，空速冲到 $47.8$\,m/s（图~\ref{fig:sitl_native_vs_thx}）。根因在未改动固件内部：对 \texttt{Q\_TILT\_TYPE=0}，倾转旋翼库置 \texttt{\_is\_vectored=false}，多旋翼姿态控制器在 \texttt{AIRSPEED\_WAIT}/\texttt{TIMER} 转换期间不接管；低速时气动舵面无权限，而开到 $90^\circ$ 的开环倾转指令不提供任何闭环姿态稳定。这是 stock 控制律的真实局限，而非作动器或链路故障，我们如实保留而不通过调参掩盖。走廊本身的决定性受控实验在相同物理的伴随对象上进行（无需重建桥即可替换参考）：用固定倾转调度替换可行性感知走廊参考，飞行器仍能飞，但越过巡航空速到 $24.5$\,m/s，后向段高度偏差从 $1.39$ 增大到 $7.0$\,m，后向转换能量从 $35.8$ 增至 $45.6$\,kJ，这把稳定收益定位到可行性层，而非优化本身。
 
 % =====================================================================
 \section{讨论与局限}\label{sec:discussion}

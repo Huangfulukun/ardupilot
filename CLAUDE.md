@@ -1235,3 +1235,58 @@ make zh        # xelatex + bibtex + xelatex + xelatex -> main_zh.pdf
 - Tools/tilt_hexa_30kg/paper/README.md
 - CLAUDE.md
 （二进制 main_zh.pdf 不推，由 `make zh` 重新生成。）
+
+## §25 (2026-09-29) — §8 主体曲线与对比表数据源切换为真实 arduplane 二进制 SITL 真值
+
+**目标（本轮局部任务）：** 把论文 §8 主体飞行曲线与对比/鲁棒表的数据源，
+从独立 Python 伴随对象 `results/MPC/fw_fix4_*` 替换为真实 `build/sitl/bin/arduplane`
+二进制 SITL 真值（与 `results/SITL_MPC/full_paper_truth.csv` 同口径），同步中英文两版。
+
+**诚实的数据分层（关键，勿回退）：**
+- §8 主体曲线 `fig_profile`、`fig_transition_overview_comparison`、
+  `fig_controls_mpc`、`fig_wrench_mpc`，以及 `tab:main` —— 全部来自真实 arduplane
+  二进制 SITL：提出 MPC = `results/SITL_MPC/full_paper_truth.csv`（经 Lua 桥
+  SERIAL2_PROTOCOL=28 飞行完整任务）；stock 基线 = `results/SITL_native/native_sitl_truth.csv`
+  （Q_TILT_MAX=80，前向转换发散）。
+- 系统鲁棒性矩阵 `tab:robust`（S4–S9）、20 次蒙特卡洛 `fig:mc`、实时求解时间表
+  `tab:rt` —— 仍来自 400 Hz 高速伴随对象（相同物理模型）。原因：真实二进制 Lua 桥
+  经数十次尝试仅成功闭环单次标称任务，无法在一SESSION内系统注入质量/重心/推力/舵面/
+  惯量/风扰动并重跑 8+20 次；按任务许可，保留伴随结果但在表注与正文**明确标注为伴随平台**，
+  严禁包装成 SITL。
+
+**重算的真实 SITL 指标（experiments/analyze_full_paper.py →
+results/SITL_MPC/full_paper_transition_metrics.json，可复现）：**
+- 提出 MPC：前向转换 9.5 s / Δh 0.16 m / 16.9 kJ；后向转换 14.5 s / 0.21 m / 20.9 kJ；
+  巡航 β 均值 89.6°（严格窗口）、V 20.05、alt 60.5±0.23、15.97 s；
+  max|roll| 0.13°、max|pitch| 14.96°；末段 alt 59.88 m / V 0.01 m/s。
+  （full_paper_metrics.json 巡航口径：β 88.17°、dur 17.42 s，与正文一致。）
+- stock 原生：爬升到 60 m 悬停稳定，t≈95.6 s 前向转换发散，|roll|→169.9°、as→47.8 m/s；
+  根因 tiltrotor.cpp 对 Q_TILT_TYPE=0 置 is_vectored=false（未改动固件）。
+
+**改动文件：**
+- analysis/make_transition_figs.py：四图数据源从 fw_fix4_truth.csv 改为真实 SITL
+  （proposed=SITL_MPC/full_paper_truth.csv，native=SITL_native/native_sitl_truth.csv）。
+- paper/regenerate_figures.py::fig_full_profile：改读 SITL_MPC/full_paper_truth.csv，
+  参考线 alt=60 / V=20 / β=90，相位带由真值推断（前向/巡航/后向）。
+- experiments/analyze_full_paper.py（新）：从真实 SITL 真值重算过渡/巡航指标写 JSON。
+- paper/main.tex：tab:main 改为真实 SITL（提出 9.5/0.16/16.9，14.5/0.21/20.9；
+  stock 发散行）；tab:robust 表注标注伴随平台；§8 两段叙述重写为真实 SITL 头条 + 伴随诊断；
+  fig_profile 图题更新。
+- paper/main_zh.tex：与英文逐节对齐相同数字与表述（xelatex 27 页 0 错）。
+- paper/rebuild_figures.sh：新增第 0 步 analyze_full_paper.py。
+- paper/README.md：数据源分层说明更新。
+
+**验证：** pdflatex+bibtex 英文 28 页 0 错误/0 未定义引用；xelatex+ctex 中文 27 页
+0 错误（仅 CJK 斜体形状无害回退）；`bash paper/rebuild_figures.sh` 端到端通过。
+
+### 待推送文件清单（本轮，文本）
+- Tools/tilt_hexa_30kg/paper/main.tex
+- Tools/tilt_hexa_30kg/paper/main_zh.tex
+- Tools/tilt_hexa_30kg/paper/README.md
+- Tools/tilt_hexa_30kg/paper/rebuild_figures.sh
+- Tools/tilt_hexa_30kg/paper/regenerate_figures.py
+- Tools/tilt_hexa_30kg/analysis/make_transition_figs.py
+- Tools/tilt_hexa_30kg/experiments/analyze_full_paper.py
+- Tools/tilt_hexa_30kg/results/SITL_MPC/full_paper_transition_metrics.json
+- CLAUDE.md
+（二进制 main.pdf/main_zh.pdf 与 figures/*.png/pdf 不推，由 `make figures`/`make paper` 复现。）

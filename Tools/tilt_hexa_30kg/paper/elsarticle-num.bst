@@ -53,7 +53,7 @@ ENTRY
 
 INTEGERS { output.state before.all mid.sentence after.sentence after.block }
 
-STRINGS { urlintro eprinturl eprintprefix doiprefix doiurl openinlinelink closeinlinelink } % urlbst
+STRINGS { urlintro eprinturl eprintprefix doiprefix doiurl openinlinelink closeinlinelink } % urlbst...
 INTEGERS { hrefform inlinelinks makeinlinelink addeprints adddoiresolver }
 FUNCTION {init.urlbst.variables}
 {
@@ -1505,3 +1505,5 @@ EXECUTE {end.bib}
 %% End of customized bst file
 %%
 %% End of file `elsarticle-num.bst'.
+
+

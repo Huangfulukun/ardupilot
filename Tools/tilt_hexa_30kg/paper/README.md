@@ -5,8 +5,11 @@ Target journal: *Aerospace Science and Technology* (Elsevier), official
 with **0 errors and 0 undefined references**.
 
 ## Contents
-- `main.tex` — manuscript source.
-- `references.bib` — bibliography (57 entries).
+- `main.tex` — manuscript source (English).
+- `main_zh.tex` — Chinese version, section-by-section aligned with `main.tex`
+  (`ctexart`, compiled with **xelatex**); same figures, tables, equations and
+  numbers as the English manuscript.
+- `references.bib` — bibliography (57 entries, shared by both versions).
 - `Makefile` — one-command figure regeneration and paper compilation.
 - `rebuild_figures.sh` — regenerates **every** figure from committed data.
 - `regenerate_figures.py` — corridor/trim/profile/AWS/robustness/solve-time/
@@ -30,6 +33,12 @@ with **0 errors and 0 undefined references**.
    ```
    make paper            # pdflatex + bibtex + pdflatex + pdflatex
    ```
+4. Compile the Chinese version (requires a CJK-capable engine and the
+   Noto CJK fonts; the same `figures/` and `references.bib` are reused):
+   ```
+   make zh               # xelatex + bibtex + xelatex + xelatex
+   ```
+   Output: `main_zh.pdf`.
 
 ## Data sources (kept deliberately distinct; no fabricated curves)
 - **Offline high-fidelity companion plant** (`results/MPC/`, 400 Hz RK4 nonlinear
@@ -57,5 +66,6 @@ with **0 errors and 0 undefined references**.
   over the native firmware; the no-corridor ablation is the decisive
   attribution experiment.
 - Author/affiliation/corresponding-author fields in `main.tex` are placeholders
-  (`Author One/Two/Corresponding Author`) and **must be replaced before
-  submission**, after which the PDF should be recompiled.
+  (`Author One/Two/Corresponding Author`; in `main_zh.tex` they are
+  `作者一/作者二/通讯作者`) and **must be replaced before submission**, after
+  which the PDFs should be recompiled.

@@ -271,7 +271,7 @@
     \g@addto@macro\elsprelimauthors{%
      \prelimauthorsep#1%
      \def\prelimauthorsep{\unskip,\space}}%
-    \g@addto@macro\elsauthors{\normalsize%
+    \g@addto\macro\elsauthors{\normalsize%
     \def\baselinestretch{1}%
     \upshape\authorsep#1\unskip\textsuperscript{%
       \ifx\@fnmark\@empty\else\unskip\sep\@fnmark\let\sep=,\fi
@@ -564,7 +564,7 @@
   \define@key{affiliation}{c}{%
    \cacity[\@citypunc]{#1}}
   \define@key{affiliation}{p}{%
-   \capostalcode[\@postcodepunc]{#1}}
+   \capostcode[\@postcodepunc]{#1}}
   \define@key{affiliation}{s}{%
    \castate[\@statepunc]{#1}}
   \define@key{affiliation}{cy}{%
@@ -593,10 +593,10 @@
       {\stmetb@xargdef#1[#2]}
       {\ifx\l@ngrel@x\relax
          \let\l@ngrel@x\protected
-       else
+       \else
          \protected\def\l@ngrel@x{\protected\long}%
        \fi
-       \@argdef#1[#2}}
+       \@argdef#1[#2]}}
 
   \long\def\stmetb@xargdef#1[#2][#3]#4{%
     \@ifdefinable#1{%
@@ -930,7 +930,7 @@
        \printFirstPageNotes
        \ifnum\savetitlepagespan>1\relax%
        \myfor{2}{\savetitlepagespan}{%
-       \global\setbox\els@boxb=\vsplit0 to \textheight
+       \global\setbox\els@boxb=\vsplit0 to \textheight%\@tempdima
        \box\els@boxb}
        \else%
        \fi%
@@ -953,7 +953,7 @@
        \printFirstPageNotes
        \ifnum\savetitlepagespan>1\relax%
        \myfor{2}{\savetitlepagespan}{%
-       \global\setbox\els@boxb=\vsplit0 to \textheight
+       \global\setbox\els@boxb=\vsplit0 to \textheight%\@tempdima
        \twocolumn[\box\els@boxb]}
        \else%
        \fi%
@@ -976,7 +976,7 @@
        \printFirstPageNotes
        \ifnum\savetitlepagespan>1\relax%
        \myfor{2}{\savetitlepagespan}{%
-       \global\setbox\els@boxb=\vsplit0 to \textheight
+       \global\setbox\els@boxb=\vsplit0 to \textheight%\@tempdima
        \twocolumn[\box\els@boxb]}
        \else%
        \fi%
@@ -998,7 +998,7 @@
        \printFirstPageNotes
        \ifnum\savetitlepagespan>1\relax%
        \myfor{2}{\savetitlepagespan}{%
-       \global\setbox\els@boxb=\vsplit0 to \textheight
+       \global\setbox\els@boxb=\vsplit0 to \textheight%\@tempdima
        \box\els@boxb}
        \else%
        \fi%
@@ -1181,7 +1181,7 @@
 \def\@xdfn#1#2{%
   \@begindefinition{#2}{\csname the#1\endcsname}\ignorespaces}
 \def\@ydfn#1#2[#3]{%
-  \@opargbegindefinition{#1}{\csname the#1\endcsname}{#3}\ignorespaces}
+  \@opargbegindefinition{#2}{\csname the#1\endcsname}{#3}\ignorespaces}
 \def\@dfncounter#1{\noexpand\arabic{#1}}
 \def\@dfncountersep{.}
 \def\@begindefinition#1#2{\trivlist
@@ -1218,7 +1218,7 @@
 \def\@oprf#1[#2]#3{%
   \@ifundefined{c@#2}{\@nocounterr{#2}}%
     {\expandafter\@ifdefinable\csname #1\endcsname
-    {\global\@namedef{the#1}{\@nameuse{the#2}}
+    {\global\@namedef{the#1}{\@nameuse{the#2}}%
   \global\@namedef{#1}{\@prf{#2}{#3}}%
   \global\@namedef{end#1}{\@endproof}}}}
 \def\@prf#1#2{%
@@ -1343,7 +1343,7 @@
 \renewcommand\appendix{\par
   \setcounter{section}{0}%
   \setcounter{subsection}{0}%
-  \setcounter{equation}{0}%
+  \setcounter{equation}{0}
   \gdef\thefigure{\@Alph\c@section.\arabic{figure}}%
   \gdef\thetable{\@Alph\c@section.\arabic{table}}%
   \gdef\thesection{\appendixname~\@Alph\c@section}%
@@ -1378,20 +1378,20 @@
  {}
  {\def\tnotetext[#1]#2{\g@addto@macro\@tnotes{%
     \refstepcounter{tnote}%
-    \immediate\write\@auxout{\string\Newlabel{#1}}{\thetnote}}
+    \immediate\write\@auxout{\string\Newlabel{#1}{\thetnote}}
     \def\thefootnote{\ifcase\c@tnote\or$\star$\or$\star\star$\fi}%
     \footnotetext{#2}}}
 %%%
   \def\fntext[#1]#2{\g@addto@macro\@fnotes{%
     \refstepcounter{fnote}%
-    \immediate\write\@auxout{\string\Newlabel{#1}}{\thefnote}}
+    \immediate\write\@auxout{\string\Newlabel{#1}{\thefnote}}
     \def\thefootnote{\thefnote}%
     \global\setcounter{footnote}{\c@fnote}%
     \footnotetext{#2}}}
 %%%
   \def\cortext[#1]#2{\g@addto@macro\@cornotes{%
     \refstepcounter{cnote}%
-    \immediate\write\@auxout{\string\Newlabel{#1}}{\thecnote}}
+    \immediate\write\@auxout{\string\Newlabel{#1}{\thecnote}}
     \def\thefootnote{\ifcase\c@cnote\or$\ast$\or
     $\ast\ast$\fi}%
     \footnotetext{#2}}}

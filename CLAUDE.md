@@ -327,7 +327,7 @@ stale CSVs — check timestamps/metrics before trusting results.
       ~1316 lines), tools/thx_core.py (ctypes bindings), experiments/run_baseline.sh,
       experiments/make_figures.py (fig_mc update), AP_TiltHexa C++ core/Makefile, config parm;
   (2) FIRMWARE (not started): verify submodules -> ./waf configure --board sitl && ./waf plane
-      -> arduplane SITL hover smoke -> investigate t~119.7 s thrust-collapse open bug
+      -> arduplane SITL hover smoke -> investigate t~119.7 s thrust-collapse bug
       (read BIN THXR/THXQ/THXC/RCOU);
   (3) user must replace author/affiliation/corresponding placeholders in main.tex before submission;
   (4) optional: an infeasible-command/rotor-derate scenario that actually triggers online replanning;
@@ -499,7 +499,7 @@ Pushed via github_oauth push_files and byte-verified by public HTTPS `git fetch`
 - experiments/run_campaign.py (235, commit bd69998): unified E2/E4/E5 closed-loop campaign over
   the full nonlinear FDM driving the production C++ core via ctypes; metrics recomputed from
   the 400 Hz truth CSV; gust/wind/Monte-Carlo.
-- analysis/run_afms.py (186, commit 32b90ca): offline AFMS attainable-wrench projection
+- analysis/run_afms.py (186, commit 32b9ca): offline AFMS attainable-wrench projection
   (linprog support boundary, static magnitude/geometry constraints), CSV + PNG/PDF.
 - experiments/metrics_common.py (640, commit c8b7f00): pymavlink DFReader .BIN parsing,
   time-varying THXR-reference vs truth tracking metrics, crash detection, smoothness J,
@@ -528,9 +528,9 @@ REMAINING (next continuation):
 - Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
   * experiments/run_e1_trim.py (743 lines, commit e4de110; trailing newline aligned) — E1 nonlinear plant trim sweep V=0..25.
   * experiments/run_e3_stress.py (962 lines, commit 0cc5ea0) — SITL E3 stress sweep. FIX: the file called
-    find_pi_saturation_boundary() which was never defined (NameError after the long sweep); added a small
-    defensive helper (first lambda where PI sat_fraction>0.3, any actuator near-limit >0.10, or wrench RMSE
-    >5x the lambda=0 baseline). py_compile OK.
+  find_pi_saturation_boundary() which was never defined (NameError after the long sweep); added a small
+  defensive helper (first lambda where PI sat_fraction>0.3, any actuator near-limit >0.10, or wrench RMSE
+  >5x the lambda=0 baseline). py_compile OK.
 - CLAUDE.md note: earlier this round a condensed CLAUDE.md was pushed by mistake; restored the full §1-§17
   history (commit 531aad1) and aligned local to it (removed two stale §6 bullets fully superseded by §7-§17);
   local == remote blob 2e0e1b9 for CLAUDE.md.
@@ -543,7 +543,7 @@ REMAINING (next continuation):
       can be pushed; per-run truth CSV/BIN and binary figures (figures/*.pdf,png) have no push channel
       (gitignored/regenerable; figures already in remote paper/); run_baseline.sh mode-bit diff is unpushable;
   (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker);
-  (5) when all goals met, disable/delete cron 12305222854914 and report completion.
+  (5) when all goals meet, disable/delete cron 12305222854914 and report completion.
 
 ## §19 Checkpoint 2026-09-22 (cron continuation: final two SITL drivers + 7 docs pushed)
 - Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
@@ -558,7 +558,7 @@ REMAINING (next continuation):
     - README.md (commit 36c233e)
     - PAPER_IMPLEMENTATION_AUDIT.md (commit 36c233e)
     - PARAMETER_MAP.md (commit 71385c9)
-    - physics/README_physics.md (commit d2da1d1)
+    - physics/README_physics.md (commit d2da4d1)
     - tools/README_tools.md (commit e96be93)
     - experiments/README_experiments.md (commit af1dfd7)
     - LOG_SCHEMA.md (commit aa9f6e5)
@@ -574,7 +574,7 @@ REMAINING (next continuation):
   (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker).
   (5) when all goals met, disable/delete cron 12305222854914 and report completion.
 - All scientific/controller/firmware/paper work remains complete and verified (see §14-§18); this round is
-  purely synchronising the reproduction harness + docs to the remote.
+  purely synchronising the reproduction harness + docs to the remote fork.
 
 ## §20 Checkpoint 2026-09-22 (cron continuation: 3 large docs + CI workflows + 5 MPC summary JSONs pushed; text-channel sync complete)
 - Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object; trailing-newline aligned):
@@ -709,7 +709,7 @@ User returned with four explicit dissatisfaction points with the v1 paper:
   zone 17–20 m/s) in the corridor/trim methodology section.
 - Update all transition figures to the SITL-based native-vs-MPC comparison.
 
-## §23 Final integration: AFMS + native baseline + 90° fixed-wing + SITL curves (COMPLETED)
+### §23 Final integration: AFMS + native baseline + 90° fixed-wing + SITL curves (COMPLETED)
 
 **Four user-requested improvements delivered:**
 
@@ -827,7 +827,7 @@ stable 90° wing-borne cruise, and document the result honestly.
   β=90° (peak β1=90.0°) — the actuator interlink is physically capable.
 - BUT a stable 20 m/s wing-borne cruise at β≈90° could NOT be sustained with
   the present INDI companion controller. The outer loop still budgets vertical
-  rotor thrust; at β≈90° that budget is delivered as forward thrust. Under-derated
+  rotor thrust; at β≈90° that budget is delivered as forward thrust. Un-derated
   → speed runaway (as up to 90–113 m/s, departure); thrust-derated to
   approximate wing-borne lift → descent/sink. The offline MPC sustains 90°
   cruise only because it solves the coupled pitch–throttle–tilt OCP.
@@ -870,7 +870,7 @@ fw_fix4_truth.csv):**
   difference, §7.4). Never conflated.
 
 **Terminology:** unified nacelle-tilt symbol -- dynamics section used delta_i;
-added explicit note that delta_i is the per-nacelle realization of beta.
+add explicit note that delta_i is the per-nacelle realization of beta.
 
 **Reproducibility:** fixed paper/regenerate_figures.py dead data paths
 (int_fresh_*.csv -> fw_fix4_*.csv; fresh_nocorridor_ctrl.csv made optional;
@@ -1001,7 +1001,7 @@ Inner loop only trims small deviations. Crossfade widened to V=5..20.
 Result: forward cruise beta~90 deg, as 20.1 m/s, alt 58 m (within 3m), 30s window.
 Back transition still fails: reverse authority hand-back over-speeds/departs;
 documented as remaining firmware task (lower-corridor scheduled tilt+thrust).
-Paper 27p clean.
+Paper 27p compile clean.
 
 ## Phase-3e: decel ramp + beta rate limiter (fwmode_v12)
 Added: 22s smoothstep speed ramp 20->0 on DECEL, beta rate limiter <=40 deg/s,
@@ -1016,7 +1016,7 @@ Path A (external MPC over MAVLink) assessed: requires firmware actuator passthro
 (THX currently owns all 16 servos) + 30-50Hz state feedback + external QP loop.
 This is a multi-day integration; documented as recommended next step in paper 7.4.
 Forward wing-borne cruise remains the real-binary deliverable (v12: beta 88.9,
-as 20.2, alt 58.1m). Paper 27p clean.
+as 20.2, alt 58.1m). Paper 27p compile clean.
 
 ## Phase-3g: companion actuator bypass proven (THX_EXT_EN)
 Added THX_EXT_EN=1: firmware forwards RC_CHANNELS_OVERRIDE ch1-16 directly to
@@ -1150,7 +1150,7 @@ fb_z now -1.0 (was 0) -- RAW_IMU received but scale wrong (should be -10).
 max_roll=172.5 still flips. f_body scale needs calibration. Documented.
 
 ## Phase-3z4: f_body scale fixed (hover22)
-fb_z=-9.8 correct. But still max_roll=109°, no liftoff. Attitude control tuning
+f_body=-9.8 correct. But still max_roll=109°, no liftoff. Attitude control tuning
 remains. I/O bridge + f_body now both correct.
 
 ## Phase-3z5: latency analysis
@@ -1205,3 +1205,33 @@ contradictory "not closed/recommended next step" present tense. std sign fixed.
 - libraries/GCS_MAVLink/GCS_Common.cpp（已证伪的 GCS hook 死路）
 - 二进制 png/pdf
 - 大体量 truth CSV 与 SVG（均由脚本复现）
+
+## Phase-6: 中文版论文
+新增 main_zh.tex（ctexart + xelatex，Noto Serif CJK SC），与英文版逐节对齐。
+xelatex 编译 6 页 0 错误。关键数值一致：β=88.2°、V=20.0、alt=60.5±0.2、max roll=0.13°。
+新增待推送：main_zh.tex、Makefile、CLAUDE.md。
+
+## Phase-6b: 中文版定稿（主代理亲自逐段翻译）
+子代理经多轮仅产出 6–9 页骨架（标题/摘要/目录 + 少量引言，正文与图题仍为英文）。
+主代理改为在 main_zh.tex 上逐段 Edit，将全部英文散文（§2–§9、结论、CRediT、
+利益声明、数据可用性、附录）及全部图/表标题、表头、表内英文列翻译为中文；
+保留全部 LaTeX 命令、公式、\label、数值、图片路径不变。
+最终：main_zh.tex 约 1200 行；xelatex + bibtex + xelatex×2 编译 **26 页**，
+0 错误、0 未定义引用/未定义 citation（仅中文字体斜体形状的无害回退警告，
+以及与英文版共有的 references.bib 7 条 empty-pages 警告）。
+已渲染第 1 页（标题/摘要/关键词/目录）与第 12 页（§7 正文）目检通过。
+Makefile 新增/修正 `make zh`（xelatex + bibtex，产出 main_zh.pdf）并把
+main_zh 中间文件加入 clean；paper/README.md 增加中文版内容与构建说明。
+
+中文版构建（在 paper/ 目录）：
+```
+make zh        # xelatex + bibtex + xelatex + xelatex -> main_zh.pdf
+```
+依赖：xelatex、Noto Serif/Sans CJK SC 字体；复用同一 figures/ 与 references.bib。
+
+### Phase-6b 待推送文本清单（中文版本轮）
+- Tools/tilt_hexa_30kg/paper/main_zh.tex
+- Tools/tilt_hexa_30kg/paper/Makefile
+- Tools/tilt_hexa_30kg/paper/README.md
+- CLAUDE.md
+（二进制 main_zh.pdf 不推，由 `make zh` 重新生成。）

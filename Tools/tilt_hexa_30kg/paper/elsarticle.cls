@@ -271,7 +271,7 @@
     \g@addto@macro\elsprelimauthors{%
      \prelimauthorsep#1%
      \def\prelimauthorsep{\unskip,\space}}%
-    \g@addto\macro\elsauthors{\normalsize%
+    \g@addto@macro\elsauthors{\normalsize%
     \def\baselinestretch{1}%
     \upshape\authorsep#1\unskip\textsuperscript{%
       \ifx\@fnmark\@empty\else\unskip\sep\@fnmark\let\sep=,\fi

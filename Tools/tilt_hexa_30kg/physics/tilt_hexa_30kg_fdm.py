@@ -66,9 +66,17 @@ PACKET_SIZE_16 = struct.calcsize("<HHI16H")
 
 
 def parse_gust(s):
-    """Parse 'amp,t0,dur' string."""
+    """Parse 'amp,t0,dur' or 'amp,t0,dur,dir_deg' string.
+
+    dir_deg is the wind azimuth (0 = North, 90 = East/lateral).  It defaults to
+    90 (lateral gust), the worst-case axis for the roll channel.
+    """
     parts = s.split(",")
-    return {"amp": float(parts[0]), "t0": float(parts[1]), "duration_s": float(parts[2])}
+    out = {"amp": float(parts[0]), "t0": float(parts[1]),
+           "duration_s": float(parts[2]), "dir_deg": 90.0}
+    if len(parts) >= 4:
+        out["dir_deg"] = float(parts[3])
+    return out
 
 
 def parse_wind(s):
@@ -82,10 +90,15 @@ class TiltHexaFDM:
 
     def __init__(self, config_path, instance=0, seed=42,
                  monte_carlo=False, gust_params=None, wind_ned=(0,0,0),
-                 delay_ms=0.0, csv_out=None, start_alt=0.0, hold_seconds=0.0):
+                 delay_ms=0.0, csv_out=None, start_alt=0.0, hold_seconds=0.0,
+                 mass_scale=1.0, inertia_scale=1.0, thrust_scale=1.0,
+                 surface_scale=1.0, cg_offset=(0.0, 0.0, 0.0),
+                 wind_ramp=None, cg_ramp=None, wind_rel_liftoff=False):
         self.instance = instance
         self.seed = seed
         self.rng = np.random.RandomState(seed)
+        self.wind_rel_liftoff = bool(wind_rel_liftoff)
+        self._liftoff_time = None
 
         # Load and optionally perturb config
         self.cfg = load_config(config_path)
@@ -93,6 +106,16 @@ class TiltHexaFDM:
         if monte_carlo:
             self.mc = MonteCarlo(self.cfg, seed)
             self.cfg = self.mc.perturb()
+
+        # Deterministic CLI overrides (plant/FDM-side perturbations).  Applied
+        # to the config BEFORE the rigid body / propulsion / aero components are
+        # constructed, so every sub-system sees the realised values.  The
+        # controller (separate process) is always built from the nominal model,
+        # so these are genuine model mismatches.
+        self.cg_offset = np.asarray(cg_offset, dtype=np.float64)
+        self.cg_ramp = cg_ramp
+        self._apply_overrides(mass_scale, inertia_scale, thrust_scale,
+                              surface_scale)
 
         # Components
         self.rb = RigidBody(
@@ -104,7 +127,8 @@ class TiltHexaFDM:
         self.propulsion = PropulsionSystem(self.cfg)
         self.actuators = ActuatorSystem(self.cfg, delay_ms=delay_ms)
         self.aero = AeroModel(self.cfg)
-        self.wind = WindModel(wind_ned=wind_ned, gust_params=gust_params, seed=seed)
+        self.wind = WindModel(wind_ned=wind_ned, gust_params=gust_params,
+                              seed=seed, wind_ramp=wind_ramp)
         self.sensors = SensorNoise(seed=seed + 1)
 
         # Initial altitude
@@ -135,6 +159,43 @@ class TiltHexaFDM:
 
         # Cached specific force for JSON response
         self._cached_specific_force = np.zeros(3, dtype=np.float64)
+
+    def _apply_overrides(self, mass_scale, inertia_scale, thrust_scale,
+                         surface_scale):
+        """Apply deterministic plant-side scale overrides to the loaded config."""
+        # Record the realised values (for honest provenance logging).
+        self.overrides = {
+            "mass_scale": float(mass_scale),
+            "inertia_scale": float(inertia_scale),
+            "thrust_scale": float(thrust_scale),
+            "surface_scale": float(surface_scale),
+            "cg_offset_m": [float(v) for v in self.cg_offset],
+        }
+
+        # Mass
+        if abs(mass_scale - 1.0) > 1e-12:
+            self.cfg.mass.m_kg *= float(mass_scale)
+
+        # Inertia (diagonal + off-diagonal scaled uniformly)
+        if abs(inertia_scale - 1.0) > 1e-12:
+            for key in ("Jxx", "Jyy", "Jzz", "Jxy", "Jxz", "Jyz"):
+                if hasattr(self.cfg.inertia, key):
+                    self.cfg.inertia[key] *= float(inertia_scale)
+
+        # Thrust: scale the maximum static thrust per motor (the realised
+        # thrust for a commanded throttle is reduced/increased).  kappa_Q
+        # (torque-to-thrust ratio) is left independent, matching the S9a
+        # plant perturb.
+        if abs(thrust_scale - 1.0) > 1e-12:
+            self.cfg.propulsion.max_static_thrust_N *= float(thrust_scale)
+
+        # Surface effectiveness: scale the aerodynamic control derivatives.
+        if abs(surface_scale - 1.0) > 1e-12:
+            asurf = self.cfg.aero.surfaces
+            for key in ("CL_da", "Cl_da", "Cm_da", "Cn_da",
+                        "CL_drv", "Cl_drv", "Cm_drv", "Cn_drv"):
+                if hasattr(asurf, key):
+                    asurf[key] *= float(surface_scale)
 
     def reset_to_ground(self):
         """Reset vehicle to rest on ground."""
@@ -201,6 +262,12 @@ class TiltHexaFDM:
         # velocity and body-frame wind (v_rel = v_body - wind_body).  Feeding the NED
         # velocity here was a bug that only cancelled out for a north heading.
         wind_ned = self.wind.get_wind_ned(self.sim_time, dt, float(np.linalg.norm(self.rb.vel)))
+        # When perturbations are scheduled relative to liftoff, keep the wind
+        # exactly zero before the first liftoff: the pre-arm startup advances the
+        # FDM clock (with origin=0) and would otherwise ramp the wind in while the
+        # aircraft is still on the ground.
+        if self.wind_rel_liftoff and self._liftoff_time is None:
+            wind_ned = np.zeros(3)
         q_conj = np.array([self.rb.quat[0], -self.rb.quat[1], -self.rb.quat[2], -self.rb.quat[3]])
         v_body = quat_rotate(q_conj, self.rb.vel)
         wind_body = quat_rotate(q_conj, wind_ned) if np.any(wind_ned) else np.zeros(3)
@@ -212,6 +279,21 @@ class TiltHexaFDM:
         # Total force and moment on body
         F_total = self.propulsion.total_force_body() + Fn + Fs
         M_total = self.propulsion.total_moment_body() + Mn + Ms
+
+        # Centre-of-gravity offset correction.  The geometric force application
+        # points (rotor hubs, wing, tail) are defined in the nominal datum
+        # frame.  If the true CG is displaced by cg_offset (body frame) from
+        # that datum, the moment about the CG is M_CG = M_datum - cg_offset x
+        # F_external (gravity acts at the CG and has no moment about it).  A
+        # forward CG (cg_offset[0] > 0) thus adds a nose-down pitching moment
+        # from the lift/thrust forces.
+        if np.any(self.cg_offset):
+            cg_eff = self.cg_offset
+            if self.cg_ramp is not None:
+                ts, td = self.cg_ramp
+                frac = min(1.0, max(0.0, (self.sim_time - ts) / td)) if td > 1e-6 else 1.0
+                cg_eff = self.cg_offset * (frac * frac * (3.0 - 2.0 * frac))
+            M_total = M_total - np.cross(cg_eff, F_total)
 
         # Set forces and integrate
         self.rb.set_forces(F_total, M_total)
@@ -231,6 +313,14 @@ class TiltHexaFDM:
 
         # Ground contact (pass net force to check if vehicle is pushed into ground)
         self._ground_contact(F_net_ned)
+
+        # Detect first liftoff (altitude crosses 0.5 m).  When perturbations are
+        # scheduled relative to liftoff, shift the wind clock origin here so ramp
+        # and gust instants are robust to the variable pre-arm startup offset.
+        if self._liftoff_time is None and self.rb.pos[2] < -0.5:
+            self._liftoff_time = self.sim_time
+            if self.wind_rel_liftoff:
+                self.wind.set_origin(self.sim_time)
 
         # Cache specific force for JSON response
         a_ned = (self.rb.vel - prev_vel) / max(dt, 1e-10)
@@ -456,6 +546,22 @@ def main():
     parser.add_argument("--standalone", action="store_true", help="Run without UDP")
     parser.add_argument("--physics-rate", type=int, default=400, help="Physics rate in Hz")
     parser.add_argument("--hover-throttle", type=float, default=0.7035, help="Standalone hover throttle")
+    # Deterministic plant-side perturbation overrides (the controller is
+    # always built from the nominal model: these are genuine mismatches).
+    parser.add_argument("--mass-scale", type=float, default=1.0,
+                        help="Scale the airframe mass (e.g. 1.15 = +15%%)")
+    parser.add_argument("--inertia-scale", type=float, default=1.0,
+                        help="Scale the inertia tensor (e.g. 1.20 = +20%%)")
+    parser.add_argument("--thrust-scale", type=float, default=1.0,
+                        help="Scale per-motor max static thrust (e.g. 0.90 = -10%%)")
+    parser.add_argument("--surface-scale", type=float, default=1.0,
+                        help="Scale control-surface effectiveness (e.g. 0.80 = -20%%)")
+    parser.add_argument("--cg-offset", default="0,0,0",
+                        help="CG offset in body frame 'x,y,z' (m), e.g. 0.025,0,0")
+    parser.add_argument("--wind-ramp", default=None,
+                        help="Ramp steady wind in: 'start,dur' (s; relative to liftoff if --wind-rel-liftoff)")
+    parser.add_argument("--wind-rel-liftoff", action="store_true",
+                        help="Interpret wind ramp / gust times relative to liftoff")
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -470,6 +576,12 @@ def main():
     if args.wind:
         wind_ned = tuple(parse_wind(args.wind))
 
+    cg_offset = tuple(parse_wind(args.cg_offset))
+
+    wind_ramp = None
+    if args.wind_ramp:
+        wind_ramp = tuple(float(v) for v in args.wind_ramp.split(","))
+
     fdm = TiltHexaFDM(
         config_path=config_path,
         instance=args.instance,
@@ -481,6 +593,13 @@ def main():
         csv_out=args.csv_out,
         start_alt=args.start_alt,
         hold_seconds=args.hold_seconds,
+        mass_scale=args.mass_scale,
+        inertia_scale=args.inertia_scale,
+        thrust_scale=args.thrust_scale,
+        surface_scale=args.surface_scale,
+        cg_offset=cg_offset,
+        wind_ramp=wind_ramp,
+        wind_rel_liftoff=args.wind_rel_liftoff,
     )
     fdm.physics_rate = args.physics_rate
 

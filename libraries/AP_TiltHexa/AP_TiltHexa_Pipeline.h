@@ -40,7 +40,7 @@ struct TiltHexa_SensorInput {
 // ---- Reference input ----
 struct TiltHexa_Reference {
     float p_r[3];           // desired NED position (m)
-    float v_r[3];           // desired velocity NED (m/s)
+    float v_r[3];           // desired NED velocity (m/s)
     float a_r[3];           // desired NED acceleration (m/s^2)
     float yaw_r;            // desired yaw (rad)
     float yaw_rate_r;       // desired yaw rate (rad/s)

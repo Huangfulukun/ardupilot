@@ -16,14 +16,18 @@ import math
 class WindModel:
     """Wind model with steady wind, gust profile, and optional turbulence."""
 
-    def __init__(self, wind_ned=(0.0, 0.0, 0.0), gust_params=None, seed=None):
+    def __init__(self, wind_ned=(0.0, 0.0, 0.0), gust_params=None, seed=None,
+                 wind_ramp=None):
         """
         Args:
             wind_ned: (N, E, D) steady wind in m/s
             gust_params: dict with keys amp, t0, duration_s, or None
-            seed: integer seed for turbulence RNG
+            seed: integer seed for 5 min at 05:36, etc.
+            wind_ramp: (t_start_s, duration_s) to ramp the steady wind in from
+                zero (cubic smoothstep); None for wind present from t=0.
         """
         self.wind_ned = np.array(wind_ned, dtype=np.float64)
+        self.wind_ramp = wind_ramp
         self.gust_active = False
         self.gust_amplitude = 0.0
         self.gust_t0 = 0.0
@@ -45,6 +49,15 @@ class WindModel:
         self.turb_length_scale = 100.0  # m
         self.turb_state = np.zeros(3, dtype=np.float64)
         self.rng = np.random.RandomState(seed)
+
+        # Time origin: ramp/gust instants are evaluated relative to this.
+        # Defaults to 0 (absolute FDM sim time); set to the detected liftoff
+        # instant so perturbations can be scheduled relative to liftoff.
+        self._origin = 0.0
+
+    def set_origin(self, t):
+        """Schedule ramp/gust times relative to the given origin (e.g. liftoff)."""
+        self._origin = float(t)
 
     def enable_dryden(self, intensity_m_s=1.0, length_scale_m=100.0):
         """Enable Dryden-like turbulence."""
@@ -88,11 +101,20 @@ class WindModel:
             wind_ned: [W_N, W_E, W_D] in m/s (positive = toward N/E/D)
         """
         w = self.wind_ned.copy()
+        t_rel = t - self._origin
+
+        # Optional steady-wind ramp (cubic smoothstep from zero).
+        if self.wind_ramp is not None:
+            t_start, t_dur = self.wind_ramp
+            if t_dur > 1e-6:
+                frac = min(1.0, max(0.0, (t_rel - t_start) / t_dur))
+                ramp = frac * frac * (3.0 - 2.0 * frac)
+                w *= ramp
 
         # Gust
         if self.gust_active:
-            if self.gust_t0 <= t <= self.gust_t0 + self.gust_duration:
-                tau_g = (t - self.gust_t0) / self.gust_duration
+            if self.gust_t0 <= t_rel <= self.gust_t0 + self.gust_duration:
+                tau_g = (t_rel - self.gust_t0) / self.gust_duration
                 gust_factor = 0.5 * (1.0 - math.cos(2.0 * math.pi * tau_g))
                 # Gust along the configured NED azimuth (0 = North, 90 = East)
                 w[0] += self.gust_amplitude * gust_factor * math.cos(self.gust_dir_rad)

@@ -24,6 +24,7 @@ from corridor_ocp import CorridorOCP  # noqa: E402
 FIG = os.path.join(ROOT, "paper", "figures")
 os.makedirs(FIG, exist_ok=True)
 MPC = os.path.join(ROOT, "results", "MPC")
+SITL_ROB = os.path.join(ROOT, "results", "SITL_Robust")
 
 plt.rcParams.update({
     "font.size": 9, "axes.labelsize": 9, "axes.titlesize": 10,
@@ -203,7 +204,7 @@ def fig_aws():
         eps = 1e-4
         for i in range(6):
             Btilt[:, i] = (thrust_col(beta + eps, spin[i], r[i])
-                           - thrust_col(beta - eps, spin[i], r[i])) / (2 * eps) * T
+                           - thrust_col(beta - eps, spin[i])) / (2 * eps) * T
         # four aerodynamic surfaces (two ailerons, two ruddervators), scaled qS
         qS = 0.5 * rho_air * V * V * S_ref
         Bsurf = np.zeros((5, 4))
@@ -230,24 +231,42 @@ def fig_aws():
 
 
 def fig_robustness():
-    """Tracking RMSE across the fixed robustness campaign (truth-derived)."""
+    """Tracking RMSE across the fixed SITL robustness campaign (binary truth).
+
+    Each scenario is run on the real arduplane binary; failed scenarios are
+    shown hatched with the measured terminal altitude annotated, so that the
+    figure reports the honest truth rather than an all-pass companion result.
+    """
     import json
-    summ = os.path.join(MPC, "campaign", "fixed_summary.json")
-    with open(summ) as f:
+    with open(os.path.join(SITL_ROB, "fixed_summary.json")) as f:
         s = json.load(f)
-    labels = ["S4_fullturn", "S5_gust", "S6_wind4", "S7_mass15", "S8_cg_fwd",
-              "S9a_thrust10", "S9b_surf20", "S9c_inertia20"]
+    rec = {r["case"]: r for r in s["results"]}
+    order = ["S4", "S5", "S6", "S7", "S8", "S9a", "S9b", "S9c"]
     short = ["S4\nturn", "S5\ngust", "S6\nwind", "S7\nmass", "S8\nCG",
              "S9a\nthrust", "S9b\nsurf", "S9c\ninertia"]
-    h_rmse = [s[k]["h_rmse"] for k in labels]
-    V_rmse = [s[k]["V_rmse"] for k in labels]
-    x = np.arange(len(labels)); w = 0.38
-    fig, ax = plt.subplots(figsize=(7.0, 2.6))
-    ax.bar(x - w / 2, h_rmse, w, color=C_MPC, label="Altitude RMSE (m)")
-    ax.bar(x + w / 2, V_rmse, w, color=C_NC, label="Speed RMSE (m/s)")
+    h_rmse = [rec[c]["h_rmse_m"] for c in order]
+    V_rmse = [rec[c]["V_rmse_ms"] for c in order]
+    ok = [rec[c]["valid"] for c in order]
+    x = np.arange(len(order)); w = 0.38
+    fig, ax = plt.subplots(figsize=(7.0, 2.8))
+    for i, (xc, val) in enumerate(zip(x, ok)):
+        hh = ax.bar(xc - w / 2, h_rmse[i], w,
+                    color=C_MPC if val else "none",
+                    edgecolor=C_MPC, hatch="" if val else "//",
+                    label="Altitude RMSE (m)" if i == 0 else None)
+        vv = ax.bar(xc + w / 2, V_rmse[i], w,
+                    color=C_NC if val else "none",
+                    edgecolor=C_NC, hatch="" if val else "//",
+                    label="Speed RMSE (m/s)" if i == 0 else None)
+        if not val:
+            ax.annotate(f"failed\n$h_f$={rec[order[i]]['h_final_m']:.0f} m",
+                        (xc, max(h_rmse[i], V_rmse[i])),
+                        textcoords="offset points", xytext=(0, 3),
+                        ha="center", fontsize=7, color=C_REF)
     ax.set_xticks(x); ax.set_xticklabels(short)
     ax.set_ylabel("Tracking RMSE")
-    ax.legend(framealpha=0.9, ncol=2)
+    ax.set_ylim(0, max(max(h_rmse), max(V_rmse)) * 1.25)
+    ax.legend(framealpha=0.9, ncol=2, loc="upper right")
     fig.tight_layout()
     save(fig, "fig_robustness")
 
@@ -280,38 +299,57 @@ def fig_solve_time():
 
 
 def fig_mc():
-    """Monte Carlo (20 seeds): tracking RMSE and solve-time distributions."""
-    import json
-    summ = os.path.join(MPC, "campaign", "mc_summary.json")
-    with open(summ) as f:
-        s = json.load(f)
-    s = [r for r in s if r.get("valid")]
-    h = np.array([r["h_rmse"] for r in s])
-    V = np.array([r["V_rmse"] for r in s])
-    p99 = np.array([r["mpc_p99_ms"] for r in s])
-    worst = np.array([r["mpc_worst_ms"] for r in s])
+    """Monte Carlo (20 seeds) on the real binary: RMSE distribution and outcome.
 
-    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.6))
+    Left: tracking-RMSE distribution over the fully valid seeds.  Right: every
+    seed's outcome against the realised wind speed (valid / attitude-hold but
+    no terminal stop / tumble), exposing the honest valid fraction and the
+    wind envelope.
+    """
+    import json
+    with open(os.path.join(SITL_ROB, "mc_summary.json")) as f:
+        s = json.load(f)
+    rec = s["results"]
+    valid = [r for r in rec if r.get("valid")]
+    h = np.array([r["h_rmse_m"] for r in valid])
+    V = np.array([r["V_rmse_ms"] for r in valid])
+
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.7))
     ax = axes[0]
     bp = ax.boxplot([h, V], positions=[0, 1], widths=0.5,
                     patch_artist=True, showfliers=True)
     for patch in bp["boxes"]:
         patch.set_facecolor(C_MPC); patch.set_alpha(0.6)
     ax.scatter(np.zeros_like(h) + np.random.RandomState(0).uniform(-0.08, 0.08, len(h)),
-               h, s=8, color=C_MPC, alpha=0.7)
+               h, s=10, color=C_MPC, alpha=0.8)
     ax.scatter(np.ones_like(V) + np.random.RandomState(1).uniform(-0.08, 0.08, len(V)),
-               V, s=8, color=C_NC, alpha=0.7)
+               V, s=10, color=C_NC, alpha=0.8)
     ax.set_xticks([0, 1]); ax.set_xticklabels(["Altitude RMSE\n(m)", "Speed RMSE\n(m/s)"])
-    ax.set_title("Tracking RMSE over %d seeds" % len(s), fontsize=9)
+    ax.set_title("Tracking RMSE over %d valid seeds" % len(valid), fontsize=9)
 
     ax = axes[1]
-    ax.scatter(np.arange(len(p99)), p99, s=14, color=C_MPC, label="P99")
-    ax.scatter(np.arange(len(worst)), worst, s=14, color=C_NC, marker="x",
-               label="worst")
-    ax.axhline(30.0, color=C_REF, ls="--", lw=1.0, label="30 ms period")
-    ax.set_xlabel("seed index"); ax.set_ylabel("solve time (ms)")
-    ax.set_title("Per-seed solve time", fontsize=9)
-    ax.legend(framealpha=0.9, fontsize=7, loc="upper right")
+    for r in rec:
+        wind = r["realised"]["wind_speed"]
+        if r["valid"]:
+            col, mk, lab = "#1e8449", "o", "valid"
+        elif r.get("attitude_ok"):
+            col, mk, lab = "#d68910", "s", "attitude held, no stop"
+        else:
+            col, mk, lab = C_REF, "x", "tumble"
+        ax.scatter(wind, 1 if r["valid"] else (0.5 if r.get("attitude_ok") else 0),
+                   s=26, color=col, marker=mk,
+                   label=lab if not ax.get_ylabel() else None)
+    ax.axvline(3.12, color="#1e8449", ls=":", lw=1.0)
+    ax.annotate("valid envelope\n(strongest valid wind 3.12 m/s)",
+                (3.12, 0.12), fontsize=7, color="#1e8449")
+    ax.set_xlabel("Realised wind speed (m/s)")
+    ax.set_yticks([0, 0.5, 1]); ax.set_yticklabels(["tumble", "no stop", "valid"])
+    ax.set_ylim(-0.2, 1.25)
+    ax.set_title("Outcome vs. wind (20 seeds)", fontsize=9)
+    handles, labels = ax.get_legend_handles_labels()
+    seen = dict(zip(labels, handles))
+    ax.legend(seen.values(), seen.keys(), framealpha=0.9, fontsize=7,
+              loc="lower right")
     fig.tight_layout()
     save(fig, "fig_mc")
 

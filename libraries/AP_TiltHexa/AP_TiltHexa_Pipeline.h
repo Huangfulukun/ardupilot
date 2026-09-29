@@ -40,7 +40,7 @@ struct TiltHexa_SensorInput {
 // ---- Reference input ----
 struct TiltHexa_Reference {
     float p_r[3];           // desired NED position (m)
-    float v_r[3];           // desired NED velocity (m/s)
+    float v_r[3];           // desired velocity NED (m/s)
     float a_r[3];           // desired NED acceleration (m/s^2)
     float yaw_r;            // desired yaw (rad)
     float yaw_rate_r;       // desired yaw rate (rad/s)
@@ -69,6 +69,7 @@ struct TiltHexa_Params {
 
     // INDI gains
     float Kp, Kv, Kw, KR;
+    float KpI;                 // bounded position integral gain
 
     // Filter cutoffs
     float filt_hz;                // accel/gyro/deriv LPF2 cutoff
@@ -269,6 +270,9 @@ private:
     // ---- Position/velocity actual (for feedback) ----
     float _pos_actual[3];
     float _vel_actual[3];
+
+    // ---- Bounded position integral (persistent across FLYING cycles) ----
+    float _pos_integral[3];
 };
 
 // ---- Standalone helpers (non-member, HAL-free) ----

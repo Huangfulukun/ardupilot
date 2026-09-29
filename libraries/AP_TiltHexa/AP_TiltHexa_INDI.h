@@ -35,6 +35,12 @@ struct TiltHexa_INDIInput {
     // Gain-scheduled attitude integral (accumulated externally, passed through)
     float attitude_integral[3]; // rad-s, anti-windup capped
 
+    // Bounded position integral (stateful, accumulated in thx_indi_compute).
+    // Rejects constant wind / mass / thrust mismatches that leave a steady
+    // position error under a PD position loop.
+    float pos_integral[3];    // accumulated position error (m-s), capped
+    float KpI;                // position integral gain (m/s^2 per m-s)
+
     // Gains
     float Kp, Kv;           // position, velocity
     float Kw, KR;           // angular rate, attitude

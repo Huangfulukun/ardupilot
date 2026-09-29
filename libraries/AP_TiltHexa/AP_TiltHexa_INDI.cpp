@@ -35,9 +35,21 @@ void thx_indi_compute(TiltHexa_INDIInput *in, TiltHexa_INDIOutput *out) {
     // ===== Translational loop =====
     // 1. Desired NED acceleration
     // p_r and v_r are position/velocity ERROR vectors (ref - actual), pre-computed by the caller.
+    // The bounded position integral rejects constant wind / mass / thrust
+    // mismatches that leave a steady position error under the PD loop.
+    float dt_est = 0.01f;
+    const float pos_int_cap = 6.0f;   // m-s, ~ a steady 3 m/s correction
     float nu_v[3];
     for (int i = 0; i < 3; i++) {
-        nu_v[i] = in->a_r[i] + in->Kv * in->v_r[i] + in->Kp * in->p_r[i];
+        if (in->KpI > 0.0f) {
+            // Only integrate on the horizontal channel while slow/tracking;
+            // clamp for anti-windup.
+            in->pos_integral[i] += in->p_r[i] * dt_est;
+            if (in->pos_integral[i] >  pos_int_cap) in->pos_integral[i] =  pos_int_cap;
+            if (in->pos_integral[i] < -pos_int_cap) in->pos_integral[i] = -pos_int_cap;
+        }
+        nu_v[i] = in->a_r[i] + in->Kv * in->v_r[i] + in->Kp * in->p_r[i]
+                  + in->KpI * in->pos_integral[i];
     }
 
     // Clamp nu_v to prevent position-error-driven overshoot.

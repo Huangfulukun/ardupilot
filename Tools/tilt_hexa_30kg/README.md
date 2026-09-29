@@ -148,6 +148,36 @@ python3 experiments/run_e4_bench.py        # E4: bench full mission
 python3 experiments/run_e5_robustness.py   # E5: bench gust + MC
 ```
 
+## Real-Binary SITL Robustness Campaign
+
+The paper's fixed robustness matrix (S4–S9) and the 20-seed Monte-Carlo study
+are flown on the real `build/sitl/bin/arduplane` binary, not on the in-process
+companion. The batch runner reuses the single, verified end-to-end recipe
+(Lua scripting-serial bridge, 100 Hz companion writing 16 servos) for every
+case, with each case assigned an isolated instance, working directory and log;
+all perturbations are injected on the FDM/object side (the firmware and bridge
+are unchanged).
+
+```bash
+cd Tools/tilt_hexa_30kg
+# whole campaign (fixed 8 + MC 20), serial, checkpoints written per case;
+# stdout/stderr are redirected to per-case logs (no un-drained pipes).
+python3 experiments/run_sitl_robust_batch.py        # ~70-90 min wall time
+# Re-derive the two summaries from the already-flown truth CSVs after any
+# metrics-module change (no re-flight, no fabrication):
+python3 analysis/recompute_sitl_robust.py
+```
+
+Honest results (real binary): **7/8 fixed scenarios pass** — S4 turn, S5 gust,
+S7 mass +15%, S8 CG 0.025, S9a thrust −10%, S9b surface −20%, S9c inertia +20%;
+the **steady 4 m/s crosswind (S6) fails** (the true steady crosswind envelope is
+≈3.0 m/s stable / 3.5 m/s bounded). The **Monte-Carlo returns 5/20 fully valid
+seeds** (25%); two more seeds hold attitude and altitude but do not finish the
+backward decel within the 100 s window, and the 13 tumbles are concentrated at
+the backward wing-to-hover transition and at high-wind cruise. These failure
+rates and root causes are reported as measured, without substituting companion
+results.
+
 ## Quick Start (SITL + FDM Smoke)
 
 Terminal 1 (physics backend):

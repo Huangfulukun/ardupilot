@@ -13,7 +13,10 @@ cd "$ROOT"
 # 2. §8 body curves from REAL SITL truth: proposed vs stock-native comparison,
 #    control inputs and realised-vs-propagated wrench (both real arduplane SITL)
 "$PY" analysis/make_transition_figs.py
-# 3. Corridor, trim, profile (real SITL), AWS, robustness, solve-time, MC
+# 3. Recompute real-binary SITL robustness summaries (tab:robust + fig:mc)
+#    from the already-flown truth CSVs, then rebuild corridor, trim, profile,
+#    AWS, robustness, solve-time and MC figures.
+"$PY" analysis/recompute_sitl_robust.py
 "$PY" paper/regenerate_figures.py
 # 4. Real arduplane SITL overview + native-vs-proposed attitude from truth CSVs
 "$PY" experiments/analyze_sitl.py

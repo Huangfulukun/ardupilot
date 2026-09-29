@@ -22,7 +22,7 @@ class WindModel:
         Args:
             wind_ned: (N, E, D) steady wind in m/s
             gust_params: dict with keys amp, t0, duration_s, or None
-            seed: integer seed for 5 min at 05:36, etc.
+            seed: integer seed for turbulence RNG
             wind_ramp: (t_start_s, duration_s) to ramp the steady wind in from
                 zero (cubic smoothstep); None for wind present from t=0.
         """

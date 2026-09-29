@@ -219,6 +219,8 @@
       "h_final_m": 59.92,
       "V_final_ms": 0.01,
       "h_min_m": 59.38,
+      "V_max_ms": 20.81,
+      "t_lift_s": 33.76,
       "n_rows": 52033,
       "attitude_ok": true,
       "alt_ok": true

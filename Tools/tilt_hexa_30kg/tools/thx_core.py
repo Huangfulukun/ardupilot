@@ -53,7 +53,7 @@ class THXSensorInput(ctypes.Structure):
         ("f_body", ctypes.c_float * 3),
         ("gyro", ctypes.c_float * 3),
         ("R_bn", ctypes.c_float * 9),
-        (v_ned", ctypes.c_float * 3),
+        ("v_ned", ctypes.c_float * 3),
         ("p_ned", ctypes.c_float * 3),
         ("airspeed", ctypes.c_float),
         ("airspeed_valid", ctypes.c_bool),
@@ -186,7 +186,7 @@ class TiltHexaPipeline:
         _thx.thx_reset(self._handle)
 
     def get_phase(self):
-        return _thx.thx_get_phase(self)
+        return _thx.thx_get_phase(self._handle)
 
     def __del__(self):
         if hasattr(self, '_handle') and self._handle:

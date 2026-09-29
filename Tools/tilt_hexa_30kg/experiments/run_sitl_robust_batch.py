@@ -153,7 +153,7 @@ def run_group(group, cases, out_root, timeout=320):
         summary = {"group": group, "n": 0, "results": []}
     done_ids = {r["case"] for r in summary["results"]}
 
-    for case_id, label, instance, kw in:
+    for case_id, label, instance, kw in cases:
         if case_id in done_ids:
             print(f"[skip] {case_id} already done", flush=True)
             continue

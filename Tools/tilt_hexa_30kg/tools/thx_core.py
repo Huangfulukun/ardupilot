@@ -35,6 +35,7 @@ class THXParams(ctypes.Structure):
         ("delta_dot_max_rad_s", ctypes.c_float * 4),
         ("T_off_N", ctypes.c_float), ("T_on_N", ctypes.c_float),
         ("Kp", ctypes.c_float), ("Kv", ctypes.c_float), ("Kw", ctypes.c_float), ("KR", ctypes.c_float),
+        ("KpI", ctypes.c_float),
         ("filt_hz", ctypes.c_float), ("act_filt_hz", ctypes.c_float), ("indi_rate_hz", ctypes.c_float),
         ("alloc_mode", ctypes.c_int),
         ("W_s", ctypes.c_float * 5),
@@ -52,7 +53,7 @@ class THXSensorInput(ctypes.Structure):
         ("f_body", ctypes.c_float * 3),
         ("gyro", ctypes.c_float * 3),
         ("R_bn", ctypes.c_float * 9),
-        ("v_ned", ctypes.c_float * 3),
+        (v_ned", ctypes.c_float * 3),
         ("p_ned", ctypes.c_float * 3),
         ("airspeed", ctypes.c_float),
         ("airspeed_valid", ctypes.c_bool),
@@ -185,7 +186,7 @@ class TiltHexaPipeline:
         _thx.thx_reset(self._handle)
 
     def get_phase(self):
-        return _thx.thx_get_phase(self._handle)
+        return _thx.thx_get_phase(self)
 
     def __del__(self):
         if hasattr(self, '_handle') and self._handle:
@@ -269,6 +270,7 @@ class SeedParams:
         self.Kv = 2.0
         self.Kw = 8.5
         self.KR = 30.0
+        self.KpI = 0.0
         self.filt_hz = 12.0
         self.act_filt_hz = 12.0
         self.indi_rate_hz = 100.0

@@ -1,0 +1,359 @@
+// @Param: MISSION
+// @DisplayName: TiltHexa mission
+// @Description: Selects the active mission/trajectory. 0=idle, 1=E2 transition, 2=E3 stress, 3=E4 full mission, 4=hover test
+// @Values: 0:Idle, 1:E2 transition, 2:E3 stress, 3:E4 full mission, 4:Hover test
+// @User: Standard
+AP_GROUPINFO("MISSION", 1, AP_TiltHexa, _mission, 0),
+
+// @Param: TEST_MODE
+// @DisplayName: TiltHexa test mode
+// @Description: 0=off, 1=hover outputs, 2=tilt sweep
+// @Values: 0:Off, 1:Hover, 2:Tilt sweep
+// @User: Standard
+AP_GROUPINFO("TEST_MODE", 2, AP_TiltHexa, _test_mode, 0),
+
+// @Param: MASS
+// @DisplayName: Vehicle mass
+// @Description: Vehicle mass in kg
+// @Range: 1 200
+// @Units: kg
+// @User: Standard
+AP_GROUPINFO("MASS", 3, AP_TiltHexa, _mass, THX_SEED_MASS_KG),
+
+// @Param: JXX
+// @DisplayName: Roll inertia
+// @Description: Body roll moment of inertia
+// @Range: 0.1 100
+// @User: Advanced
+AP_GROUPINFO("JXX", 4, AP_TiltHexa, _jxx, THX_SEED_IXX),
+
+// @Param: JYY
+// @DisplayName: Pitch inertia
+// @Description: Body pitch moment of inertia
+// @Range: 0.1 100
+// @User: Advanced
+AP_GROUPINFO("JYY", 5, AP_TiltHexa, _jyy, THX_SEED_IYY),
+
+// @Param: JZZ
+// @DisplayName: Yaw inertia
+// @Description: Body yaw moment of inertia
+// @Range: 0.1 100
+// @User: Advanced
+AP_GROUPINFO("JZZ", 6, AP_TiltHexa, _jzz, THX_SEED_IZZ),
+
+// @Param: THR_MAX
+// @DisplayName: Max rotor thrust
+// @Description: Maximum thrust per rotor in Newtons
+// @Range: 1 500
+// @Units: N
+// @User: Standard
+AP_GROUPINFO("THR_MAX", 7, AP_TiltHexa, _thr_max, THX_SEED_T_MAX_N),
+
+// @Param: TILT_MIN
+// @DisplayName: Min tilt angle
+// @Description: Minimum nacelle tilt angle in degrees (0 = vertical for hover)
+// @Range: 0 90
+// @Units: deg
+// @User: Advanced
+AP_GROUPINFO("TILT_MIN", 8, AP_TiltHexa, _tilt_min, 0),
+
+// @Param: TILT_MAX
+// @DisplayName: Max tilt angle
+// @Description: Maximum nacelle tilt angle in degrees (90 = full forward for fixed-wing)
+// @Range: 0 90
+// @Units: deg
+// @User: Standard
+AP_GROUPINFO("TILT_MAX", 9, AP_TiltHexa, _tilt_max, 90),
+
+// @Param: TILT_RATE
+// @DisplayName: Tilt rate limit
+// @Description: Maximum nacelle tilt rate in degrees per second
+// @Range: 1 200
+// @Units: deg/s
+// @User: Advanced
+AP_GROUPINFO("TILT_RATE", 10, AP_TiltHexa, _tilt_rate, 60),
+
+// @Param: THR_OFF
+// @DisplayName: Thrust off threshold
+// @Description: Low-thrust hysteresis off threshold (N); below this the nacelle tilt freezes
+// @Range: 0 50
+// @User: Advanced
+AP_GROUPINFO("THR_OFF", 11, AP_TiltHexa, _thr_off, 2.0f),
+
+// @Param: THR_ON
+// @DisplayName: Thrust on threshold
+// @Description: Low-thrust hysteresis on threshold (N); above this the nacelle tilt unfreezes
+// @Range: 0 50
+// @User: Advanced
+AP_GROUPINFO("THR_ON", 12, AP_TiltHexa, _thr_on, 5.0f),
+
+// @Param: POLY_N
+// @DisplayName: Allocation polynomial
+// @Description: Thrust polynomial exponent for actuator model
+// @Range: 1 4
+// @User: Advanced
+AP_GROUPINFO("POLY_N", 13, AP_TiltHexa, _poly_n, 2),
+
+// @Param: FILT_HZ
+// @DisplayName: Sensor filter cutoff
+// @Description: Butterworth filter cutoff frequency for sensor signals
+// @Range: 1 200
+// @Units: Hz
+// @User: Advanced
+AP_GROUPINFO("FILT_HZ", 14, AP_TiltHexa, _filt_hz, 20),
+
+// @Param: ACT_FILT_HZ
+// @DisplayName: Actuator filter cutoff
+// @Description: Second-order filter cutoff for actuator estimate
+// @Range: 1 200
+// @Units: Hz
+// @User: Advanced
+AP_GROUPINFO("ACT_FILT_HZ", 15, AP_TiltHexa, _act_filt_hz, 30),
+
+// @Param: INDI_RATE
+// @DisplayName: Controller rate
+// @Description: INDI controller update rate in Hz
+// @Range: 10 1000
+// @Units: Hz
+// @User: Advanced
+AP_GROUPINFO("INDI_RATE", 16, AP_TiltHexa, _indi_rate, 33),
+
+// @Param: KP
+// @DisplayName: Position gain
+// @Description: Position feedback gain (outer loop)
+// @Range: 0 50
+// @User: Advanced
+AP_GROUPINFO("KP", 17, AP_TiltHexa, _indi_kp, 8.0f),
+
+// @Param: KV
+// @DisplayName: Velocity gain
+// @Description: Velocity feedback gain
+// @Range: 0 50
+// @User: Advanced
+AP_GROUPINFO("KV", 18, AP_TiltHexa, _indi_kv, 5.0f),
+
+// @Param: KW
+// @DisplayName: Angular accel gain
+// @Description: Angular acceleration (INDI) gain
+// @Range: 0 50
+// @User: Advanced
+AP_GROUPINFO("KW", 19, AP_TiltHexa, _indi_kw, 6.0f),
+
+// @Param: KR
+// @DisplayName: Attitude gain
+// @Description: Attitude (angular) feedback gain
+// @Range: 0 50
+// @User: Advanced
+AP_GROUPINFO("KR", 20, AP_TiltHexa, _indi_kr, 4.0f),
+
+// @Param: ALLOC_MODE
+// @DisplayName: Allocator mode
+// @Description: 0=weighted PI, 1=constrained QP
+// @Values: 0:PI, 1:QP
+// @User: Advanced
+AP_GROUPINFO("ALLOC_MODE", 21, AP_TiltHexa, _alloc_mode, 1),
+
+// @Param: QP_ITER
+// @DisplayName: QP max iterations
+// @Description: Maximum QP solver iterations
+// @Range: 1 200
+// @User: Advanced
+AP_GROUPINFO("QP_ITER", 22, AP_TiltHexa, _qp_max_iter, 60),
+
+// @Param: W_FX
+// @DisplayName: Wrench weight Fx
+// @Description: Allocation weight for longitudinal force
+// @Range: 0.1 1000
+// @User: Advanced
+AP_GROUPINFO("W_FX", 23, AP_TiltHexa, _ws_fx, 100),
+
+// @Param: W_FZ
+// @DisplayName: Wrench weight Fz
+// @Description: Allocation weight for vertical force
+// @Range: 0.1 1000
+// @User: Advanced
+AP_GROUPINFO("W_FZ", 24, AP_TiltHexa, _ws_fz, 200),
+
+// @Param: W_MX
+// @DisplayName: Wrench weight Mx
+// @Description: Allocation weight for roll moment
+// @Range: 0.1 1000
+// @User: Advanced
+AP_GROUPINFO("W_MX", 25, AP_TiltHexa, _ws_mx, 100),
+
+// @Param: W_MY
+// @DisplayName: Wrench weight My
+// @Description: Allocation weight for pitch moment
+// @Range: 0.1 1000
+// @User: Advanced
+AP_GROUPINFO("W_MY", 26, AP_TiltHexa, _ws_my, 100),
+
+// @Param: W_MZ
+// @DisplayName: Wrench weight Mz
+// @Description: Allocation weight for yaw moment
+// @Range: 0.1 1000
+// @User: Advanced
+AP_GROUPINFO("W_MZ", 27, AP_TiltHexa, _ws_mz, 100),
+
+// @Param: W_DU
+// @DisplayName: Incremental weight
+// @Description: Allocation weight for actuator increment (rate effort)
+// @Range: 0.001 100
+// @User: Advanced
+AP_GROUPINFO("W_DU", 28, AP_TiltHexa, _w_du, 0.5f),
+
+// @Param: W_U
+// @DisplayName: Actuator magnitude weight
+// @Description: Allocation weight for actuator magnitude
+// @Range: 0.001 100
+// @User: Advanced
+AP_GROUPINFO("W_U", 29, AP_TiltHexa, _w_u, 0.1f),
+
+// @Param: ACT_MODEL
+// @DisplayName: Actuator model
+// @Description: 0=command-only, 1=first-order actuator dynamics
+// @Values: 0:Off, 1:On
+// @User: Advanced
+AP_GROUPINFO("ACT_MODEL", 30, AP_TiltHexa, _act_model, 1),
+
+// @Param: ALT
+// @DisplayName: Target altitude
+// @Description: Target altitude in meters for climb/hover
+// @Range: 1 500
+// @Units: m
+// @User: Standard
+AP_GROUPINFO("ALT", 31, AP_TiltHexa, _alt_m, 60),
+
+// @Param: CRUISE
+// @DisplayName: Cruise speed
+// @Description: Target cruise airspeed in m/s
+// @Range: 1 60
+// @Units: m/s
+// @User: Standard
+AP_GROUPINFO("CRUISE", 32, AP_TiltHexa, _cruise_m_s, 20),
+
+// @Param: ACCEL
+// @DisplayName: Forward acceleration
+// @Description: Forward acceleration in m/s^2 during transition
+// @Range: 0.1 10
+// @Units: m/s^2
+// @User: Advanced
+AP_GROUPINFO("ACCEL", 33, AP_TiltHexa, _accel_m_s2, 2.0f),
+
+// @Param: DECEL
+// @DisplayName: Backward deceleration
+// @Description: Backward deceleration in m/s^2 during back transition
+// @Range: 0.1 10
+// @Units: m/s^2
+// @User: Advanced
+AP_GROUPINFO("DECEL", 34, AP_TiltHexa, _decel_m_s2, 1.0f),
+
+// @Param: HOVER_DUR
+// @DisplayName: Hover duration
+// @Description: Hover duration in seconds (E4 initial/final hover)
+// @Range: 0 120
+// @Units: s
+// @User: Advanced
+AP_GROUPINFO("HOVER_DUR", 35, AP_TiltHexa, _hover_dur_s, 8),
+
+// @Param: CRUISE_DUR
+// @DisplayName: Cruise duration
+// @Description: Cruise duration in seconds (E4 wing-borne leg)
+// @Range: 0 300
+// @Units: s
+// @User: Advanced
+AP_GROUPINFO("CRUISE_DUR", 36, AP_TiltHexa, _cruise_dur_s, 16),
+
+// @Param: TURN_RATE
+// @DisplayName: Turn rate
+// @Description: Turn rate in degrees per second (S4 coordinated turn)
+// @Range: 0 60
+// @Units: deg/s
+// @User: Advanced
+AP_GROUPINFO("TURN_RATE", 37, AP_TiltHexa, _turn_rate_dps, 12),
+
+// @Param: PITCH_MAX
+// @DisplayName: Max pitch attitude
+// @Description: Maximum pitch attitude in degrees at cruise
+// @Range: 0 45
+// @Units: deg
+// @User: Advanced
+AP_GROUPINFO("PITCH_MAX", 38, AP_TiltHexa, _pitch_max, 15),
+
+// @Param: E3_V
+// @DisplayName: E3 cruise speed
+// @Description: E3 stress mission cruise speed
+// @Range: 1 60
+// @User: Advanced
+AP_GROUPINFO("E3_V", 39, AP_TiltHexa, _e3_v, 20),
+
+// @Param: E3_LAMBDA
+// @DisplayName: E3 stress lambda
+// @Description: E3 stress injection magnitude
+// @Range: 0 5
+// @User: Advanced
+AP_GROUPINFO("E3_LAMBDA", 40, AP_TiltHexa, _e3_lambda, 0.5f),
+
+// @Param: E3_DFX
+// @DisplayName: E3 disturbance Fx
+// @Description: E3 longitudinal force disturbance
+// @User: Advanced
+AP_GROUPINFO("E3_DFX", 41, AP_TiltHexa, _e3_dfx, 20),
+
+// @Param: E3_DFZ
+// @DisplayName: E3 disturbance Fz
+// @Description: E3 vertical force disturbance
+// @User: Advanced
+AP_GROUPINFO("E3_DFZ", 42, AP_TiltHexa, _e3_dfz, -15),
+
+// @Param: E3_DMX
+// @DisplayName: E3 disturbance Mx
+// @Description: E3 roll moment disturbance
+// @User: Advanced
+AP_GROUPINFO("E3_DMX", 43, AP_TiltHexa, _e3_dmx, 8),
+
+// @Param: EXT_EN
+// @DisplayName: External companion enable
+// @Description: 1=external companion node writes 16 servo PWM directly (RC override); internal controller is bypassed
+// @Values: 0:Disabled, 1:Enabled
+// @User: Advanced
+AP_GROUPINFO("EXT_EN", 44, AP_TiltHexa, _ext_enable, 0),
+
+// @Param: FW_THRESH
+// @DisplayName: FW conversion threshold
+// @Description: Ground speed above which the fixed-wing conversion blend begins
+// @Range: 1 30
+// @Units: m/s
+// @User: Advanced
+AP_GROUPINFO("FW_THRESH", 45, AP_TiltHexa, _fw_thresh_m_s, 5.0f),
+
+// @Param: FW_BETA
+// @DisplayName: FW target nacelle beta
+// @Description: Target nacelle tilt angle (deg) at full wing-borne conversion; 90 = fully horizontal
+// @Range: 0 90
+// @Units: deg
+// @User: Advanced
+AP_GROUPINFO("FW_BETA", 46, AP_TiltHexa, _fw_target_beta, 90),
+
+// @Param: FW_KSP
+// @DisplayName: FW speed correction
+// @Description: Fixed-wing inner-loop speed correction gain on collective thrust
+// @Range: 0 20
+// @User: Advanced
+AP_GROUPINFO("FW_KSP", 47, AP_TiltHexa, _fw_ksp, 1.5f),
+
+// @Param: ROTOR_Z
+// @DisplayName: Rotor vertical offset
+// @Description: Vertical offset of rotor plane above CG (m); negative = above
+// @Range: -1 1
+// @Units: m
+// @User: Advanced
+AP_GROUPINFO("ROTOR_Z", 48, AP_TiltHexa, _rotor_z, THX_SEED_ROTOR_Z_M),
+
+// @Param: ARM_L
+// @DisplayName: Arm length
+// @Description: Moment arm length used for rotor moment computation
+// @Range: 0.1 3
+// @Units: m
+// @User: Advanced
+AP_GROUPINFO("ARM_L", 49, AP_TiltHexa, _arm_l, THX_SEED_ARM_RADIUS_M),

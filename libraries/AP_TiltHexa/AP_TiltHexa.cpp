@@ -181,6 +181,7 @@ const AP_Param::GroupInfo AP_TiltHexa::var_info[] = {
 
     // @Param: QP_MAX_ITER
     // @DisplayName: QP max iterations
+    // @DisplayName: QP max iterations
     // @Description: Maximum QP active-set iterations
     // @Range: 5 50
     // @User: Advanced
@@ -1010,7 +1011,7 @@ void AP_TiltHexa::form_estimates(void)
     }
 
     // Filter actuator estimate through same LPF2 as sensors
-    // (Actuator model + LPF2) matching per Section 0.5)
+    // (Actuator model + LPF2 matching per Section 0.5)
     // The same second-order Butterworth at THX_ACT_FILT_HZ is applied to each u_f element
     // to match the phase lag of the accelerometer and gyro filter chains.
     float act_dt = 1.0f / indi_hz;
@@ -1534,7 +1535,7 @@ void AP_TiltHexa::apply_actuator_outputs(void)
             ri = 10;
         }
         float fr = 0.0f;
-        if (ri < 10) { fr = (Vq - TRIM[ri].V) / (TRIM[i+1].V - TRIM[ri].V); }
+        if (ri < 10) { fr = (Vq - TRIM[ri].V) / (TRIM[ri+1].V - TRIM[ri].V); }
         auto L = [&](int col) -> float {
             const float *a = &TRIM[ri].theta; const float *b = &TRIM[ri+1].theta;
             return (1.0f-fr)*a[col] + fr*b[col];

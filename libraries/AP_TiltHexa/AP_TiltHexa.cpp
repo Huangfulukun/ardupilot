@@ -181,7 +181,6 @@ const AP_Param::GroupInfo AP_TiltHexa::var_info[] = {
 
     // @Param: QP_MAX_ITER
     // @DisplayName: QP max iterations
-    // @DisplayName: QP max iterations
     // @Description: Maximum QP active-set iterations
     // @Range: 5 50
     // @User: Advanced
@@ -1105,7 +1104,9 @@ void AP_TiltHexa::run_indi_controller(void)
     _indi_in.mass_kg = _mass.get();
     _indi_in.J_diag[0] = _jxx.get();
     _indi_in.J_diag[1] = _jyy.get();
-    _indi_in.J_diag[2] = _jzz.get();
+    _indi_in.rotor_pos[0] = 0.0f;
+    _indi_in.rotor_pos[1] = 0.0f;
+    _indi_in.rotor_pos[2] = 0.0f;
     _indi_in.w_f_prev = _w_f_prev;
 
     // Gains

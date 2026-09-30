@@ -1104,9 +1104,7 @@ void AP_TiltHexa::run_indi_controller(void)
     _indi_in.mass_kg = _mass.get();
     _indi_in.J_diag[0] = _jxx.get();
     _indi_in.J_diag[1] = _jyy.get();
-    _indi_in.rotor_pos[0] = 0.0f;
-    _indi_in.rotor_pos[1] = 0.0f;
-    _indi_in.rotor_pos[2] = 0.0f;
+    _indi_in.J_diag[2] = _jzz.get();
     _indi_in.w_f_prev = _w_f_prev;
 
     // Gains

@@ -523,7 +523,7 @@ AP_TiltHexa::AP_TiltHexa() :
     memset(_vel_actual, 0, sizeof(_vel_actual));
     memset(&_w_f_prev, 0, sizeof(_w_f_prev));
     memset(&_w_f_est, 0, sizeof(_w_f_est));
-    memset(&_u_prev, 0, sizeof(_u_prev));
+    memset(_u_prev, 0, sizeof(_u_prev));
     memset(_u_prev_vec, 0, sizeof(_u_prev_vec));
     memset(_R_bn, 0, sizeof(_R_bn));
     memset(&_traj_ref, 0, sizeof(_traj_ref));
@@ -1657,7 +1657,7 @@ void AP_TiltHexa::write_logs(void)
             LOG_PACKET_HEADER_INIT(LOG_THXE_MSG),
             time_us : now_us,
             Ex : _indi_out.w_d.Fx - _alloc_out.w_achieved.Fx,
-            Ez : _indi_out.w_d.Fz - _alloc_out.w_achieved.Fz,
+            Ez : _indi_out.w_d.Fz - _alloc_out.w_achieved.Fx,
             ER : _indi_out.w_d.Mx - _alloc_out.w_achieved.Mx,
             EP : _indi_out.w_d.My - _alloc_out.w_achieved.My,
             EY : _indi_out.w_d.Mz - _alloc_out.w_achieved.Mz,
@@ -1809,7 +1809,7 @@ void AP_TiltHexa::update_trajectory(float dt)
     }
 
     // The trajectory clock starts when the pipeline hands over to closed-loop
-    // flight (spool-up, runs before that); until then the reference is the
+    // flight (spool-up runs before that); until then the reference is the
     // ground point at the origin.
     {
         const uint8_t ppl_phase = _pipeline.get_phase();
@@ -2092,7 +2092,7 @@ void AP_TiltHexa::sync_pipeline_to_legacy(void)
 
     // Sync safety-net clamp flags
     _w_d_clamped     = _pipeline_telem.w_d_clamped;
-    _output_clamped  = _pipeline_telem.output_clamped;
+    _output_clamped  = _pipeline_telem.solver_status;
 
     // Sync _has_feasible_solution (for apply_actuator_outputs condition)
     _has_feasible_solution = _pipeline_telem.airborne ||

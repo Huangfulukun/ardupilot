@@ -1,0 +1,421 @@
+            qp_diag_counter = 0;
+            float total_T = 0.0f;
+            for (int i = 0; i < AP_TILTHEXA_N_U; i++) total_T += fabsf(qp_res.u_opt[i]);
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "QP: sz=%d it=%d T=%.0f uz=%.0f",
+                          qp_res.status, qp_res.iterations,
+                          (double)total_T, (double)qp_res.u_opt[1]);
+        }
+
+        if (qp_res.status == THX_SOLVER_OK) {
+            // Success: copy solution
+            for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+                _u_prev_vec[i] = qp_res.u_opt[i];
+            }
+            float *wa = (float*)&_alloc_out.w_achieved;
+            for (int i = 0; i < AP_TILTHEXA_N_W; i++) {
+                wa[i] = qp_res.w_achieved[i];
+            }
+            _has_feasible_solution = true;
+        } else {
+            // QP failure: fallback
+            // Preserve the QP's raw failure status; log both original and effective status
+            int qp_raw_status = qp_res.status;
+            if (qp_raw_status != (int)THX_SOLVER_OK) {
+                _alloc_out.solver_status = qp_raw_status;
+            } else {
+                _alloc_out.solver_status = (int)THX_SOLVER_NUMERICAL;
+            }
+            if (_has_feasible_solution) {
+                // Keep previous feasible solution; solver_status already reflects QP failure
+                // n_active_constraints from previous solve is stale; set to -1 to signal fallback
+                _alloc_out.n_active_constraints = -1;
+            } else {
+                // Fallback to PI
+                TiltHexa_PIResult pi_res = _pi_solver.solve(&_alloc_in);
+                for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+                    _u_prev_vec[i] = pi_res.u[i];
+                }
+                float *wa = (float*)&_alloc_out.w_achieved;
+                for (int i = 0; i < AP_TILTHEXA_N_W; i++) {
+                    wa[i] = pi_res.w_achieved[i];
+                }
+                _alloc_out.alloc_mode = 0;  // mark as PI fallback
+            }
+        }
+    } else {
+        // Weighted PI + physical clipping
+        TiltHexa_PIResult pi_res = _pi_solver.solve(&_alloc_in);
+        for (int i = 0; i < AP_TILTHEXA_N_U; i++) {
+            _u_prev_vec[i] = pi_res.u[i];
+        }
+        float *wa = (float*)&_alloc_out.w_achieved;
+        for (int i = 0; i < AP_TILTHEXA_N_W; i++) {
+            wa[i] = pi_res.w_achieved[i];
+        }
+        _alloc_out.solver_status = THX_SOLVER_OK;
+        _alloc_out.solver_iterations = 0;
+        _alloc_out.n_active_constraints = pi_res.clip_count;
+        _alloc_out.sig_min = pi_res.sig_min;
+        _has_feasible_solution = true;
+    }
+
+    _alloc_out.solver_time_us = AP_HAL::micros() - t_start;
+
+    // Compute SigmaMin of non-dimensionalised B~
+    {
+        float D_u_diag[AP_TILTHEXA_N_U];
+        float D_w_diag[AP_TILTHEXA_N_W];
+        for (int i = 0; i < 12; i++) D_u_diag[i] = _thr_max.get();
+        for (int i = 12; i < 16; i++) D_u_diag[i] = deg2rad(THX_SEED_AIL_MAX_DEG);
+        float mg = _mass.get() * 9.80665f;
+        float mgL = mg * _arm_l.get();
+        D_w_diag[0] = mg;
+        D_w_diag[1] = mg;
+        D_w_diag[2] = mgL;
+        D_w_diag[3] = mgL;
+        D_w_diag[4] = mgL;
+        _alloc_out.sig_min = thx_effectiveness_sigma_min(&_B, D_u_diag, D_w_di, 20);
+    }
+
+    // Convert flat vector back to actuator state struct
+    for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
+        float ux = _u_prev_vec[2*i];
+        float uz = _u_prev_vec[2*i+1];
+        float T = sqrtf(ux*ux + uz*uz);
+        float beta = atan2f(ux, uz);
+
+        // Low-thrust hysteresis state machine (Section 0.6):
+        //   frozen -> unfrozen when T >= T_on
+        //   unfrozen -> frozen when T <= T_off
+        bool was_frozen = _u_prev.rotors[i].tilt_frozen;
+        if (was_frozen && T >= _thr_on.get()) {
+            _u_prev.rotors[i].tilt_frozen = false;
+        } else if (!was_frozen && T <= _thr_off.get()) {
+            _u_prev.rotors[i].tilt_frozen = true;
+        }
+
+        _u_prev.rotors[i].u_x = ux;
+        _u_prev.rotors[i].u_z = uz;
+        _u_prev.rotors[i].thrust_N = T;
+        _u_prev.rotors[i].tilt_rad = beta;
+    }
+    for (int i = 0; i < AP_TILTHEXA_N_SURF; i++) {
+        _u_prev.surfaces_rad[i] = _u_prev_vec[12 + i];
+    }
+
+    // Copy u_out and recompute w_achieved
+    memcpy(&_alloc_out.u_out, &_u_prev, sizeof(_alloc_out.u_out));
+
+    float *wa = (float*)&_alloc_out.w_achieved;
+    for (int i = 0; i < AP_TILTHEXA_N_W; i++) {
+        wa[i] = 0.0f;
+        for (int j = 0; j < AP_TILTHEXA_N_U; j++) {
+            wa[i] += _B.get(i, j) * _u_prev_vec[j];
+        }
+    }
+}
+
+// ============================================================
+// 7. APPLY ACTUATOR OUTPUTS
+// ============================================================
+
+void AP_TiltHexa::apply_actuator_outputs(void)
+{
+    // === Companion bypass: THX_EXT_EN=1 -> write 16 servo PWM directly from
+    // RC_CHANNELS_OVERRIDE (companion node). Channels: 1-6 motors, 7-12 tilts,
+    // 13 flaperonL, 14 flaperonR, 15 vtailL, 16 vtailR.
+    if (_ext_enable.get() == 1) {
+        for (uint8_t i = 0; i < 16; i++) {
+            const uint16_t pwm = ext_target[i];
+            if (pwm < 100) continue;
+            SRV_Channel::Function f;
+            switch (i) {
+                case 0: f = SRV_Channel::k_motor1; break;
+                case 1: f = SRV_Channel::k_motor2; break;
+                case 2: f = SRV_Channel::k_motor3; break;
+                case 3: f = SRV_Channel::k_motor4; break;
+                case 4: f = SRV_Channel::k_motor5; break;
+                case 5: f = SRV_Channel::k_motor6; break;
+                case 6: f = SRV_Channel::k_tiltHexa1; break;
+                case 7: f = SRV_Channel::k_tiltHexa2; break;
+                case 8: f = SRV_Channel::k_tiltHexa3; break;
+                case 9: f = SRV_Channel::k_tiltHexa4; break;
+                case 10: f = SRV_Channel::k_tiltHexa5; break;
+                case 11: f = SRV_Channel::k_tiltHexa6; break;
+                case 12: f = SRV_Channel::k_flaperon_left; break;
+                case 13: f = SRV_Channel::k_flaperon_right; break;
+                case 14: f = SRV_Channel::k_vtail_left; break;
+                default: f = SRV_Channel::k_vtail_right; break;
+            }
+            SRV_Channels::set_output_pwm(f, pwm);
+        }
+        return;
+    }
+
+    static const SRV_Channel::Function motor_funcs[6] = {
+        SRV_Channel::k_motor1, SRV_Channel::k_motor2, SRV_Channel::k_motor3,
+        SRV_Channel::k_motor4, SRV_Channel::k_motor5, SRV_Channel::k_motor6
+    };
+    static const SRV_Channel::Function tilt_funcs[6] = {
+        SRV_Channel::k_tiltHexa1, SRV_Channel::k_tiltHexa2, SRV_Channel::k_tiltHexa3,
+        SRV_Channel::k_tiltHexa4, SRV_Channel::k_tiltHexa5, SRV_Channel::k_tiltHexa6
+    };
+
+    // Fixed-wing conversion blend: above FW_THRESH_M_S in the forward
+    // (accel/cruise) phases, smoothly drive the nacelles toward
+    // FW_TARGET_BETA so the wing carries lift at cruise. The allocator alone
+    // is minimum-norm and settles at a small beta (rotors still lift), which
+    // is why the unmodified firmware never reaches a true 90 deg wing-borne
+    // cruise. On the decel/back-transition leg the blend eases out so the
+    // rotors re-tilt to vertical.
+    float fw_frac = 0.0f;
+    static float decel_t = -1.0f;
+    static uint32_t decel_t0_ms = 0;
+    const float fw_thresh = _fw_thresh_m_s.get();
+    const float v_cruise = _cruise_m_s.get();
+    float Vnow = 0.0f;
+    if (fw_thresh > 0.5f &&
+        (_traj_phase == THX_PHASE_ACCEL || _traj_phase == THX_PHASE_CRUISE_1 ||
+         _traj_phase == THX_PHASE_TURN  || _traj_phase == THX_PHASE_CRUISE_2 ||
+         _traj_phase == THX_PHASE_DECEL)) {
+        // Use the EKF ground speed magnitude directly: in the JSON-SITL
+        // pipeline path the legacy _V_f member is not refreshed (gather_sensors
+        // is bypassed), so we cannot rely on it. Ground speed is a valid proxy
+        // for forward conversion speed.
+        Vector3f gndvel;
+        if (!AP::ahrs().get_velocity_NED(gndvel)) { gndvel.zero(); }
+        Vnow = gndvel.length();
+        // Deceleration ramp: on the back-transition (DECEL) actively command a
+        // speed target that smoothly ramps from v_cruise down to 0 over ~22 s
+        // (smoothstep), instead of letting drag slow the aircraft. The corridor
+        // table is indexed by this *target* speed (which leads the actual speed),
+        // so beta/thrust/elevator pre-schedule before the wing unloads.
+        if (_traj_phase == THX_PHASE_DECEL) {
+            if (decel_t < 0.0f) { decel_t0_ms = AP_HAL::millis(); decel_t = 0.0f; }
+            decel_t = (AP_HAL::millis() - decel_t0_ms) * 0.001f;
+        } else {
+            decel_t = -1.0f;
+        }
+        // Crossfade over the whole conversion corridor (V=5..20): below 5 the
+        // rotors carry the vehicle vertically (INDI), above 20 it is pure
+        // wing-borne. Between, the corridor-trim table feed-forwards beta/T/drv.
+        fw_frac = (Vnow - 5.0f) / (v_cruise - 5.0f);
+        if (fw_frac < 0.0f) fw_frac = 0.0f;
+        if (fw_frac > 1.0f) fw_frac = 1.0f;
+    }
+    const float fw_beta_deg = _fw_target_beta.get();
+    (void)fw_beta_deg;
+
+    // collective mean of the allocator thrusts (preserve a little differential
+    // roll/pitch when we re-target the collective forward)
+    float mean_T = 0.0f;
+    for (uint8_t i = 0; i < 6; i++) { mean_T += _u_prev.rotors[i].thrust_N; }
+    mean_T /= 6.0f;
+
+    // ============================================================
+    // WING-BORNE FLIGHT MODE: independent FW inner loop TAKES OVER the
+    // aerodynamic surfaces (crossfaded by airspeed), rather than overlaying the
+    // rotor-borne INDI loop.  At w->1 the nacelles are at beta=90 deg and:
+    //   * ailerons (flaperon diff.)  -> roll
+    //   * symmetric vtail (elevator) -> pitch, and pitch is scheduled by altitude
+    //   * collective rotor thrust    -> forward speed
+    // The rotor differential channels lose their vertical-arm geometry at
+    // beta=90, so attitude MUST come from the surfaces once speed is sufficient.
+    // w grows 0->1 over the conversion zone so the surfaces take over BEFORE the
+    // rotors lose authority (no control-authority vacuum).
+    float w = fw_frac;  // already clamped [0,1] over [fw_thresh, cruise]
+    static float w_prev = 0.0f;
+    if (w > 0.001f) {
+        if (w_prev < 0.05f && w >= 0.05f) { _fw_alt_int_rad = 0.0f; } // bumpless entry
+        w_prev = w;
+        // attitude from DCM (body->NED)
+        const float sin_pitch = constrain_float(-_R_bn[2], -1.0f, 1.0f);
+        const float pitch = asinf(sin_pitch);
+        const float roll  = atan2f(_R_bn[5], _R_bn[8]);
+        const float p = _gyro_f[0];  // roll rate rad/s
+        const float q = _gyro_f[1];  // pitch rate rad/s
+
+        // === Corridor-trim feedforward (from tools/trim_map.py, 1 m/s table) ===
+        // Index the plant-consistent level-flight trim by current speed so that
+        // rotor vertical component + wing lift always balance the weight. This
+        // is symmetric in V: forward 0->20 and backward 20->0 both use the same
+        // table, eliminating the lift collapse / thrust-snap of the pure-P loop.
+        static const struct { float V, theta, beta, T, drv; } TRIM[] = {
+            { 0.0f,  0.00f,  0.00f, 49.03f,   0.00f },
+            { 5.0f,  2.50f,  2.72f, 48.31f, -17.10f },
+            {10.0f,  7.50f,  9.94f, 41.90f, -17.80f },
+            {13.0f, 10.00f, 17.20f, 34.29f, -17.63f },
+            {15.0f, 11.50f, 25.61f, 28.01f, -17.77f },
+            {17.0f, 12.50f, 39.27f, 21.73f, -17.45f },
+            {18.0f, 13.00f, 60.72f, 18.97f, -17.42f },
+            {19.0f, 12.00f, 81.31f, 16.83f, -15.33f },
+            {20.0f, 15.05f, 90.00f, 17.55f, -19.03f },
+            {22.0f, 10.07f, 90.00f, 13.24f, -11.59f },
+            {25.0f,  6.35f, 90.00f, 10.24f,  -6.68f },
+        };
+        // On DECEL, index the table by the *target* speed (which ramps down over
+        // 22 s) so beta/thrust/elevator pre-schedule before the wing unloads; on
+        // accel/cruise we track the measured speed.
+        float V_lookup = Vnow;
+        if (_traj_phase == THX_PHASE_DECEL && decel_t >= 0.0f) {
+            const float T_back = 22.0f;
+            float s = constrain_float(decel_t / T_back, 0.0f, 1.0f);
+            s = s*s*(3.0f-2.0f*s);  // smoothstep ramp
+            V_lookup = v_cruise * (1.0f - s);
+        }
+        // linear interpolate the trim row at V_lookup
+        float Vq = constrain_float(V_lookup, 0.0f, 25.0f);
+        int ri = 0;
+        for (int i = 0; i < 10; i++) {
+            if (Vq >= TRIM[i].V && Vq <= TRIM[i+1].V) { ri = i; break; }
+            ri = 10;
+        }
+        float fr = 0.0f;
+        if (ri < 10) { fr = (Vq - TRIM[ri].V) / (TRIM[i+1].V - TRIM[ri].V); }
+        auto L = [&](int col) -> float {
+            const float *a = &TRIM[ri].theta; const float *b = &TRIM[ri+1].theta;
+            return (1.0f-fr)*a[col] + fr*b[col];
+        };
+        float trim_th_deg  = L(0);
+        float trim_beta_deg= L(1);
+        float trim_T_N     = L(2);
+        float trim_drv_deg = L(3);
+
+        // --- rate-limit the nacelle tilt command (<=40 deg/s) so the back
+        // transition tilts back over ~2-3 s minimum instead of snapping. ---
+        static float beta_cmd_deg = 90.0f;
+        const float dt_loop = 0.02f;  // ~50 Hz
+        float beta_err = trim_beta_deg - beta_cmd_deg;
+        beta_err = constrain_float(beta_err, -40.0f*dt_loop, 40.0f*dt_loop);
+        beta_cmd_deg += beta_err;
+        trim_beta_deg = beta_cmd_deg;
+
+        // --- thrust: trim feedforward + small speed correction toward target ---
+        float fw_T = trim_T_N + _fw_ksp.get() * (V_lookup - Vnow);
+        fw_T = constrain_float(fw_T, 2.0f, _thr_max.get());
+
+        // --- pitch: trim elevator + small tracking around trim theta ---
+        const float alt_ref = _alt_m.get();
+        const float alt_act = -_pos_actual[2];
+        const float alt_err = alt_ref - alt_act;
+        _fw_alt_int_rad += deg2rad(1.0f) * alt_err * 0.02f;
+        _fw_alt_int_rad = constrain_float(_fw_alt_int_rad, deg2rad(-4.0f), deg2rad(4.0f));
+        const float pitch_err = deg2rad(trim_th_deg) - pitch;
+        float elev = deg2rad(trim_drv_deg) - _fw_alt_int_rad
+                     - 2.0f * pitch_err + 0.8f * q;
+        elev = constrain_float(elev, deg2rad(-22.0f), deg2rad(0.0f));
+
+        // --- roll loop -> differential aileron ---
+        const float roll_err = 0.0f - roll;
+        float ail = 3.5f * roll_err + 0.12f * p;
+        ail = constrain_float(ail, deg2rad(-20.0f), deg2rad(20.0f));
+
+        // --- blend rotors: mean thrust -> trim T, beta -> trim beta ---
+        for (uint8_t i = 0; i < 6; i++) {
+            float T_N = _u_prev.rotors[i].thrust_N;
+            float beta_deg = rad2deg(_u_prev.rotors[i].tilt_rad);
+            beta_deg = (1.0f - w) * beta_deg + w * trim_beta_deg;
+            _u_prev.rotors[i].tilt_rad = deg2rad(beta_deg);
+            const float dev = T_N - mean_T;
+            float T_fw = fw_T + 0.3f * dev;
+            T_fw = constrain_float(T_fw, 2.0f, _thr_max.get());
+            T_N = (1.0f - w) * T_N + w * T_fw;
+            SRV_Channels::set_output_pwm(motor_funcs[i], thrust_to_pwm(T_N, _thr_max.get()));
+            SRV_Channels::set_output_pwm(tilt_funcs[i], tilt_deg_to_pwm(beta_deg));
+        }
+
+        // --- blend aerodynamic surfaces: INDI surfaces -> FW surfaces ---
+        const float aL = (1.0f - w) * _u_prev.surfaces_rad[0] + w * (ail);
+        const float aR = (1.0f - w) * _u_prev.surfaces_rad[1] + w * (-ail);
+        const float rL = (1.0f - w) * _u_prev.surfaces_rad[2] + w * elev;
+        const float rR = (1.0f - w) * _u_prev.surfaces_rad[3] + w * elev;
+        SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  surface_rad_to_pwm(aL));
+        SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, surface_rad_to_pwm(aR));
+        SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,    surface_rad_to_pwm(rL));
+        SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,    surface_rad_to_pwm(rR));
+        return;
+    }
+
+    _fw_alt_int_rad = 0.0f;  // reset integrator when FW mode inactive
+
+    for (uint8_t i = 0; i < 6; i++) {
+        float T_N = _u_prev.rotors[i].thrust_N;
+        float beta_deg = rad2deg(_u_prev.rotors[i].tilt_rad);
+        SRV_Channels::set_output_pwm(motor_funcs[i], thrust_to_pwm(T_N, _thr_max.get()));
+        SRV_Channels::set_output_pwm(tilt_funcs[i], tilt_deg_to_pwm(beta_deg));
+    }
+
+    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_left,  surface_rad_to_pwm(_u_prev.surfaces_rad[0]));
+    SRV_Channels::set_output_pwm(SRV_Channel::k_flaperon_right, surface_rad_to_pwm(_u_prev.surfaces_rad[1]));
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_left,     surface_rad_to_pwm(_u_prev.surfaces_rad[2]));
+    SRV_Channels::set_output_pwm(SRV_Channel::k_vtail_right,   surface_rad_to_pwm(_u_prev.surfaces_rad[3]));
+}
+
+// ============================================================
+// LOGGING (with real data)
+// ============================================================
+
+void AP_TiltHexa::write_logs(void)
+{
+#if HAL_LOGGING_ENABLED
+    uint32_t now_us = AP_HAL::micros();
+
+    // THXC - Desired wrench
+    {
+        struct log_THXC pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXC_MSG),
+            time_us : now_us,
+            Fxd : _indi_out.w_d.Fx,
+            Fzd : _indi_out.w_d.Fz,
+            Mxd : _indi_out.w_d.Mx,
+            Myd : _indi_out.w_d.My,
+            Mzd : _indi_out.w_d.Mz,
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXA - Achieved wrench (model)
+    {
+        struct log_THXA pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXA_MSG),
+            time_us : now_us,
+            Fxm : _alloc_out.w_achieved.Fx,
+            Fzm : _alloc_out.w_achieved.Fz,
+            Mxm : _alloc_out.w_achieved.Mx,
+            Mym : _alloc_out.w_achieved.My,
+            Mzm : _alloc_out.w_achieved.Mz,
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXE - Wrench error
+    {
+        struct log_THXE pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXE_MSG),
+            time_us : now_us,
+            Ex : _indi_out.w_d.Fx - _alloc_out.w_achieved.Fx,
+            Ez : _indi_out.w_d.Fz - _alloc_out.w_achieved.Fz,
+            ER : _indi_out.w_d.Mx - _alloc_out.w_achieved.Mx,
+            EP : _indi_out.w_d.My - _alloc_out.w_achieved.My,
+            EY : _indi_out.w_d.Mz - _alloc_out.w_achieved.Mz,
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXT - Tilt angles
+    {
+        struct log_THXT pkt{
+            LOG_PACKET_HEADER_INIT(LOG_THXT_MSG),
+            time_us : now_us,
+            B1 : rad2deg(_u_prev.rotors[0].tilt_rad),
+            B2 : rad2deg(_u_prev.rotors[1].tilt_rad),
+            B3 : rad2deg(_u_prev.rotors[2].tilt_rad),
+            B4 : rad2deg(_u_prev.rotors[3].tilt_rad),
+            B5 : rad2deg(_u_prev.rotors[4].tilt_rad),
+            B6 : rad2deg(_u_prev.rotors[5].tilt_rad),
+        };
+        AP::logger().WriteBlock(&pkt, sizeof(pkt));
+    }
+
+    // THXF - Thrust forces
+    {

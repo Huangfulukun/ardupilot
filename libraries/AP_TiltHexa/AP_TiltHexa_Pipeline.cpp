@@ -46,6 +46,7 @@ TiltHexa_Pipeline::TiltHexa_Pipeline() :
     memset(_w_f_prev_vec, 0, sizeof(_w_f_prev_vec));
     memset(_pos_actual, 0, sizeof(_pos_actual));
     memset(_vel_actual, 0, sizeof(_vel_actual));
+    memset(_pos_integral, 0, sizeof(_pos_integral));
     memset(_R_bn, 0, sizeof(_R_bn));
     _R_bn[0] = 1.0f; _R_bn[4] = 1.0f; _R_bn[8] = 1.0f; // identity
     _V_f = 0.0f;
@@ -63,6 +64,7 @@ void TiltHexa_Pipeline::reset() {
     _touchdown_counter = 0;
     _indi_active = false;
     _has_feasible_solution = false;
+    memset(_pos_integral, 0, sizeof(_pos_integral));
     _step_count = 0;
 
     memset(_accel_f, 0, sizeof(_accel_f));
@@ -274,12 +276,35 @@ void TiltHexa_Pipeline::update_takeoff_landing(
         float ease = 3.0f * s2 - 2.0f * s3;
         _spool_target_frac = 1.05f * ease;
 
-        // Command: equal thrust on all motors, zero tilt
+        // Command: equal thrust on all motors, zero tilt, plus a PD attitude
+        // hold so the vehicle lifts level against wind / CG moments.  This
+        // closes the otherwise uncontrolled spool->handover window (the full
+        // INDI is not active until liftoff is detected).
         float T_per_motor = mg * _spool_target_frac / 6.0f;
         if (T_per_motor > _params.T_max) T_per_motor = _params.T_max;
 
+        float e_roll = 0.0f, e_pitch = 0.0f;
+        {
+            const float *R = sensor->R_body_to_ned;
+            if (R[0] != 0.0f || R[4] != 0.0f) {
+                e_roll  = atan2f(R[7], R[8]);
+                e_pitch = -asinf(fmaxf(-1.0f, fminf(1.0f, R[6])));
+            }
+        }
+        const float Kp_ATT_HOLD = 180.0f, Kd_ATT_HOLD = 42.0f;
+        float Mx_hold = -Kp_ATT_HOLD * e_roll  - Kd_ATT_HOLD * sensor->gyro[0];
+        float My_hold = -Kp_ATT_HOLD * e_pitch - Kd_ATT_HOLD * sensor->gyro[1];
+        // Geometry -> differential thrust: dT_i = (My*x_i - Mx*y_i)/sum(r^2),
+        // with the symmetric hex layout sum(x_i^2)=sum(y_i^2)=1.92.
+        const float SUM_R2 = 1.92f;
         for (int i = 0; i < 6; i++) {
-            cmd->T_N[i] = T_per_motor;
+            float dT = (My_hold * _geom.x_i[i] - Mx_hold * _geom.y_i[i]) / SUM_R2;
+            // Differential thrust is bounded by the (ramping) commanded thrust
+            // so no motor commands a negative/over-max thrust.
+            float dmax = 0.7f * T_per_motor;
+            if (dT >  dmax) dT =  dmax;
+            if (dT < -dmax) dT = -dmax;
+            cmd->T_N[i] = T_per_motor + dT;
             cmd->beta_rad[i] = 0.0f;
         }
         // Surfaces at zero
@@ -587,10 +612,14 @@ void TiltHexa_Pipeline::run_full_pipeline(
     indi_in.Kv = _params.Kv;
     indi_in.Kw = _params.Kw;
     indi_in.KR = _params.KR;
+    indi_in.KpI = _params.KpI;
+    memcpy(indi_in.pos_integral, _pos_integral, sizeof(_pos_integral));
     indi_in.KI = 0.0f; // attitude integral disabled
     memset(indi_in.attitude_integral, 0, 3 * sizeof(float));
 
     thx_indi_compute(&indi_in, &indi_out);
+    // Persist the position integral for the next FLYING cycle.
+    memcpy(_pos_integral, indi_in.pos_integral, sizeof(_pos_integral));
 
     // ---- 6. Numerical sanity guard on w_d ----
     // Do NOT project the command onto an approximate attainable force/moment

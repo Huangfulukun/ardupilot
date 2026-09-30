@@ -248,4 +248,3 @@ void AP_TiltHexa::run_allocator(void)
 
         // DIAGNOSTIC: report QP solve result and u_z[0] (only every 200 pipeline cycles ~ 2s)
         static uint32_t qp_diag_counter = 0;
-

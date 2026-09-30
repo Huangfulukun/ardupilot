@@ -1,0 +1,221 @@
+// ============================================================
+// AP_TiltHexa.cpp - Full module integration
+// Conversion-corridor-aware dispatch + unified MPC for 30 kg
+// all-tilt hex-rotor (six independently tilting rotors + wing + V-tail)
+//
+// Pipeline (every cycle, see output()):
+//   1. gather_sensors        - raw accel/gyro/pos/vel/quaternion, airspeed
+//   2. form_estimates        - sensor filtering + actuator model u_f
+//   3. build_effectiveness    - B(x_f) matrix
+//   4. form_achieved_wrench   - w_f = B(x_f) u_f
+//   5. run_indi_controller    - desired wrench w_d (NDI / sensor-based)
+//   6. run_allocator          - control allocation -> actuator commands
+//   7. apply_actuator_outputs - PWM outputs
+//
+// No standalone math functions are defined here: every numerical operation
+// (filters, RPY, dynamics, effectiveness, allocation) is implemented in the
+// core headers and called through the C API.
+// ============================================================
+
+#include "AP_TiltHexa.h"
+
+#if AP_TILTHEXA_ENABLED
+
+#include <AP_Common/AP_Common.h>
+#include <AP_HAL/AP_HAL.h>
+#include <GCS_MAVLink/GCS.h>
+#include <AP_Logger/AP_Logger.h>
+#include <AP_AHRS/AP_AHRS.h>
+#include <AP_InertialSensor/AP_InertialSensor.h>
+#include <AP_Airspeed/AP_Airspeed.h>
+#include <SRV_Channel/SRV_Channel.h>
+
+#include <AP_Math/AP_Math.h>
+#include <AP_Math/vector3.h>
+#include <AP_Math/quaternion.h>
+#include <AP_Math/matrix3.h>
+
+// Core C API (only the dispatch interface is included here)
+#include "QP/AP_TiltHexa_CAPI_QP.h"
+
+extern const AP_HAL::HAL& hal;
+
+// ============================================================
+// TABLE OF CONTENTS
+// ============================================================
+// 0. Constructor / init / periodic
+// 1. gather_sensors
+// 2. form_estimates
+// 3. build_effectiveness
+// 4. form_achieved_wrench
+// 5. run_indi_controller
+// 6. run_allocator
+// 7. apply_actuator_outputs
+// 8. Logging
+// ============================================================
+
+// ============================================================
+// 0. CONSTRUCTOR / INIT / PERIODIC
+// ============================================================
+
+AP_TiltHexa::AP_TiltHexa()
+{
+    // Load default parameters
+    AP_Param::setup_object_defaults(this, var_info);
+
+    // All internal arrays are zero-initialized by C++ rules for members
+    // (they are plain arrays; the constructor body zeroes them explicitly).
+    memset(_accel_f, 0, sizeof(_accel_f));
+    memset(_gyro_f, 0, sizeof(_gyro_f));
+    memset(_gyro_dot_f, 0, sizeof(_gyro_dot_f));
+    memset(_R_bn, 0, sizeof(_R_bn));
+    memset(_vel_actual, 0, sizeof(_vel_actual));
+    memset(_pos_actual, 0, sizeof(_pos_actual));
+    memset(_u_f_flat, 0, sizeof(_u_f_flat));
+    memset(_u_prev_vec, 0, sizeof(_u_prev_vec));
+
+    // Initialize actuator state: 6 rotors at zero thrust, tilt = 0 (vertical)
+    for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
+        _u_prev.rotors[i].u_x = 0.0f;
+        _u_prev.rotors[i].u_z = 0.0f;
+        _u_prev.rotors[i].thrust_N = 0.0f;
+        _u_prev.rotors[i].tilt_rad = 0.0f;
+        _u_prev.rotors[i].tilt_frozen = true;
+    }
+    // 4 surfaces: flaperon L/R, V-tail L/R
+    for (int i = 0; i < AP_TILTHEXA_N_SURF; i++) {
+        _u_prev.surfaces_rad[i] = 0.0f;
+    }
+
+    // Initialize geom structure: 6 rotor positions, body frame
+    // Rotors: 0,1 front arm; 2,3 middle; 4,5 rear
+    // Rotor positions (x, y, z) in meters, symmetric
+    // Layout: hex with arm length L = 0.85 m, rotor z = -0.20 (above CG)
+    const float L = THX_SEED_ARM_RADIUS_M;
+    const float rz = THX_SEED_ROTOR_Z_M;
+    // Three rotor pairs along x: front (x=+L*0.87?), use hex geometry
+    // Standard hex: angles 60 deg apart. Rotor positions:
+    //   i=0: angle -30? Use HEXA layout: positions at angles 30,90,150,210,270,330
+    // For tilt-hexa with wing: rotors at x = +/-0.75 (front/rear), y = +/-0.42
+    // Use a symmetric X-layout: 6 rotors in 3 pairs along x
+    static const float rotor_x[6] = { 0.75f,  0.75f,  0.0f,   0.0f,  -0.75f, -0.75f };
+    static const float rotor_y[6] = { 0.42f, -0.42f,  0.55f, -0.55f,  0.42f, -0.42f };
+    for (int i = 0; i < AP_TILTHEXA_N_ROTORS; i++) {
+        _geom.rotor_pos[i][0] = rotor_x[i];
+        _geom.rotor_pos[i][1] = rotor_y[i];
+        _geom.rotor_pos[i][2] = rz;
+    }
+    // Aerodynamic reference: wing span, area, MAC
+    _geom.wing_span = THX_SEED_WING_SPAN_M;
+    _geom.wing_area = THX_SEED_WING_AREA_M2;
+    _geom.mac = THX_SEED_MAC_M;
+    _geom.n_rotors = AP_TILTHEXA_N_ROTORS;
+    _geom.n_surf = AP_TILTHEXA_N_SURF;
+
+    // Aerodynamic coefficients (real plant aero; the CAPI QP builder was
+    // previously handed an all-zero array, which forced the control surfaces
+    // to zero). These match the SITL plant: fixed wing area S=1.26 m^2, span
+    // b=3.50 m, MAC c=0.36 m, sea-level air density, and V-tail ruddervator
+    // +/-25 deg. The per-surface area is split symmetrically (each control
+    // surface owns half of the relevant wing/tail area), so cl/cd/cm
+    // derivatives are provided per surface.
+    // BA_params layout (per-surface block, 16 floats each, 4 surfaces):
+    //   [0] cl0, [1] cl_a, [2] cl_de, [3] cl_q, [4] cl_de_rate,
+    //   [5] cd0, [6] cd_a, [7] cd_de, [8] cd_q,
+    //   [9] cm0, [10] cm_a, [11] cm_de, [12] cm_q,
+    //   [13] CY_b, [14] CY_dr, [15] CY_p
+    for (int s = 0; s < 4; s++) {
+        float *bp = &_BA_params[16*s];
+        // --- lift (CL): each flaperon owns half the wing lift; the V-tail
+        // surfaces do not contribute to the main-wing CL. ---
+        if (s < 2) {
+            bp[0] = 0.18f;                 // CL0 (airfoil + wing incidence)
+            bp[1] = 5.50f;                 // CL_alpha (per rad)
+            bp[2] = 0.45f;                 // CL_delta  (flaperon)
+            bp[3] = 7.50f;                 // CL_q (pitch-rate, per rad·s)
+            bp[4] = 1.20f;                 // CL_delta_rate (control rate)
+        } else {
+            bp[0] = 0.0f; bp[1] = 0.0f; bp[2] = 0.0f;
+            bp[3] = 0.0f; bp[4] = 0.0f;
+        }
+        // --- drag (CD): split the wing parasite + induced drag across the
+        // two flaperons; V-tail contributes its own parasite drag. ---
+        bp[5] = 0.025f;                    // CD0 (per surface, half of ~0.03)
+        bp[6] = 0.060f;                    // CD_alpha (induced, k*CL_alpha^2)
+        bp[7] = 0.015f;                    // CD_delta
+        bp[8] = 0.0f;                      // CD_q
+        // --- pitching moment (Cm): only the V-tail surfaces produce a
+        // pitching moment via the moment arm to the tail; the flaperons
+        // near the wing have a small wing-pitch contribution. ---
+        if (s >= 2) {
+            bp[9]  = 0.0f;                 // Cm0 (trimmed at reference)
+            bp[10] = -1.80f;               // Cm_alpha (tail stability)
+            bp[11] = -1.10f;               // Cm_delta (ruddervator elevator)
+            bp[12] = -9.0f;                // Cm_q (tail pitch damping)
+        } else {
+            bp[9] = -0.03f; bp[10] = -0.40f; bp[11] = -0.25f; bp[12] = -1.5f;
+        }
+        // --- side force (CY): the V-tail ruddervators provide side force
+        // (rudder); the flaperons have a small dihedral/sideslip term. ---
+        bp[13] = (s >= 2) ? -0.90f : -0.08f;  // CY_beta
+        bp[14] = (s >= 2) ?  0.55f :  0.0f;   // CY_delta_rudder
+        bp[15] = 0.0f;                        // CY_p
+    }
+
+    // Vectors are zero-initialized by the wrapper
+}
+
+void AP_TiltHexa::init(void)
+{
+    // Initialization done in constructor; nothing additional required.
+    // Called once at startup if needed for late binding.
+}
+
+// ============================================================
+// MAIN OUTPUT ENTRY - runs the complete pipeline
+// ============================================================
+
+void AP_TiltHexa::output(void)
+{
+    // Test mode: bypass the closed-loop controller and output test patterns
+    if (_test_mode.get() > 0) {
+        run_test_mode();
+        return;
+    }
+
+    // --- Companion bypass path: when THX_EXT_EN=1, the external companion
+    // node writes the 16 servo PWM channels directly. In that mode the module
+    // must NOT run the internal estimator / allocator, otherwise the two
+    // controllers would fight over the same servos. We just consume the
+    // override targets and return. ---
+    if (_ext_enable.get() == 1) {
+        apply_actuator_outputs();
+        return;
+    }
+
+    // Determine cycle dt (fixed rate; use HAL scheduler assumption)
+    const float dt = 1.0f / (float)_indi_rate.get();
+
+    // --- Active pipeline path (default): run the unified 8-stage pipeline.
+    // First transfer the current parameters into the pipeline (only on
+    // actual change), then step the pipeline, and finally sync its outputs
+    // back into the legacy members used by apply_actuator_outputs/logs.
+    update_pipeline_params();
+
+    // Step the pipeline with the fixed dt.
+    _pipeline.step(dt);
+
+    // Sync pipeline outputs into the legacy actuator/telemetry state.
+    sync_pipeline_to_legacy();
+
+    // Reference trajectory is updated inside the pipeline; the legacy
+    // update_trajectory() is also called for the top-level mission state
+    // machine (modes / completion / latch) via the pipeline.
+    update_trajectory(dt);
+
+    // Apply the actuator commands produced by the pipeline.
+    apply_actuator_outputs();
+
+    // Logging (real data)
+    write_logs();
+}

@@ -71,8 +71,8 @@ predictive controller (MPC) tracks it across the whole envelope with zero mode
 switches; an AWS-margin feasibility signal is defined to trigger conservative
 re-planning if the manoeuvre becomes infeasible, although this path was not
 entered in the tested envelope because the constrained allocator kept a
-positive margin. A bounded, model-free position-error
-integral rejects constant plant mismatch without the instability of a
+positive margin. A bounded, model-free position-error integral
+rejects constant plant mismatch without the instability of a
 model-based disturbance observer. Third, the complete pipeline is released
 as an open, reproducible software-in-the-loop (SITL) companion benchmark built
 in the ArduPilot framework for a \SI{30}{\kilogram} vehicle, and is compared
@@ -747,7 +747,8 @@ mass deficit is corrected as the wing unloads; the horizontal channels
 integrate only in terminal hover ($K_{i,h}=7$, $\pm80$~N) to trim a steady
 crosswind, and are frozen in climb and conversion to avoid wind-up against a
 moving reference. The integral is frozen whenever the allocator reports
-saturation. This adds no model知识，是恢复表~\ref{tab:robust} 中恒定失配鲁棒场景的机制。
+saturation. This adds no model knowledge and is the mechanism that recovers
+the constant-mismatch robustness cases of Table~\ref{tab:robust}.
 
 \subsection{Two-layer architecture and feasibility coupling}\label{sec:twolayer}
 The two layers are separated by time scale and coupled through feasibility:
@@ -1047,7 +1048,7 @@ SITL binary (truth): altitude, airspeed, attitude, mean nacelle tilt, mean rotor
 thrust, and ruddervator deflection. Shaded bands mark the forward conversion,
 the wing-borne cruise at $\beta=90^\circ$, and the backward conversion.}
 \label{fig:profile}
-\end{figure*}
+\end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_ablation_corridor.pdf}
@@ -1225,6 +1226,7 @@ Seven of the eight fixed scenarios pass all nine plant-truth checks
 (Table~\ref{tab:robust}). The single-parameter scenarios are tracked tightly:
 $+15\%$ mass and $-10\%$ thrust hold the terminal hover with altitude RMSE
 $\le 0.58$\,m and speed RMSE $\le 0.25$\,m/s; the forward CG offset of
+$0.025$\,m is held with $0.61$\,m altitude RMSE and $0.32$\,m/s speed RMSE; the
 $5$\,m/s gust produces a peak bank of $30.9^\circ$ and is rejected; the
 coordinated turn is tracked with a peak bank of $16.3^\circ$.
 

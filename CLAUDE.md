@@ -286,7 +286,7 @@ stale CSVs — check timestamps/metrics before trusting results.
   Python companion, no acados/CasADi/ROS2/MAVSDK).
 - NEXT: round-2 review = novelty check via consensus/baixiao + reference verification (54 refs);
   round-3 = language/figures/AI-tone; then push paper into repo (Tools/tilt_hexa_30kg/paper) and
-  push closed_loop_bench.py/thx_core.py/run_baseline.sh; firmware waf build still pending.
+  push closed_loop_bench.py/thx_core.py/run_baseline; firmware waf build still pending.
 
 ## §11 Checkpoint 2026-09-22 (peer-review rounds 2 & 3)
 - ROUND 2 (novelty + reference verification via Consensus): all spot-checked 2025/2026 refs are
@@ -327,7 +327,7 @@ stale CSVs — check timestamps/metrics before trusting results.
       ~1316 lines), tools/thx_core.py (ctypes bindings), experiments/run_baseline.sh,
       experiments/make_figures.py (fig_mc update), AP_TiltHexa C++ core/Makefile, config parm;
   (2) FIRMWARE (not started): verify submodules -> ./waf configure --board sitl && ./waf plane
-      -> arduplane SITL hover smoke -> investigate t~119.7 s thrust-collapse open bug
+      -> arduplane SITL hover smoke -> investigate t~119.7 s thrust-collapse bug
       (read BIN THXR/THXQ/THXC/RCOU);
   (3) user must replace author/affiliation/corresponding placeholders in main.tex before submission;
   (4) optional: an infeasible-command/rotor-derate scenario that actually triggers online replanning;
@@ -558,7 +558,7 @@ REMAINING (next continuation):
     - README.md (commit 36c233e)
     - PAPER_IMPLEMENTATION_AUDIT.md (commit 36c233e)
     - PARAMETER_MAP.md (commit 71385c9)
-    - physics/README_physics.md (commit d2da4d1)
+    - physics/README_physics.md (commit d2da1d1)
     - tools/README_tools.md (commit e96be93)
     - experiments/README_experiments.md (commit af1dfd7)
     - LOG_SCHEMA.md (commit aa9f6e5)
@@ -827,7 +827,7 @@ stable 90° wing-borne cruise, and document the result honestly.
   β=90° (peak β1=90.0°) — the actuator interlink is physically capable.
 - BUT a stable 20 m/s wing-borne cruise at β≈90° could NOT be sustained with
   the present INDI companion controller. The outer loop still budgets vertical
-  rotor thrust; at β≈90° that budget is delivered as forward thrust. Un-derated
+  rotor thrust; at β≈90° that budget is delivered as forward thrust. Under-derated
   → speed runaway (as up to 90–113 m/s, departure); thrust-derated to
   approximate wing-borne lift → descent/sink. The offline MPC sustains 90°
   cruise only because it solves the coupled pitch–throttle–tilt OCP.
@@ -1000,7 +1000,7 @@ at each V look up beta/T/theta/drv where rotor-vertical + wing lift balance mg.
 Inner loop only trims small deviations. Crossfade widened to V=5..20.
 Result: forward cruise beta~90 deg, as 20.1 m/s, alt 58 m (within 3m), 30s window.
 Back transition still fails: reverse authority hand-back over-speeds/departs;
-documented as remaining firmware task (lower-corridor scheduled tilt+thrust).
+document as remaining firmware task (lower-corridor scheduled tilt+thrust).
 Paper 27p compile clean.
 
 ## Phase-3e: decel ramp + beta rate limiter (fwmode_v12)
@@ -1265,7 +1265,7 @@ results/SITL_MPC/full_paper_transition_metrics.json，可复现）：**
 
 **改动文件：**
 - analysis/make_transition_figs.py：四图数据源从 fw_fix4_truth.csv 改为真实 SITL
-  （proposed=SITL_MPC/full_paper_truth.csv，native=SITL_native/native_sitl_truth.csv）。
+  (proposed=SITL_MPC/full_paper_truth.csv，native=SITL_native/native_sitl_truth.csv)。
 - paper/regenerate_figures.py::fig_full_profile：改读 SITL_MPC/full_paper_truth.csv，
   参考线 alt=60 / V=20 / β=90，相位带由真值推断（前向/巡航/后向）。
 - experiments/analyze_full_paper.py（新）：从真实 SITL 真值重算过渡/巡航指标写 JSON。
@@ -1290,3 +1290,97 @@ results/SITL_MPC/full_paper_transition_metrics.json，可复现）：**
 - Tools/tilt_hexa_30kg/results/SITL_MPC/full_paper_transition_metrics.json
 - CLAUDE.md
 （二进制 main.pdf/main_zh.pdf 与 figures/*.png/pdf 不推，由 `make figures`/`make paper` 复现。）
+
+## §26 (2026-09-29) — tab:robust / E5 / fig:mc 数据源迁移到真实 arduplane 二进制 SITL
+
+**目标（本轮局部任务）：** 把 §25 中仍保留在 400 Hz 伴随对象上的鲁棒性矩阵
+（S4–S9）、20 次 Monte-Carlo 与 E5 鲁棒性讨论，全部迁移到真实
+`build/sitl/bin/arduplane` 二进制 SITL。**不再打通新桥**，而是把 §25 已验证可行的
+"单次完整任务配方"（`run_full_mission.py` 经 Lua 串口桥、SERIAL2_PROTOCOL=28、
+TCP 5763、100 Hz 写 16 路伺服）工程化为参数化、每用例隔离的批量运行器
+（`experiments/run_sitl_robust_batch.py`）：8 个固定场景 + 20 个随机种子逐一复用
+同一配方；扰动全部加在 FDM/对象侧（质量/重心/推力/舵面/惯量/风），固件与桥不变。
+
+**控制器改进（改 .so，不重编 arduplane；core/ 下 `make clean && make lib`）：**
+- spool 阶段加 PD 姿态保持（Kp=180、Kd=42，按电机几何转差推力，clamp ±0.7·T/motor），
+  关闭"离地后到 INDI 接手"的无控窗口；标称 spool 仍等推力，与改前逐字一致。
+- 后向平缓减速 decel=1.0（headline full_paper 用 1.4；激进 2.0 会高度上拱失控）。
+- bounded 位置积分保留代码但默认关（KpI=0；实测 wind4 下不能修发散且引入相位滞后）。
+
+**真实二进制固定场景结果（7/8 干净通过）：**
+- S4 协调转弯（traj_type=3, dur=130）：h_f=59.96、V_f=0.10、h RMSE 0.49、V RMSE 2.97、峰值 φ 16.3°。
+- S5 5 m/s 阵风：h_f=59.91、V_f=0.02、h RMSE 0.54、V RMSE 0.41、峰值 φ 30.9°。
+- S7 质量 +15%：h_f=59.92、h RMSE 0.26、V RMSE 0.25。
+- S8 重心前移 0.025 m：h_f=59.95、h RMSE 0.61、V RMSE 0.32。
+- S9a 推力 −10%：h_f=59.95、h RMSE 0.58、V RMSE 0.25。
+- S9b 舵面 −20%：h_f=59.92、h RMSE 0.54、V RMSE 0.28。
+- S9c 惯量 +20%：h_f=59.92、h RMSE 0.50、V RMSE 0.25。
+- **S6 稳态 4 m/s 侧风失败**：高度缓坡（traj_type=4、wind_ramp 26,12）入风后
+  姿态/位置环极限环并翻转，峰值 φ 153.9°、终端 h 10.4 m / V 12.08。
+
+**真实二进制 Monte-Carlo 结果（20 种子，5/20 完全有效，25%）：**
+- 有效种子：SMC_5/13/15/17/19（最强风 3.12 m/s）；有效种子 h RMSE 均值 0.33（最差 0.70）、
+  V RMSE 均值 0.53（最差 0.74）、峰值 φ 均值 19.7°（最差 31.8°）。
+- SMC_9、SMC_16：姿态受控（φ<38°）、高度 ≥58 m，但 100 s 窗口内未完成后向减速
+  （终端地速 6.7/7.6 m/s）。
+- 其余 13 个翻转：8 个在后向翼→悬停过渡，4 个在前向/巡航伴随高度超调到 80–90 m，
+  1 个在 7.4 m/s 风的爬升阶段。
+- 主导根因：后向翼→悬停过渡在真实二进制上临界稳定（裕度被联合摄动耗尽），
+  其次是稳态侧风包络。
+
+**真实侧风包络（in-process traj_type=4 悬停慢 ramp 40,15）：**
+wind 3.0 稳定（bank −1~−3°）、3.5 有界轻度极限环（roll ±12~18、alt 59.3~59.7）、
+4.0 发散（pitch ±78~113）；原 S6 声称的 4 m/s 略超包络。
+
+**指标口径（analysis/sitl_robust_metrics.py，严格 9 项真值检查）：**
+- 有效 = 起飞（h.max>30）且未坠毁（起飞后 h<-2）且任务完成（h_f>55 且 V_f<5）
+  且姿态 OK（max roll/pitch<60）且不掉高（h_min>50）。
+- 双偏移对齐：高度 RMSE 锚定"持续起飞"（h>0.5 持续 1 s），速度 RMSE 锚定"持续爬升
+  到顶（h≥58）之后的前向"，避免 spool→climb 的短暂水平 kick（地速最高≈2.94、3–4 s）
+  造成约 30 s 假偏移。
+
+**改动/新增文件：**
+- experiments/run_sitl_robust_batch.py（新）：FIXED_CASES、gen_mc_perturb（rng=1000+seed）、
+  build_cmd、run_group、force_cleanup；串行、每用例独立 instance（+10 端口）、checkpoint、
+  stdout/stderr 重定向日志；wind/cg/gust 用 `--opt=value`（负号开头值 argparse 必需）。
+- experiments/run_full_mission.py：FDM 干净 CLI 覆盖（mass/cg/thrust/surface/inertia/wind/seed）、
+  --wind-ramp/--wind-rel-liftoff、HOVER2_EXTRA=1.5、内部 FDM 命令 --opt=value、--decel 透传。
+- physics/tilt_hexa_30kg_fdm.py：CLI 覆盖、CG 力矩、wind_ramp/cg_ramp、起飞前 wind 置零、
+  ground contact 之后检测 liftoff。
+- physics/wind.py：WindModel cubic smoothstep wind_ramp、set_origin、get_wind_ned 用 t_rel。
+- analysis/sitl_robust_metrics.py：严格 9 项检查、attitude_ok/alt_ok、持续起飞对齐、
+  traj_type=4 悬停漂移、双偏移对齐。
+- analysis/recompute_sitl_robust.py（新）：从已飞真值 CSV 重算两个 summary（不重飞、不编造）。
+- paper/regenerate_figures.py：fig_robustness 改读 SITL_Robust（S6 斜线+终端 h 标注），
+  fig_mc 改为 5 有效种子 RMSE + 20 种子结果 vs 风（3.12 m/s 包络）。
+- paper/rebuild_figures.sh：新增第 3 步 recompute_sitl_robust.py。
+- paper/main.tex / main_zh.tex：tab:robust 真实 SITL（S6 匕首标注）、E5 真实 SITL
+  （移除"high-rate companion/伴随"标注、5/20 有效率、侧风包络、13 翻转分阶段）、
+  摘要/场景矩阵/图题同步、位置积分改正为默认关。
+- Tools/tilt_hexa_30kg/README.md：新增"真实二进制 SITL 鲁棒性仿真"小节。
+
+**验证：** pdflatex+bibtex 英文 28 页 0 错误/0 未定义引用；xelatex+ctex 中文 27 页 0 错误
+（仅 CJK 斜体形状无害回退）；tab:robust 表已逐页目检（英文 p27、中文 p23）；
+`python3 analysis/recompute_sitl_robust.py` 输出 fixed 7/8、mc 5/20。
+**严禁补数据/用伴随冒充 SITL**：所有失败率与根因均如实记录。
+
+### 待推送文件清单（§26 本轮，文本）
+- Tools/tilt_hexa_30kg/experiments/run_sitl_robust_batch.py
+- Tools/tilt_hexa_30kg/experiments/run_full_mission.py
+- Tools/tilt_hexa_30kg/physics/tilt_hexa_30kg_fdm.py
+- Tools/tilt_hexa_30kg/physics/wind.py
+- Tools/tilt_hexa_30kg/analysis/sitl_robust_metrics.py
+- Tools/tilt_hexa_30kg/analysis/recompute_sitl_robust.py
+- Tools/tilt_hexa_30kg/paper/regenerate_figures.py
+- Tools/tilt_hexa_30kg/paper/rebuild_figures.sh
+- Tools/tilt_hexa_30kg/paper/main.tex
+- Tools/tilt_hexa_30kg/paper/main_zh.tex
+- Tools/tilt_hexa_30kg/README.md
+- libraries/AP_TiltHexa/AP_TiltHexa_Pipeline.cpp
+- libraries/AP_TiltHexa/AP_TiltHexa_Pipeline.h
+- libraries/AP_TiltHexa/AP_TiltHexa_INDI.cpp
+- libraries/AP_TiltHexa/AP_TiltHexa_INDI.h
+- Tools/tilt_hexa_30kg/tools/thx_core.py
+- CLAUDE.md
+（二进制 main.pdf/main_zh.pdf、figures/*.{pdf,png,svg}、results/SITL_Robust 真值与 .bin
+不推文本清单，由 `make figures`/`make paper`/批量运行器复现；如需归档真值另议。）

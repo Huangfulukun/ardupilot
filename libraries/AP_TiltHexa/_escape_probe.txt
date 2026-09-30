@@ -1,2 +1,0 @@
-probe line 1 with "quote"
-probe line 2

@@ -1010,7 +1010,7 @@ void AP_TiltHexa::form_estimates(void)
     }
 
     // Filter actuator estimate through same LPF2 as sensors
-    // (Actuator model + LPF2 matching per Section 0.5)
+    // (Actuator model + LPF2) matching per Section 0.5)
     // The same second-order Butterworth at THX_ACT_FILT_HZ is applied to each u_f element
     // to match the phase lag of the accelerometer and gyro filter chains.
     float act_dt = 1.0f / indi_hz;
@@ -1426,7 +1426,7 @@ void AP_TiltHexa::apply_actuator_outputs(void)
 
     // Fixed-wing conversion blend: above FW_THRESH_M_S in the forward
     // (accel/cruise) phases, smoothly drive the nacelles toward
-    FW_TARGET_BETA so the wing carries lift at cruise. The allocator alone
+    // FW_TARGET_BETA so the wing carries lift at cruise. The allocator alone
     // is minimum-norm and settles at a small beta (rotors still lift), which
     // is why the unmodified firmware never reaches a true 90 deg wing-borne
     // cruise. On the decel/back-transition leg the blend eases out so the
@@ -1534,7 +1534,7 @@ void AP_TiltHexa::apply_actuator_outputs(void)
             ri = 10;
         }
         float fr = 0.0f;
-        if (ri < 10) { fr = (Vq - TRIM[ri].V) / (TRIM[ri+1].V - TRIM[ri].V); }
+        if (ri < 10) { fr = (Vq - TRIM[ri].V) / (TRIM[i+1].V - TRIM[ri].V); }
         auto L = [&](int col) -> float {
             const float *a = &TRIM[ri].theta; const float *b = &TRIM[ri+1].theta;
             return (1.0f-fr)*a[col] + fr*b[col];
@@ -1794,7 +1794,7 @@ void AP_TiltHexa::update_trajectory(float dt)
         // Capture current yaw
         Quaternion quat;
         if (AP::ahrs().get_quaternion(quat)) {
-            float q0 = ququat[0], q1 = quat[1], q2 = quat[2], q3 = quat[3];
+            float q0 = quat[0], q1 = quat[1], q2 = quat[2], q3 = quat[3];
             float R11 = 1.0f - 2.0f*(q2*q2 + q3*q3);
             float R21 = 2.0f*(q1*q2 + q0*q3);
             _traj_yaw_start_rad = atan2f(R21, R11);

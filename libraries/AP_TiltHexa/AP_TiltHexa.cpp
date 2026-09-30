@@ -523,7 +523,7 @@ AP_TiltHexa::AP_TiltHexa() :
     memset(_vel_actual, 0, sizeof(_vel_actual));
     memset(&_w_f_prev, 0, sizeof(_w_f_prev));
     memset(&_w_f_est, 0, sizeof(_w_f_est));
-    memset(_u_prev, 0, sizeof(_u_prev));
+    memset(&_u_prev, 0, sizeof(_u_prev));
     memset(_u_prev_vec, 0, sizeof(_u_prev_vec));
     memset(_R_bn, 0, sizeof(_R_bn));
     memset(&_traj_ref, 0, sizeof(_traj_ref));
@@ -1426,7 +1426,7 @@ void AP_TiltHexa::apply_actuator_outputs(void)
 
     // Fixed-wing conversion blend: above FW_THRESH_M_S in the forward
     // (accel/cruise) phases, smoothly drive the nacelles toward
-    // FW_TARGET_BETA so the wing carries lift at cruise. The allocator alone
+    FW_TARGET_BETA so the wing carries lift at cruise. The allocator alone
     // is minimum-norm and settles at a small beta (rotors still lift), which
     // is why the unmodified firmware never reaches a true 90 deg wing-borne
     // cruise. On the decel/back-transition leg the blend eases out so the
@@ -1657,7 +1657,7 @@ void AP_TiltHexa::write_logs(void)
             LOG_PACKET_HEADER_INIT(LOG_THXE_MSG),
             time_us : now_us,
             Ex : _indi_out.w_d.Fx - _alloc_out.w_achieved.Fx,
-            Ez : _indi_out.w_d.Fz - _alloc_out.w_achieved.Fx,
+            Ez : _indi_out.w_d.Fz - _alloc_out.w_achieved.Fz,
             ER : _indi_out.w_d.Mx - _alloc_out.w_achieved.Mx,
             EP : _indi_out.w_d.My - _alloc_out.w_achieved.My,
             EY : _indi_out.w_d.Mz - _alloc_out.w_achieved.Mz,
@@ -1794,7 +1794,7 @@ void AP_TiltHexa::update_trajectory(float dt)
         // Capture current yaw
         Quaternion quat;
         if (AP::ahrs().get_quaternion(quat)) {
-            float q0 = quat[0], q1 = quat[1], q2 = quat[2], q3 = quat[3];
+            float q0 = ququat[0], q1 = quat[1], q2 = quat[2], q3 = quat[3];
             float R11 = 1.0f - 2.0f*(q2*q2 + q3*q3);
             float R21 = 2.0f*(q1*q2 + q0*q3);
             _traj_yaw_start_rad = atan2f(R21, R11);
@@ -2092,7 +2092,7 @@ void AP_TiltHexa::sync_pipeline_to_legacy(void)
 
     // Sync safety-net clamp flags
     _w_d_clamped     = _pipeline_telem.w_d_clamped;
-    _output_clamped  = _pipeline_telem.solver_status;
+    _output_clamped  = _pipeline_telem.output_clamped;
 
     // Sync _has_feasible_solution (for apply_actuator_outputs condition)
     _has_feasible_solution = _pipeline_telem.airborne ||

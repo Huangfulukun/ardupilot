@@ -228,7 +228,7 @@ stale CSVs — check timestamps/metrics before trusting results.
   12305222854914 and report.
 
 ## 9. Resume checkpoint (2026-09-22 03:55, iteration cap)
-- MONTE CARLO 20/20 ALL VALID (mc_summary.json): hRMSE mean 1.058/max 1.811; VRMSE mean 0.542/
+- MONTE CARLO 20/20 ALL VALID (mc_summary.json): hRMSE mean 1.058/max 1.811; VRMSE 0.542/
   max 0.766; P99 max 2.36 ms; worst 37.64 ms = ONE isolated scheduling spike in SMC_1001 (P99
   there 1.59 ms; ~1/40k solves; disclosed as footnote, not a miss).
 - BASELINE COMPLETE & HONEST RESULT: INDI-WLS and INDI-PI both valid on same TiltHexaFDM plant
@@ -252,8 +252,7 @@ stale CSVs — check timestamps/metrics before trusting results.
   Remote HEAD 55fdd11. NOT yet pushed: updated tools/closed_loop_bench.py (added perturb_fn/
   wind_ned_override/label/accel_ref_override hooks), experiments/run_baseline.sh, thx_core.py,
   AP_TiltHexa C++ lib, firmware hooks, updated paper main.tex, CLAUDE.md §9.
-- NEXT (priority order): (1) push closed_loop_bench.py + run_baseline.sh + paper main.tex + CLAUDE.md
-  via github_oauth (tool_search schema first); (2) three peer-review rounds (doubao-academic-
+- NEXT (priority order): (1) push closed_loop_bench.py/thx_core.py/run_baseline.sh; firmware waf build still pending. (2) three peer-review rounds (doubao-academic-
   evaluator/consensus/baixiao) — expect reviewer to probe the weak-vs-INDI framing; (3) verify refs
   with baixiao/consensus (54 refs); (4) firmware: submodules, waf configure --board sitl && waf plane,
   arduplane SITL hover smoke, t=119.7s thrust-collapse bug (BIN THXR/THXQ/THXC/RCOU); (5) when all
@@ -327,7 +326,7 @@ stale CSVs — check timestamps/metrics before trusting results.
       ~1316 lines), tools/thx_core.py (ctypes bindings), experiments/run_baseline.sh,
       experiments/make_figures.py (fig_mc update), AP_TiltHexa C++ core/Makefile, config parm;
   (2) FIRMWARE (not started): verify submodules -> ./waf configure --board sitl && ./waf plane
-      -> arduplane SITL hover smoke -> investigate t~119.7 s thrust-collapse bug
+      -> arduplane SITL hover smoke -> investigate t~119.7 s thrust-collapse open bug
       (read BIN THXR/THXQ/THXC/RCOU);
   (3) user must replace author/affiliation/corresponding placeholders in main.tex before submission;
   (4) optional: an infeasible-command/rotor-derate scenario that actually triggers online replanning;
@@ -400,7 +399,7 @@ stale CSVs — check timestamps/metrics before trusting results.
   may briefly serve stale content, so the Contents API is authoritative):
   * libraries/AP_TiltHexa/AP_TiltHexa.h            remote commit a3116aa, md5 1795659561e97491091cdf1d7cf0249a
     (first push 1970725 had a transcription error in rad2deg -- body read "return 57.29577951f"
-    instead of "return rad * 57.29577951f"; corrected and re-pushed as a3116aa, md5 now matches).
+    instead of "return rad * 57.29577951f"; corrected and re-pushed as a3116, md5 now matches).
   * libraries/AP_TiltHexa/AP_TiltHexa_CAPI_QP.cpp  remote commit 3cbad4b, md5 bca08f12964e4d1dc2ce81d4567c4203
     (adds the thx_pi_solve forward declaration that satisfies -Werror=missing-declarations).
   * libraries/AP_TiltHexa/AP_TiltHexa.cpp          remote commit 2cc9732, md5 da8fb56ad1252a3c9c95772635532124,
@@ -558,7 +557,7 @@ REMAINING (next continuation):
     - README.md (commit 36c233e)
     - PAPER_IMPLEMENTATION_AUDIT.md (commit 36c233e)
     - PARAMETER_MAP.md (commit 71385c9)
-    - physics/README_physics.md (commit d2da1d1)
+    - physics/README_physics.md (commit d2da4d1)
     - tools/README_tools.md (commit e96be93)
     - experiments/README_experiments.md (commit af1dfd7)
     - LOG_SCHEMA.md (commit aa9f6e5)
@@ -827,7 +826,7 @@ stable 90° wing-borne cruise, and document the result honestly.
   β=90° (peak β1=90.0°) — the actuator interlink is physically capable.
 - BUT a stable 20 m/s wing-borne cruise at β≈90° could NOT be sustained with
   the present INDI companion controller. The outer loop still budgets vertical
-  rotor thrust; at β≈90° that budget is delivered as forward thrust. Under-derated
+  rotor thrust; at β≈90° that budget is delivered as forward thrust. Un-derated
   → speed runaway (as up to 90–113 m/s, departure); thrust-derated to
   approximate wing-borne lift → descent/sink. The offline MPC sustains 90°
   cruise only because it solves the coupled pitch–throttle–tilt OCP.
@@ -989,7 +988,7 @@ Back-transition to hover attempted two ways (drag-brake v_target=0 on DECEL, and
 HOVER_2 gate): both caused the shared lift (rotor vertical + wing) to collapse as
 speed decayed before rotors re-tilted to vertical -> descended / over-speeded.
 Reverted to v9-equivalent; forward wing-borne cruise is the deliverable.
-Final result (results/SITL_MPC/fwmode_final): cruise beta mean 88.9 deg over 29s,
+Final result (results/SITL_MPC/fwmode_final): cruise beta mean=88.9 deg over 29s,
 airspeed 20.2 m/s, altitude 58.1 m (1.9m below 60 ref), roll within a few deg.
 Back-transition hand-back (corridor-scheduled rotor+wing lift balance) documented
 as the main remaining firmware task in paper 7.4. Paper 27p compile clean.
@@ -1265,7 +1264,7 @@ results/SITL_MPC/full_paper_transition_metrics.json，可复现）：**
 
 **改动文件：**
 - analysis/make_transition_figs.py：四图数据源从 fw_fix4_truth.csv 改为真实 SITL
-  (proposed=SITL_MPC/full_paper_truth.csv，native=SITL_native/native_sitl_truth.csv)。
+  （proposed=SITL_MPC/full_paper_truth.csv，native=SITL_native/native_sitl_truth.csv）。
 - paper/regenerate_figures.py::fig_full_profile：改读 SITL_MPC/full_paper_truth.csv，
   参考线 alt=60 / V=20 / β=90，相位带由真值推断（前向/巡航/后向）。
 - experiments/analyze_full_paper.py（新）：从真实 SITL 真值重算过渡/巡航指标写 JSON。

@@ -545,7 +545,7 @@ REMAINING (next continuation):
       can be pushed; per-run truth CSV/BIN and binary figures (figures/*.pdf,png) have no push channel
       (gitignored/regenerable; figures already in remote paper/); run_baseline.sh mode-bit diff is unpushable;
   (4) user replaces author/affiliation/corresponding placeholders in main.tex (only formal submission blocker);
-  (5) when all goals met, disable/delete cron 12305222854914 and report completion.
+  (5) when all goals are met, disable/delete cron 12305222854914 and report completion.
 
 ## §19 Checkpoint 2026-09-22 (cron continuation: final two SITL drivers + 7 docs pushed)
 - Pushed & byte-verified (git fetch to refs/remotes/verify/apm47 + hash-object):
@@ -813,7 +813,7 @@ stable 90° wing-borne cruise, and document the result honestly.
 **What was added to the firmware (`libraries/AP_TiltHexa/`):**
 - Two new params: `THX_FW_SPD` (idx 55, default 0 = disabled) and
   `THX_FW_BETA` (idx 56, default 90). Above `THX_FW_SPD` m/s in the
-  ACCEL/CRUISE phases, `apply_actector_outputs()` sweeps each nacelle command
+  ACCEL/CRUISE phases, `apply_actuator_outputs()` sweeps each nacelle command
   from the allocator value linearly to `THX_FW_BETA`.
 - Fixed a latent SITL airspeed bug: when `AP::airspeed()->healthy()` was true
   but returned 0 (the ARSPD_TYPE=100 backend is not wired to the FDM
@@ -979,7 +979,7 @@ Found and fixed a critical surface-scale bug: surface_rad_to_pwm() assumed +/-45
 range, but the FDM limits ruddervators to +/-25 deg. Commanding -25 deg only reached
 -13.9 deg in the FDM, starving pitch authority. Fixed to +/-25 deg mapping.
 After the fix, retuned the FW pitch loop: elev = drv_trim(-19deg) - alt_int - 2*pitch_err
-+ 0.8*q, clamped [-22, 0] (nose-up only, suppresses phugoid overshoot). Bumpless alt-
++ 0.8*q, clamped [-22, 0] (nose-up only, suppress phugoid overshoot). Bumpless alt-
 integrator reset on FW-mode entry.
 Result (results/SITL_MPC/fwmode_v9): cruise beta mean=88.9 deg over 29s window,
 airspeed 20.1 m/s, altitude mean 58.1 m (1.9m below 60 ref, within +/-3m), roll small.

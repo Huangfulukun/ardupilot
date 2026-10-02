@@ -587,6 +587,7 @@
       "h_final_m": 53.49,
       "V_final_ms": 6.69,
       "h_min_m": 39.04,
+      "V_max_ms": 23.68,
       "t_lift_s": 33.59,
       "n_rows": 52032
     },

@@ -28,7 +28,8 @@ SITL_ROB = os.path.join(ROOT, "results", "SITL_Robust")
 
 plt.rcParams.update({
     "font.size": 9, "axes.labelsize": 9, "axes.titlesize": 10,
-    "legend.fontsize": 7.5, "xtick.labelsize": 8, "ytick.labelsize": 8,
+    "legend.fontsize": 7.5, "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
     "lines.linewidth": 1.3, "axes.grid": True, "grid.alpha": 0.3,
     "grid.linewidth": 0.5, "figure.dpi": 150, "savefig.dpi": 300,
     "font.family": "serif",
@@ -181,7 +182,7 @@ def fig_aws():
     fwd, _ = ocp.solve_forward(20.0, 14.0)
     V_sched = fwd["X"][:-1, 2]
     b_sched = np.array([u[0] for u in fwd["U"]])
-    T_per = np.array([u[1] / 6.0 for u in fwd["U"]])
+    T_per = np.array([u[1] / 6.0 for u in fwd["U"]])  # per-rotor trim thrust
     arm, rz, kq = 0.80, -0.15, 0.034
     az = np.deg2rad([90, -90, -30, 150, 30, -150])
     spin = np.array([1, -1, 1, -1, -1, 1])
@@ -194,16 +195,18 @@ def fig_aws():
             F = np.array([math.sin(b), 0.0, -math.cos(b)])
             M = np.cross(ri, F)
             M[2] += kq * sgn * math.cos(b)
-            w6 = np.concatenate([F, M])
-            return w6[[0, 2, 3, 4, 5]]
+            w6 = np.concatenate([F, M])  # [Fx,Fy,Fz,Mx,My,Mz]
+            return w6[[0, 2, 3, 4, 5]]  # virtual wrench [Fx,Fz,Mx,My,Mz]
         Brot = np.zeros((5, 6))
         for i in range(6):
             Brot[:, i] = thrust_col(beta, spin[i], r[i])
+        # tilt columns: finite-difference of the thrust column at trim
         Btilt = np.zeros((5, 6))
         eps = 1e-4
         for i in range(6):
             Btilt[:, i] = (thrust_col(beta + eps, spin[i], r[i])
-                           - thrust_col(beta - eps, spin[i], r[i])) / (2 * eps) * T
+                           - thrust_col(beta - eps, r[i])) / (2 * eps) * T
+        # four aerodynamic surfaces (two ailerons, two ruddervators), scaled qS
         qS = 0.5 * rho_air * V * V * S_ref
         Bsurf = np.zeros((5, 4))
         Bsurf[:, 0] = qS * np.array([0.45, 0, 0.06, 0.0, -0.004])
@@ -273,6 +276,7 @@ def fig_solve_time():
     """MPC solve-time distribution over the nominal profile (mean/P99/worst)."""
     import json
     m = json.load(open(os.path.join(MPC, "fw_fix4_metrics.json")))
+    # per-case timing from the fixed campaign
     summ = os.path.join(MPC, "campaign", "fixed_summary.json")
     s = json.load(open(summ))
     labels = ["S4", "S5", "S6", "S7", "S8", "S9a", "S9b", "S9c"]

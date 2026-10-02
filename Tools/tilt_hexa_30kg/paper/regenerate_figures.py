@@ -28,8 +28,7 @@ SITL_ROB = os.path.join(ROOT, "results", "SITL_Robust")
 
 plt.rcParams.update({
     "font.size": 9, "axes.labelsize": 9, "axes.titlesize": 10,
-    "legend.fontsize": 7.5, "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
+    "legend.fontsize": 7.5, "xtick.labelsize": 8, "ytick.labelsize": 8,
     "lines.linewidth": 1.3, "axes.grid": True, "grid.alpha": 0.3,
     "grid.linewidth": 0.5, "figure.dpi": 150, "savefig.dpi": 300,
     "font.family": "serif",
@@ -205,7 +204,7 @@ def fig_aws():
         eps = 1e-4
         for i in range(6):
             Btilt[:, i] = (thrust_col(beta + eps, spin[i], r[i])
-                           - thrust_col(beta - eps, r[i])) / (2 * eps) * T
+                           - thrust_col(beta - eps, spin[i], r[i])) / (2 * eps) * T
         # four aerodynamic surfaces (two ailerons, two ruddervators), scaled qS
         qS = 0.5 * rho_air * V * V * S_ref
         Bsurf = np.zeros((5, 4))

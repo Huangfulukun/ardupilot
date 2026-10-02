@@ -77,7 +77,7 @@
 两类控制器占据主导。基于优化的方法在单一预测问题中计算姿态、旋翼转速与倾转角~\cite{bauersfeld2021mpc,allenspach2021nmpc,rohr2021nmpc,chen2024unified}。Bauersfeld 等~\cite{bauersfeld2021mpc} 是最直接的前期工作：飞行员速度指令通过一个全包线 MPC 映射为旋翼推力与倾转角，并有外场飞行结果及与二值切换策略的明确对比。基于传感器的增量方法（INDI）则在当前状态附近线性化并使用角加速度反馈，使其对气动不确定性具有鲁棒性；它们已在尾座式、倾转旋翼与双轴倾转飞行器上得到验证~\cite{smeur2020incremental,smeur2018cascaded,smeur2016adaptive,wang2019stability,mancinelli2025unified,bhardwaj2018integrated,lovell2023tailsitter,sun2021incremental}。其他近期方法包括：面向倾转推进 eVTOL 的迭代 LQR MPC~\cite{xia2022ilqr}、四旋翼飞机 RAMC 的鲁棒分配~\cite{cardoso2020ramc}、含固定与倾转螺旋桨的多旋翼通用 NMPC~\cite{bicego2020nmpc}、ACC 中的统一姿态控制~\cite{belak2023unified}、倾转旋翼三旋翼飞行器的 MPC~\cite{prach2018mpc}、MPC 的神经网络近似~\cite{ducard2024neural,jiang2022nnmpc}、动态逆过渡控制器~\cite{saetti2025dynamic,jeong2025longitudinal,li2026asynchronous}，以及复合倾转旋翼建模~\cite{liang2024composite}。可行控制分配已在倾转旋翼四旋翼上与 NMPC 耦合~\cite{shayan2024nmpc}，是最接近的预测分配先例；但该工作面向固定包线的四旋翼飞行器，既未构建转换走廊，也未向外层规划器闭合可行性回路。本文采用 MPC，是因为它能自然地处理作动器约束与转换走廊；其新颖性不在于预测控制本身，而在于它与实时 AWS 的耦合，以及在带走廊可行参考的全倾转六旋翼上的实现。
 
 \subsection{过渡调度与转换走廊}
-转换走廊界定安全的（空速、倾转角）组合。Yu 等~\cite{yu2022pilot} 对 XV-15 的转换进行优化以减轻飞行员负担，显式包含走廊约束、功率、姿态与多目标代价。Kang 等~\cite{kang2024minimum} 在预定义走廊内计算最小能量转换；May 等~\cite{may2025backward} 研究了故障下的后向过渡；Milz 等考察了统一飞行员控制与简化飞行器操作~\cite{milz2026taming}，以及纵列倾转机翼的鲁棒 NDI~\cite{milz2024tandem}。倾转机翼货运优化在~\cite{chen2020tiltwing} 中处理；带等高度与失速约束的前向/后向过渡轨迹优化在~\ref{panish2024tiltwing} 中研究；而带动态不平衡与功率边界的多目标约束倾转走廊在~\cite{zhuang2025mctc} 中为复合倾转旋翼提出。这些研究建立了走廊最优调度，但通常将走廊视为固定的离线包线，未把跟踪控制器的瞬时可行性反馈给规划器。
+转换走廊界定安全的（空速、倾转角）组合。Yu 等~\cite{yu2022pilot} 对 XV-15 的转换进行优化以减轻飞行员负担，显式包含走廊约束、功率、姿态与多目标代价。Kang 等~\cite{kang2024minimum} 在预定义走廊内计算最小能量转换；May 等~\cite{may2025backward} 研究了故障下的后向过渡；Milz 等考察了统一飞行员控制与简化飞行器操作~\cite{milz2026taming}，以及纵列倾转机翼的鲁棒 NDI~\cite{milz2024tandem}。倾转机翼货运优化在~\cite{chen2020tiltwing} 中处理；带等高度与失速约束的前向/后向过渡轨迹优化在~\cite{panish2024tiltwing} 中研究；而带动态不平衡与功率边界的多目标约束倾转走廊在~\cite{zhuang2025mctc} 中为复合倾转旋翼提出。这些研究建立了走廊最优调度，但通常将走廊视为固定的离线包线，未把跟踪控制器的瞬时可行性反馈给规划器。
 
 \subsection{过驱动倾转多旋翼的控制分配}
 控制分配在饱和条件下将期望的虚拟力/力矩映射到冗余作动器；该领域综述见~\cite{johansen2013survey,blaha2023survey}，自适应约束变体见~\cite{tohidi2020adaptive}。倾转与全倾转六旋翼以往主要针对悬停容错与全驱动研究：Giribet 等~\cite{giribet2016tilted} 设计了容错的倾转旋翼六旋翼；Pose 等~\cite{pose2017hexacopter} 分析了旋翼丢失后的六旋翼分配；面向重过驱动四旋翼倾转飞行器的快速分配在~\cite{santos2021fast} 中开发；滑模、自调度、鲁棒与非负最小二乘分配器在~\cite{nguyen2022smc,nguyen2018selfscheduled,baldini2023ftc,zheng2026safety} 中报道。Yang 等~\cite{yang2026biaxial} 利用 AWS 的内切球度量，在被动容错下保持双轴倾转六旋翼的完整六自由度驱动；Mancinelli 等~\cite{mancinelli2025ftc} 解决了过驱动混合 VTOL 的容错问题；单个旋翼失效后的可控性在~\cite{du2015controllability} 中分析。因此 AWS 度量已经确立，但以往仅作为离线或悬停专用的诊断。我们\emph{沿完整过渡在线评估}它，并向规划器闭环。
@@ -183,7 +183,7 @@ F_a=\tfrac12\rho V^2 S
 将虚拟力/力矩与作动器定义为
 \begin{equation}
 w=\begin{bmatrix}F\\ \tau\end{bmatrix}\in\mathbb{R}^{6},\qquad
-u=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
+nu=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
 \label{eq:wu}
 \end{equation}
 由于旋翼力包含 $T_i\sin\delta_i$ 与 $T_i\cos\delta_i$ 的乘积，该映射是非线性的。在工作点 $(T_0,\delta_0,V)$ 处线性化，得到

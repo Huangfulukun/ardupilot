@@ -227,7 +227,7 @@ This paper therefore makes three targeted contributions.
 The remainder of the paper is organized as follows. Section~2 reviews related
 work. Section~3 describes the platform and the two models used for control
 and simulation. Section~4 develops the time-varying AWS allocation, Section~5
-the corridor OCP, and Section~6 the unified MPC and two-layer
+the corridor OCP, and Section~6 the unified MPC and the two-layer
 integration. Section~7 details the ArduPilot SITL implementation, Section~8
 defines the simulation campaign, and Section~9 discusses limitations.
 Section~10 concludes.
@@ -455,7 +455,7 @@ control and simulation.
 Collect the virtual wrench and the actuators as
 \begin{equation}
 w=\begin{bmatrix}F\\ \tau\end{bmatrix}\in\mathbb{R}^{6},\qquad
-u=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
+nu=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
 \label{eq:wu}
 \end{equation}
 Because the rotor force contains products $T_i\sin\delta_i$ and
@@ -598,7 +598,7 @@ nominal lower boundary is listed in Table~\ref{tab:corridor} from
 Eq.~\eqref{eq:Vmin} with the conservative, no-slipstream stall incidence
 $\alpha_{\mathrm{stall}}=13^\circ$, i.e. $C_{L,\mathrm{stall}}=1.29$ rather
 than the full $C_{L,\max}=1.45$ (a soft-stall model
-$C_L=C_{L,\max}\tanh((C_{L_0}+C_{L_\alpha}\alpha)/C_{L,\max})$ is used
+$C_L=C_{L,\max}\tanh((C_{L,0}+C_{L,\alpha}\alpha)/C_{L,\max})$ is used
 identically in the plant, the prediction model, and the corridor).
 
 \begin{table}[t]

@@ -1,0 +1,130 @@
+[MAVLink] Connecting to tcp:127.0.0.1:5770 ...
+[MAVLink] Connected to SITL instance 1 (sysid=1, compid=1)
+[MAVLink] Waiting for EKF health ...
+[MAVLink] EKF healthy: flags=0x033f
+[MAVLink] Waiting for GPS 3D fix ...
+[MAVLink] GPS OK: lat=-353632621, lon=1491652374
+[MAVLink] Sending arm command ...
+[MAVLink] Vehicle ARMED
+ t=  0.0 alt= -0.0 V=  0.3 roll=  0.0 T1=  0.0 ph=1
+ t=  1.0 alt=  0.0 V=  0.5 roll=  0.0 T1= 16.0 ph=1
+ t=  2.0 alt=  0.0 V=  0.6 roll=  0.0 T1= 44.5 ph=1
+ t=  3.0 alt=  0.1 V=  0.2 roll=  0.0 T1= 51.5 ph=1
+ t=  4.0 alt=  0.9 V=  0.6 roll= -0.1 T1= 51.4 ph=1
+ t=  5.0 alt=  2.5 V=  0.5 roll=  0.0 T1= 49.5 ph=1
+ t=  6.0 alt=  4.1 V=  0.8 roll=  0.0 T1= 49.6 ph=1
+ t=  7.0 alt=  5.7 V=  0.6 roll=  0.0 T1= 50.2 ph=1
+ t=  8.0 alt=  7.4 V=  1.5 roll=  0.0 T1= 50.3 ph=1
+ t=  9.0 alt=  9.2 V=  0.2 roll=  0.0 T1= 50.4 ph=1
+ t= 10.0 alt= 11.2 V=  1.9 roll= -0.1 T1= 50.4 ph=1
+ t= 11.0 alt= 13.3 V=  1.3 roll= -0.1 T1= 50.4 ph=1
+ t= 12.0 alt= 15.4 V=  1.2 roll= -0.0 T1= 50.5 ph=1
+ t= 13.0 alt= 17.7 V=  1.9 roll=  0.0 T1= 50.6 ph=1
+ t= 14.0 alt= 20.1 V=  1.6 roll=  0.1 T1= 50.4 ph=1
+ t= 15.0 alt= 22.5 V=  1.6 roll=  0.0 T1= 50.3 ph=1
+ t= 16.0 alt= 24.9 V=  2.1 roll=  0.0 T1= 50.5 ph=1
+ t= 17.0 alt= 27.4 V=  2.2 roll=  0.0 T1= 50.3 ph=1
+ t= 18.0 alt= 30.0 V=  2.2 roll=  0.0 T1= 50.2 ph=1
+ t= 19.0 alt= 32.5 V=  2.3 roll=  0.0 T1= 50.2 ph=1
+ t= 20.0 alt= 35.0 V=  1.7 roll=  0.0 T1= 50.1 ph=1
+ t= 21.0 alt= 37.4 V=  1.9 roll= -0.0 T1= 50.0 ph=1
+ t= 22.0 alt= 39.9 V=  2.1 roll= -0.0 T1= 49.7 ph=1
+ t= 23.0 alt= 42.2 V=  2.0 roll= -0.0 T1= 49.6 ph=1
+ t= 24.0 alt= 44.5 V=  1.1 roll=  0.0 T1= 49.6 ph=1
+ t= 25.0 alt= 46.7 V=  1.4 roll=  0.0 T1= 49.4 ph=1
+ t= 26.0 alt= 48.8 V=  1.1 roll= -0.0 T1= 49.2 ph=1
+ t= 27.0 alt= 50.7 V=  1.3 roll= -0.0 T1= 49.0 ph=1
+ t= 28.0 alt= 52.5 V=  0.5 roll= -0.0 T1= 48.8 ph=1
+ t= 29.0 alt= 54.2 V=  0.9 roll= -0.0 T1= 48.7 ph=1
+ t= 30.0 alt= 55.7 V=  1.4 roll=  0.0 T1= 48.5 ph=1
+ t= 31.0 alt= 57.0 V=  0.4 roll= -0.0 T1= 48.3 ph=1
+ t= 32.0 alt= 58.1 V=  1.0 roll=  0.0 T1= 48.1 ph=1
+ t= 33.0 alt= 59.0 V=  0.6 roll=  0.0 T1= 48.0 ph=1
+ t= 34.0 alt= 59.6 V=  0.7 roll= -0.0 T1= 47.9 ph=1
+ t= 35.0 alt= 60.1 V=  0.6 roll= -0.0 T1= 47.8 ph=1
+ t= 36.0 alt= 60.2 V=  0.8 roll=  0.0 T1= 47.7 ph=2
+ t= 37.0 alt= 60.1 V=  0.9 roll=  0.0 T1= 49.3 ph=2
+ t= 38.0 alt= 60.0 V=  0.7 roll= -0.0 T1= 49.3 ph=3
+ t= 39.0 alt= 60.0 V=  0.2 roll=  0.0 T1= 49.4 ph=3
+ t= 40.0 alt= 60.0 V=  0.2 roll=  0.0 T1= 49.9 ph=3
+ t= 41.0 alt= 60.0 V=  2.1 roll=  0.2 T1= 50.7 ph=3
+ t= 42.0 alt= 60.0 V=  5.2 roll=  0.0 T1= 51.2 ph=3
+ t= 43.0 alt= 60.0 V=  8.3 roll= -0.1 T1= 48.6 ph=3
+ t= 44.0 alt= 60.1 V= 11.4 roll= -0.1 T1= 38.9 ph=3
+ t= 45.0 alt= 60.1 V= 14.2 roll= -0.0 T1= 78.6 ph=3
+ t= 46.0 alt= 60.2 V= 16.9 roll= -0.0 T1= 76.4 ph=3
+ t= 47.0 alt= 60.3 V= 19.0 roll= -0.1 T1= 10.5 ph=3
+ t= 48.0 alt= 60.5 V= 20.0 roll= -0.0 T1= 28.7 ph=4
+ t= 49.0 alt= 60.9 V= 19.8 roll= -0.0 T1= 26.6 ph=4
+ t= 50.0 alt= 61.3 V= 19.6 roll=  0.2 T1= 26.2 ph=4
+ t= 51.0 alt= 61.6 V= 19.4 roll=  0.2 T1= 27.0 ph=4
+ t= 52.0 alt= 61.7 V= 19.4 roll= -0.0 T1= 28.1 ph=4
+ t= 53.0 alt= 61.8 V= 19.4 roll= -0.0 T1= 28.1 ph=4
+ t= 54.0 alt= 61.8 V= 19.4 roll=  0.0 T1= 27.1 ph=4
+ t= 55.0 alt= 61.7 V= 19.4 roll= -0.0 T1= 28.9 ph=4
+ t= 56.0 alt= 61.6 V= 19.4 roll= -0.1 T1= 28.6 ph=4
+ t= 57.0 alt= 61.6 V= 19.4 roll= -0.0 T1= 26.6 ph=4
+ t= 58.0 alt= 61.5 V= 19.4 roll= -0.0 T1= 26.1 ph=4
+ t= 59.0 alt= 61.5 V= 19.4 roll=  0.0 T1= 25.7 ph=4
+ t= 60.0 alt= 61.4 V= 19.4 roll=  0.0 T1= 27.0 ph=4
+ t= 61.0 alt= 61.4 V= 19.4 roll=  0.0 T1= 26.3 ph=4
+ t= 62.0 alt= 61.3 V= 19.4 roll=  0.0 T1= 27.3 ph=4
+ t= 63.0 alt= 61.3 V= 19.4 roll=  0.0 T1= 24.7 ph=4
+ t= 64.0 alt= 61.3 V= 19.4 roll=  0.0 T1= 17.8 ph=5
+ t= 65.0 alt= 61.2 V= 19.4 roll= 15.1 T1= 18.1 ph=5
+ t= 66.0 alt= 61.0 V= 19.4 roll= 13.3 T1= 19.5 ph=5
+ t= 67.0 alt= 60.8 V= 19.5 roll= 13.5 T1= 20.2 ph=5
+ t= 68.0 alt= 60.5 V= 19.5 roll= 13.0 T1= 18.9 ph=5
+ t= 69.0 alt= 60.3 V= 19.6 roll= 12.8 T1= 23.7 ph=5
+ t= 70.0 alt= 60.2 V= 19.6 roll= 12.6 T1= 17.2 ph=5
+ t= 71.0 alt= 60.1 V= 19.5 roll= 12.6 T1= 17.6 ph=5
+ t= 72.0 alt= 60.1 V= 19.5 roll= 12.7 T1=  9.3 ph=5
+ t= 73.0 alt= 60.1 V= 19.5 roll= 12.7 T1= 20.3 ph=5
+ t= 74.0 alt= 60.1 V= 19.6 roll= 12.5 T1=  8.9 ph=5
+ t= 75.0 alt= 60.1 V= 19.5 roll= 12.8 T1= 13.3 ph=5
+ t= 76.0 alt= 60.1 V= 19.5 roll= 12.6 T1= 17.6 ph=5
+ t= 77.0 alt= 60.1 V= 19.6 roll= 12.6 T1= 19.2 ph=5
+ t= 78.0 alt= 60.1 V= 19.6 roll= 12.6 T1= 18.6 ph=5
+ t= 79.0 alt= 60.1 V= 19.5 roll= 12.7 T1= 16.9 ph=5
+ t= 80.0 alt= 60.1 V= 19.6 roll= 12.7 T1= 22.1 ph=5
+ t= 81.0 alt= 60.1 V= 19.5 roll= 12.6 T1= 16.8 ph=5
+ t= 82.0 alt= 60.1 V= 19.5 roll= 12.6 T1= 17.5 ph=6
+ t= 83.0 alt= 60.1 V= 19.6 roll= -1.0 T1= 20.6 ph=6
+ t= 84.0 alt= 60.1 V= 19.4 roll= -1.4 T1= 20.7 ph=6
+ t= 85.0 alt= 60.2 V= 19.4 roll= -0.8 T1= 21.2 ph=6
+ t= 86.0 alt= 60.2 V= 19.4 roll= -0.4 T1= 19.4 ph=6
+ t= 87.0 alt= 60.2 V= 19.4 roll= -0.2 T1= 21.2 ph=6
+ t= 88.0 alt= 60.1 V= 19.4 roll= -0.1 T1= 20.4 ph=6
+ t= 89.0 alt= 60.1 V= 19.4 roll=  0.0 T1= 20.7 ph=6
+ t= 90.0 alt= 60.1 V= 19.4 roll= -0.0 T1= 20.3 ph=6
+ t= 91.0 alt= 60.1 V= 19.4 roll=  0.0 T1= 20.4 ph=6
+ t= 92.0 alt= 60.1 V= 19.3 roll=  0.0 T1= 20.2 ph=6
+ t= 93.0 alt= 60.1 V= 19.4 roll=  0.0 T1= 20.4 ph=6
+ t= 94.0 alt= 60.1 V= 19.3 roll=  0.0 T1= 20.9 ph=6
+ t= 95.0 alt= 60.1 V= 19.4 roll=  0.0 T1= 20.0 ph=6
+ t= 96.0 alt= 60.1 V= 19.4 roll= -0.1 T1= 21.1 ph=6
+ t= 97.0 alt= 60.1 V= 19.4 roll= -0.0 T1= 20.3 ph=6
+ t= 98.0 alt= 60.1 V= 19.4 roll= -0.0 T1= 20.8 ph=7
+ t= 99.0 alt= 60.0 V= 19.4 roll= -0.0 T1= 19.0 ph=7
+ t=100.0 alt= 60.0 V= 19.2 roll=  0.0 T1= 21.5 ph=7
+ t=101.0 alt= 60.0 V= 18.7 roll=  0.0 T1=  7.0 ph=7
+ t=102.0 alt= 59.9 V= 18.0 roll=  0.1 T1=  0.0 ph=7
+ t=103.0 alt= 59.9 V= 17.1 roll=  0.2 T1=  0.5 ph=7
+ t=104.0 alt= 59.9 V= 15.9 roll=  0.2 T1= 13.9 ph=7
+ t=105.0 alt= 59.8 V= 14.6 roll= -0.3 T1= 59.6 ph=7
+ t=106.0 alt= 59.8 V= 13.1 roll=  0.8 T1= 83.2 ph=7
+ t=107.0 alt= 59.8 V= 11.5 roll= -0.3 T1= 92.0 ph=7
+ t=108.0 alt= 59.9 V= 10.0 roll=  0.0 T1= 92.1 ph=7
+ t=109.0 alt= 59.9 V=  8.6 roll= -0.1 T1= 92.1 ph=7
+ t=110.0 alt= 60.0 V=  7.1 roll= -0.0 T1= 92.1 ph=7
+ t=111.0 alt= 60.0 V=  5.6 roll= -0.0 T1= 92.1 ph=7
+ t=112.0 alt= 60.0 V=  4.1 roll=  0.1 T1= 92.0 ph=7
+ t=113.0 alt= 60.0 V=  3.0 roll=  0.0 T1= 91.9 ph=7
+ t=114.0 alt= 60.0 V=  1.9 roll= -0.0 T1= 91.4 ph=7
+ t=115.0 alt= 60.0 V=  0.9 roll= -0.0 T1= 91.1 ph=7
+ t=116.0 alt= 60.0 V=  0.7 roll= -0.0 T1= 90.3 ph=7
+ t=117.0 alt= 60.0 V=  0.5 roll=  0.0 T1= 89.9 ph=7
+ t=118.0 alt= 60.0 V=  0.7 roll= -0.4 T1= 69.5 ph=8
+ t=119.0 alt= 59.9 V=  0.8 roll=  0.4 T1= 65.4 ph=8
+[i] HOVER2 reached; stopping before LAND
+max_alt=61.8 max_roll=17.02 min_alt_end=59.9

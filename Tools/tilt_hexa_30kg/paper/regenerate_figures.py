@@ -181,7 +181,7 @@ def fig_aws():
     fwd, _ = ocp.solve_forward(20.0, 14.0)
     V_sched = fwd["X"][:-1, 2]
     b_sched = np.array([u[0] for u in fwd["U"]])
-    T_per = np.array([u[1] / 6.0 for u in fwd["U"]])  # per-rotor trim thrust
+    T_per = np.array([u[1] / 6.0 for u in fwd["U"]])
     arm, rz, kq = 0.80, -0.15, 0.034
     az = np.deg2rad([90, -90, -30, 150, 30, -150])
     spin = np.array([1, -1, 1, -1, -1, 1])
@@ -194,18 +194,16 @@ def fig_aws():
             F = np.array([math.sin(b), 0.0, -math.cos(b)])
             M = np.cross(ri, F)
             M[2] += kq * sgn * math.cos(b)
-            w6 = np.concatenate([F, M])  # [Fx,Fy,Fz,Mx,My,Mz]
-            return w6[[0, 2, 3, 4, 5]]  # virtual wrench [Fx,Fz,Mx,My,Mz]
+            w6 = np.concatenate([F, M])
+            return w6[[0, 2, 3, 4, 5]]
         Brot = np.zeros((5, 6))
         for i in range(6):
             Brot[:, i] = thrust_col(beta, spin[i], r[i])
-        # tilt columns: finite-difference of the thrust column at trim
         Btilt = np.zeros((5, 6))
         eps = 1e-4
         for i in range(6):
             Btilt[:, i] = (thrust_col(beta + eps, spin[i], r[i])
                            - thrust_col(beta - eps, spin[i], r[i])) / (2 * eps) * T
-        # four aerodynamic surfaces (two ailerons, two ruddervators), scaled qS
         qS = 0.5 * rho_air * V * V * S_ref
         Bsurf = np.zeros((5, 4))
         Bsurf[:, 0] = qS * np.array([0.45, 0, 0.06, 0.0, -0.004])
@@ -275,7 +273,6 @@ def fig_solve_time():
     """MPC solve-time distribution over the nominal profile (mean/P99/worst)."""
     import json
     m = json.load(open(os.path.join(MPC, "fw_fix4_metrics.json")))
-    # per-case timing from the fixed campaign
     summ = os.path.join(MPC, "campaign", "fixed_summary.json")
     s = json.load(open(summ))
     labels = ["S4", "S5", "S6", "S7", "S8", "S9a", "S9b", "S9c"]
@@ -339,9 +336,12 @@ def fig_mc():
         ax.scatter(wind, 1 if r["valid"] else (0.5 if r.get("attitude_ok") else 0),
                    s=26, color=col, marker=mk,
                    label=lab if not ax.get_ylabel() else None)
-    ax.axvline(3.12, color="#1e8449", ls=":", lw=1.0)
-    ax.annotate("valid envelope\n(strongest valid wind 3.12 m/s)",
-                (3.12, 0.12), fontsize=7, color="#1e8449")
+    strong = max((r["realised"]["wind_speed"] for r in rec if r["valid"]),
+                 default=0.0)
+    ax.axvline(strong, color="#1e8449", ls=":", lw=1.0)
+    ax.annotate(f"strongest valid wind\n{strong:.1f} m/s (combined perturbations\nfail at lower wind)",
+                (strong, 0.02), fontsize=6.5, color="#1e8449",
+                ha="right", xytext=(-2, 0), textcoords="offset points")
     ax.set_xlabel("Realised wind speed (m/s)")
     ax.set_yticks([0, 0.5, 1]); ax.set_yticklabels(["tumble", "no stop", "valid"])
     ax.set_ylim(-0.2, 1.25)

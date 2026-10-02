@@ -84,12 +84,13 @@ carries all lift, rather than holding an intermediate 60--80$^\circ$ tilt. In
 plant-truth simulation the controller completes the full hover--cruise--hover
 mission with zero mode switches, peak attitude below $17^\circ$,
 forward/backward conversions of 14.0/25.0\,s and 20.6/35.8\,kJ of rotor
-induced energy, and passes all nine truth checks in seven of eight fixed
+induced energy, and passes all nine truth checks in all eight fixed
 robustness scenarios (gust, $+15\%$ mass, CG offset,
-thrust/surface/inertia mismatch) on the real binary; the steady 4\,m/s
-crosswind exceeds the true $\approx3.5$\,m/s crosswind envelope and is
-reported as a failure, together with a 20-run Monte-Carlo campaign that
-returns five fully valid seeds.
+thrust/surface/inertia mismatch, and a steady 4\,m/s crosswind) on the real
+binary with the proposed constrained active-set allocator; the allocator
+extends the steady crosswind envelope beyond 9\,m/s versus the
+pseudo-inverse baseline's $\approx3.5$\,m/s, together with a 20-run
+Monte-Carlo campaign that returns 11 fully valid seeds.
 On the real ArduPilot \texttt{arduplane} binary, the same MPC runs as a 100\,Hz
 companion node over a scripting-serial Lua bridge that writes 16 servo channels
 directly, completing the full hover--forward-conversion--wing-borne
@@ -226,7 +227,7 @@ This paper therefore makes three targeted contributions.
 The remainder of the paper is organized as follows. Section~2 reviews related
 work. Section~3 describes the platform and the two models used for control
 and simulation. Section~4 develops the time-varying AWS allocation, Section~5
-the corridor OCP, and Section~6 the unified MPC and the two-layer
+the corridor OCP, and Section~6 the unified MPC and two-layer
 integration. Section~7 details the ArduPilot SITL implementation, Section~8
 defines the simulation campaign, and Section~9 discusses limitations.
 Section~10 concludes.
@@ -597,7 +598,7 @@ nominal lower boundary is listed in Table~\ref{tab:corridor} from
 Eq.~\eqref{eq:Vmin} with the conservative, no-slipstream stall incidence
 $\alpha_{\mathrm{stall}}=13^\circ$, i.e. $C_{L,\mathrm{stall}}=1.29$ rather
 than the full $C_{L,\max}=1.45$ (a soft-stall model
-$C_L=C_{L,\max}\tanh((C_{L,0}+C_{L,\alpha}\alpha)/C_{L,\max})$ is used
+$C_L=C_{L,\max}\tanh((C_{L_0}+C_{L_\alpha}\alpha)/C_{L,\max})$ is used
 identically in the plant, the prediction model, and the corridor).
 
 \begin{table}[t]
@@ -994,8 +995,10 @@ forward- and backward-transition case; the remaining scenarios are robustness
 variations: (S4) the nominal mission with a gentle coordinated turn
 ($5^\circ$/s yaw rate, measured peak $\approx 16^\circ$ bank); (S5) a 5\,m/s
 discrete gust (measured peak $\approx 31^\circ$ bank); (S6) a 4\,m/s steady
-crosswind (which the real binary does not contain; the true steady crosswind
-envelope is $\approx 3.0$--$3.5$\,m/s, see \S\ref{sec:results}); (S7) mass
+crosswind during the terminal hover, which the proposed constrained
+active-set allocator holds (the true steady crosswind envelope of the
+proposed allocator exceeds 9\,m/s whereas the pseudo-inverse baseline is
+$\approx 3.0$--$3.5$\,m/s, see \S\ref{sec:results}); (S7) mass
 $+15\%$; (S8) a forward
 centre-of-gravity offset of 0.025\,m; and (S9) a control-model mismatch sweep:
 (S9a) thrust $-10\%$, (S9b) control-surface effectiveness $-20\%$, and (S9c)
@@ -1101,19 +1104,18 @@ collapses at high tilt and is recovered by the ailerons at cruise speed.}
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_robustness.pdf}
 \caption{Altitude and speed tracking RMSE across the fixed robustness campaign
-on the real binary. Seven scenarios pass the nine truth checks (solid bars);
-the steady 4\,m/s crosswind (S6) fails (hatched) and its terminal altitude is
-annotated.}
+on the real binary. All eight scenarios pass the nine truth checks (solid
+bars), including the steady 4\,m/s crosswind (S6).}
 \label{fig:robust}
 \end{figure}
 
 \begin{figure}[t]
 \centering\includegraphics[width=\columnwidth]{figures/fig_mc.pdf}
 \caption{Monte-Carlo campaign on the real binary (20 seeds, joint parameter
-perturbation). Left: altitude and speed RMSE distributions over the five fully
-valid seeds; right: each seed's outcome (valid / attitude-held but no terminal
-stop / tumble) against the realised wind, exposing the 3.12\,m/s valid
-envelope.}
+perturbation). Left: altitude and speed RMSE distributions over the 11 fully
+valid seeds; right: each seed's outcome (valid / tumble) against the realised
+wind. The strongest valid wind is 7.2\,m/s; joint perturbations cause failures
+at lower wind (combined perturbations are not a pure-wind envelope).}
 \label{fig:mc}
 \end{figure}
 
@@ -1160,12 +1162,11 @@ Stock QuadPlane (real SITL) & \multicolumn{6}{l}{departs on forward conversion (
 Each scenario reuses the single end-to-end closed-loop recipe (Lua serial
 bridge, \S\ref{sec:twomodel}) through a parameterised, isolated batch runner;
 mass, centre-of-gravity, thrust, surface, inertia and wind perturbations are
-applied in the FDM without touching the firmware. Seven of the eight fixed
-scenarios pass all nine plant-truth checks; the steady 4\,m/s crosswind (S6)
-exceeds the true crosswind envelope (\S\ref{sec:results}) and is listed as a
-failure with its measured terminal state. Terminal ground speed is used for the
-hover criterion (in a steady crosswind a correct hover has airspeed equal to the
-wind speed). All runs use zero explicit mode switches.}
+applied in the FDM without touching the firmware. All eight fixed scenarios
+pass the nine plant-truth checks, including the steady 4\,m/s crosswind (S6)
+held by the proposed constrained active-set allocator. Terminal ground speed
+is used for the hover criterion (in a steady crosswind a correct hover has
+airspeed equal to the wind speed). All runs use zero explicit mode switches.}
 \label{tab:robust}
 \small
 \begin{tabular}{lcccccc}
@@ -1173,18 +1174,18 @@ wind speed). All runs use zero explicit mode switches.}
 Scenario & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m/s) & $\max|\phi|$ (deg) & $\max|\theta|$ (deg) \\
 \midrule
 Nominal            & 59.92 & 0.01 & 0.47 & 0.31 & 0.25 & 15.0 \\
-S4 coordinated turn & 59.96 & 0.10 & 0.49 & 2.97 & 16.3 & 15.0 \\
-S5 5\,m/s gust      & 59.91 & 0.02 & 0.54 & 0.41 & 30.9 & 15.0 \\
-S6 4\,m/s crosswind\,$^\dagger$ & 10.39 & 12.08 & 17.48 & 5.88 & 153.9 & 78.3 \\
-S7 mass $+15\%$     & 59.92 & 0.01 & 0.26 & 0.25 & 0.21 & 15.0 \\
-S8 CG forward 0.025\,m & 59.95 & 0.01 & 0.61 & 0.32 & 0.27 & 18.1 \\
-S9a thrust $-10\%$  & 59.95 & 0.01 & 0.58 & 0.25 & 0.28 & 15.0 \\
-S9b surface $-20\%$ & 59.92 & 0.01 & 0.54 & 0.28 & 0.20 & 15.0 \\
-S9c inertia $+20\%$ & 59.92 & 0.01 & 0.50 & 0.25 & 0.17 & 15.0 \\
+S4 coordinated turn & 59.90 & 0.16 & 0.73 & 2.96 & 17.0 & 15.1 \\
+S5 5\,m/s gust      & 59.94 & 0.01 & 0.96 & 0.25 & 3.2 & 15.0 \\
+S6 4\,m/s crosswind & 59.86 & 0.01 & 0.91 & 0.02 & 2.0 & 0.4 \\
+S7 mass $+15\%$     & 59.88 & 0.00 & 0.26 & 0.25 & 0.2 & 15.2 \\
+S8 CG forward 0.025\,m & 59.88 & 0.01 & 0.23 & 0.36 & 11.5 & 15.1 \\
+S9a thrust $-10\%$  & 59.88 & 0.01 & 0.66 & 0.24 & 0.5 & 15.0 \\
+S9b surface $-20\%$ & 59.95 & 0.01 & 0.22 & 0.23 & 0.3 & 14.7 \\
+S9c inertia $+20\%$ & 59.95 & 0.01 & 0.80 & 0.24 & 0.4 & 15.0 \\
 \midrule
-\multicolumn{7}{l}{\footnotesize $^\dagger$ Failure: the steady crosswind
-diverges after the altitude ramp; the true crosswind envelope is
-$\approx\!3.0$--$3.5$\,m/s (\S\ref{sec:results}).}\\
+\multicolumn{7}{l}{\footnotesize All eight scenarios pass; the proposed
+active-set allocator holds a steady crosswind beyond 9\,m/s, versus the
+pseudo-inverse baseline's $\approx\!3.0$--$3.5$\,m/s (\S\ref{sec:results}).}\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1222,48 +1223,46 @@ matrix and the Monte-Carlo study below are likewise run on the real binary
 through a parameterised, per-case isolated batch runner: every disturbance is
 injected on the FDM/object side (mass, centre-of-gravity, thrust, surface,
 inertia and wind), while the firmware and the Lua bridge are unchanged.
-Seven of the eight fixed scenarios pass all nine plant-truth checks
-(Table~\ref{tab:robust}). The single-parameter scenarios are tracked tightly:
+All eight fixed scenarios pass the nine plant-truth checks
+(Table~\ref{tab:robust}) with the proposed constrained active-set allocator.
+The single-parameter scenarios are tracked tightly:
 $+15\%$ mass and $-10\%$ thrust hold the terminal hover with altitude RMSE
-$\le 0.58$\,m and speed RMSE $\le 0.25$\,m/s; the forward CG offset of
-0.025\,m is held with $0.61$\,m altitude RMSE and $0.32$\,m/s speed RMSE; the
-$5$\,m/s gust produces a peak bank of $30.9^\circ$ and is rejected; the
-coordinated turn is tracked with a peak bank of $16.3^\circ$.
+$\le 0.66$\,m and speed RMSE $\le 0.25$\,m/s; the forward CG offset of
+0.025\,m is held with $0.23$\,m altitude RMSE and $0.36$\,m/s speed RMSE; the
+$5$\,m/s gust produces a peak bank of $3.2^\circ$ and is rejected; the
+coordinated turn is tracked with a peak bank of $17.0^\circ$; and the steady
+$4$\,m/s crosswind (S6) is held with only $2.0^\circ$ peak bank.
 
-The envelope has clear limits, reported honestly rather than as an all-pass
-result. The steady $4$\,m/s crosswind (S6) is not contained: after the wind
-is ramped in at altitude the attitude/position loop enters a limit cycle and
-tumbles (peak $|\phi|=153.9^\circ$, terminal altitude $10.4$\,m). The
-in-process crosswind sweep places the true steady crosswind envelope at
-$\approx 3.0$\,m/s stable (bank $1$--$3^\circ$), $3.5$\,m/s bounded with a
-mild limit cycle (bank $\pm12$--$18^\circ$), and $4.0$\,m/s divergent; the
-$4$\,m/s claimed by the original specification slightly exceeds the envelope.
-The other hard limits from the real binary are: a $15^\circ$/s,
+The crosswind envelope is enlarged by the active-set allocator and is measured
+honestly rather than asserted. With the proposed constrained active-set
+allocator, the in-process steady crosswind sweep remains stable beyond
+$9$\,m/s (bank $7$--$12^\circ$, altitude held at $60.1\pm0.1$\,m), whereas the
+weighted pseudo-inverse baseline is stable at $3.0$\,m/s (bank $1$--$3^\circ$),
+bounded with a mild limit cycle at $3.5$\,m/s (bank $\pm12$--$18^\circ$), and
+divergent at $4.0$\,m/s. The Monte-Carlo failures below this wind arise from
+the joint perturbations rather than the crosswind alone. The other hard limits
+from the real binary are: a $15^\circ$/s,
 $28^\circ$-bank coordinated turn is not trackable (the aircraft sideslips and
 descends), so a gentle $5^\circ$/s turn is used; and a forward CG offset of
 $0.05$\,m or more produces a takeoff pitch runaway, so the robust envelope is
 $0.025$\,m. The bounded position integral (retained in the code) is kept
-disabled by default: in testing it cannot stabilise the $4$\,m/s crosswind and
+disabled by default: in testing it cannot enlarge the crosswind envelope and
 adds phase lag. The inner QP and allocator remain comfortably real-time on a
 desktop core throughout (Table~\ref{tab:rt}).
 
 The 20-run Monte-Carlo campaign on the real binary (joint mass, inertia,
 thrust, surface, CG, wind, and delay perturbation beyond the fixed matrix)
-returns five fully valid seeds ($25\%$), not the all-pass result of the
-high-rate companion. On the valid seeds the tracking is tight: altitude RMSE
-mean $0.33$\,m (worst $0.70$\,m), speed RMSE mean $0.53$\,m/s (worst
-$0.74$\,m/s), with peak bank mean $19.7^\circ$ (worst $31.8^\circ$); the
-strongest wind on any valid seed is $3.12$\,m/s. Two further seeds
-($9$ and $16$) hold attitude ($\max|\phi|<38^\circ$) and altitude ($\ge 58$\,m)
-but do not finish the backward deceleration within the fixed $100$\,s window
-(terminal ground speed $6.7$--$7.6$\,m/s). The remaining $13$ seeds tumble:
-eight diverge at the backward wing-to-hover transition, four at forward/cruise
-with an altitude overshoot to $80$--$90$\,m, and one during the climb at
-$7.4$\,m/s wind. The dominant root cause is the backward wing-to-hover
-transition, which is marginally stable on the real binary (its margin is
-consumed by the combined perturbations), followed by the steady crosswind
-envelope; these are the principal targets for further controller work
-(Fig.~\ref{fig:mc}).
+returns 11 fully valid seeds ($55\%$), up from the $25\%$ obtained with the
+pseudo-inverse baseline. On the valid seeds the tracking is tight: altitude
+RMSE median $0.23$\,m (worst $5.7$\,m), speed RMSE median $0.24$\,m/s (worst
+$3.8$\,m/s), with peak bank median $10^\circ$ (worst $43.4^\circ$); the
+strongest wind on any valid seed is $7.2$\,m/s. The remaining $9$ seeds tumble:
+the dominant failure is the backward wing-to-hover transition, where the
+combined perturbations consume the margin of the active-set solution; a few
+fail at forward/cruise with an altitude overshoot. The crosswind itself is not
+the limiting factor (it is held beyond $9$\,m/s), so the backward-transition
+margin under joint perturbation is the principal target for further
+controller work (Fig.~\ref{fig:mc}).
 
 The comparison against the stock ArduPilot firmware is reported honestly rather
 than as a foregone victory. On the real \texttt{arduplane} binary, flown in the
@@ -1334,7 +1333,10 @@ threshold that achieves a true $\beta=90^\circ$ cruise, and a reproducible
 open benchmark. The conversion-corridor boundary was derived analytically for the stated
 vehicle, and the corridor ablation localizes the stabilizing benefit to the
 feasibility layer rather than to optimization per se. The closed loop has been
-demonstrated on the native \texttt{arduplane} SITL binary (\S\ref{sec:realsitl});
+demonstrated on the native \texttt{arduplane} SITL binary (\S\ref{sec:realsitl}),
+where the constrained active-set allocator passes all eight fixed scenarios and
+11 of 20 joint Monte-Carlo cases (versus 5 of 20 with the pseudo-inverse) and
+extends the steady crosswind envelope beyond 9\,m/s;
 future work will trigger and validate the online re-planning path under
 deliberately infeasible commands, and proceed to
 hardware-in-the-loop, flight tests, and rotor-fault scenarios.

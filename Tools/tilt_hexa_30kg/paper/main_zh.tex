@@ -291,7 +291,7 @@ M_y^{\mathrm{rot}}+M_y^{\mathrm{wing}}+M_y^{\mathrm{tail}}=0,
 +\|x_N-x_N^\star\|_{Q_f}^{2}
 \label{eq:nmpc}
 \end{equation}
-约束包括离散预测模型、作动器极限~\eqref{eq:actlim} 以及可行性约束 $\rho(\delta_k,V_k)\ge\rho_{\min}$。参考 $x_k^\star,u_k^\star$ 由第~\ref{sec:corridor} 节的走廊配平图提供。12 状态 NED 模型在随速度变化参考的误差坐标中线性化，并通过矩阵指数（\texttt{scipy.linalg.expm}）以零阶保持精确离散；时域为 $N=20$、$\Delta t=0.03$~s（约 33~Hz）。所得等式约束被凝缩为关于五个虚拟力/力矩增量的小型稠密二次规划，由主动集 \texttt{quadprog} 求解器求解（如 acados~\cite{verschueren2022acados} 这类嵌入式凝缩 QP 是自然的飞行硬件目标）；不可行时先放宽姿态软约束，仅在最后手段下使用零力/力矩回退。虚拟力/力矩随后传递给第~\ref{sec:aws} 节的时变 AWS 分配器。有界、无模型的位置误差积分增广力/力矩，以抑制恒定对象失配（第~\ref{sec:campaign} 节）。
+约束包括离散预测模型、作动器极限~\eqref{eq:actlim} 以及可行性约束 $\rho(\delta_k,V_k)\ge\rho_{\min}$。参考 $x_k^\star,u_k^\star$ 由第~\ref{sec:corridor} 节的走廊配平图提供。12 状态 NED 模型在随速度变化参考的误差坐标中线性化，并通过矩阵指数（\texttt{scipy.linalg.expm}）以零阶保持精确离散；时域为 $N=20$、$\Delta t=0.03$~s（约 33~Hz）。所得等式约束被凝缩为关于五个虚拟力/力矩增量的小型稠密二次规划，由主动集 \texttt{quadprog} 求解器求解（如 acados~\cite{verschueren2022acados} 这类嵌入式凝缩 QP 是自然的飞行硬件目标）；不可行时先放宽姿态软约束，仅在最后手段下才使用零力/力矩回退。虚拟力/力矩随后传递给第~\ref{sec:aws} 节的时变 AWS 分配器。有界、无模型的位置误差积分增广力/力矩，以抑制恒定对象失配（第~\ref{sec:campaign} 节）。
 
 \subsection{恒定失配的无模型位置误差积分}\label{sec:integral}
 最初在内部预测模型上实现了加速度残差扰动观测器，但它在动态后向转换中并不安全：由于内部模型忽略了实际的 V 尾下洗与电机动力学，观测器把时变、可预测的模型--对象气动差误判为扰动并抵消配平前馈，在中间速度复现失速/坠毁。我们改为对 NED 系\emph{位置}误差 $e_p=p^\star-p$ 采用有界、无模型的积分，

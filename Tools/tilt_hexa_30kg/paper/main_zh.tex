@@ -183,7 +183,7 @@ F_a=\tfrac12\rho V^2 S
 将虚拟力/力矩与作动器定义为
 \begin{equation}
 w=\begin{bmatrix}F\\ \tau\end{bmatrix}\in\mathbb{R}^{6},\qquad
-nu=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
+u=\begin{bmatrix}T_1\!\cdots T_6&\delta_1\!\cdots\delta_6&\delta_{aL}&\delta_{aR}&\delta_{rL}&\delta_{rR}\end{bmatrix}^\top\in\mathbb{R}^{16}.
 \label{eq:wu}
 \end{equation}
 由于旋翼力包含 $T_i\sin\delta_i$ 与 $T_i\cos\delta_i$ 的乘积，该映射是非线性的。在工作点 $(T_0,\delta_0,V)$ 处线性化，得到
@@ -475,7 +475,7 @@ stock QuadPlane（真实 SITL） & \multicolumn{6}{l}{前向转换发散（$|\ph
 \small
 \begin{tabular}{lcccccc}
 \toprule
-场景 & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m/s) & $\max|\phi|$（度） & $\max|\theta|$（度） \\
+场景 & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m食管) & $\max|\phi|$（度） & $\max|\theta|$（度） \\
 \midrule
 标称            & 59.92 & 0.01 & 0.47 & 0.31 & 0.25 & 15.0 \\
 S4 协调转弯 & 59.90 & 0.16 & 0.73 & 2.96 & 17.0 & 15.1 \\

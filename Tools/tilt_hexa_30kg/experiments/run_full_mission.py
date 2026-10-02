@@ -101,6 +101,9 @@ def main():
     ap.add_argument("--name", default="full_mission")
     ap.add_argument("--instance", type=int, default=0)
     ap.add_argument("--traj-type", type=int, default=1)
+    ap.add_argument("--alloc-mode", type=int, default=0)
+    ap.add_argument("--kr", type=float, default=30.0)
+    ap.add_argument("--kw", type=float, default=8.5)
     ap.add_argument("--turn-rate", type=float, default=5.0)
     ap.add_argument("--dur", type=float, default=100.0)
     ap.add_argument("--alt", type=float, default=60.0)
@@ -200,7 +203,7 @@ def main():
         if not C.arm_vehicle(mav, 30):
             raise RuntimeError("arm failed")
         pipe = TiltHexaPipeline()
-        pipe.set_params(SeedParams(alloc_mode=0))
+        pipe.set_params(SeedParams(alloc_mode=a.alloc_mode, KR=a.kr, Kw=a.kw))
         st = {"p": np.zeros(3), "v": np.zeros(3), "quat": [1, 0, 0, 0],
               "gyro": np.zeros(3), "fb": np.zeros(3), "V": 0.0}
 

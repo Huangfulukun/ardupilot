@@ -31,25 +31,25 @@ No MPC, no scheduled beta(V), no plant-truth feedforward into the controller.
 / (ArduPilot 4.7.0-beta3 repository root)
 |
 |-- libraries/
-|   |-- AP_TiltHexa/                  (C++ research module, HAL-free core)
-|   |   |-- AP_TiltHexa_config.h       feature flag AP_TILTHEXA_ENABLED
-|   |   |-- AP_TiltHexa_Types.h        shared types (no HAL, no AP_Math)
-|   |   |-- AP_TiltHexa_Effectiveness  5x16 B(x) = [B_T, B_A] builder
-|   |   |-- AP_TiltHexa_Constraints    polygon / sector / rate / hysteresis
-|   |   |-- AP_TiltHexa_QP             active-set QP (Schur complement, 16 vars)
-|   |   |-- AP_TiltHexa_PI             weighted pseudo-inverse + clipping
-|   |   |-- AP_TiltHexa_INDI           sensor-based INDI translational+rotational
-|   |   |-- AP_TiltHexa_LowPass        Butterworth LPF2 + actuator model
-|   |   |-- AP_TiltHexa_Pipeline       Full pipeline + takeoff/landing state machine
-|   |   |-- AP_TiltHexa_Trajectory     C1-smooth parametric trajectory
-|   |   |-- AP_TiltHexa_CAPI.h         C structs for bench interface
-|   |   |-- AP_TiltHexa_SeedDefaults   generated C++ constants from YAML
-|   |   |-- AP_TiltHexa.h/.cpp         ArduPlane wrapper (params, output(), log)
-|   |   |-- LogStructure.h             9 log message definitions
-|   |   |-- core/                       standalone Makefile + libthx_core.so
-|   |   |   +-- tests/                  e0_boundary.cpp + test_harness.h
+|   |-- AP_TiltHexa/
+|   |-- AP_TiltHexa_config.h       feature flag AP_TILTHEXA_ENABLED
+|   |-- AP_TiltHexa_Types.h        shared types (no HAL, no AP_Math)
+|   |-- AP_TiltHexa_Effectiveness  5x16 B(x) = [B_T, B_A]
+|   |-- AP_TiltHexa_Constraints    polygon / sector / rate / hysteresis
+|   |-- AP_TiltHexa_QP             active-set QP (Schur complement, 16 vars)
+|   |-- AP_TiltHexa_PI             weighted pseudo-inverse + clipping
+|   |-- AP_TiltHexa_INDI           sensor-based INDI translational+rotational
+|   |-- AP_TiltHexa_LowPass        Butterworth LPF2 + actuator model
+|   |-- AP_TiltHexa_Pipeline       Full pipeline + takeoff/landing state machine
+|   |-- AP_TiltHexa_Trajectory     C1-smooth parametric trajectory
+|   |-- AP_TiltHexa_CAPI.h         C structs for bench interface
+|   |-- AP_TiltHexa_SeedDefaults   generated C++ constants from YAML
+|   |-- AP_TiltHexa.h/.cpp         ArduPlane wrapper (params, output(), log)
+|   |-- LogStructure.h             9 log message definitions
+|   |-- core/                       standalone Makefile + libthx_core.so
+|   |   |-- tests/                  e0_boundary.cpp + test_harness.h
 |   |   `-- tests/                      5 unit test programs
-|   |
+|
 |   |-- (modified) SRV_Channel/         k_tiltHexa1..6 = 190..195
 |   |-- (modified) AP_Logger/           #include AP_TiltHexa/LogStructure.h
 |
@@ -67,7 +67,7 @@ No MPC, no scheduled beta(V), no plant-truth feedforward into the controller.
 |   |   |-- indi_pi.parm                INDI + weighted PI (Kp=1.5,Kv=2.2,Kw=8.0,KR=16.0)
 |   |   |-- indi_wls.parm               INDI + constrained WLS (same gains)
 |   |   `-- native_baseline.parm        QuadPlane engineering reference
-|   |
+|
 |   |-- physics/                        400 Hz nonlinear plant (Python)
 |   |   |-- tilt_hexa_30kg_fdm.py       main UDP JSON loop
 |   |   |-- rigid_body.py               RK4 quaternion 6-DOF
@@ -79,7 +79,7 @@ No MPC, no scheduled beta(V), no plant-truth feedforward into the controller.
 |   |   |-- truth_logger.py             Fx_true..Mz_true CSV output
 |   |   |-- monte_carlo.py              seeded parameter perturbations
 |   |   `-- config.py                   YAML loader
-|   |
+|
 |   |-- experiments/
 |   |   |-- common.py                   FDM/SITL launch, MAVLink, process mgmt
 |   |   |-- metrics_common.py           BIN + truth CSV metric computation
@@ -90,15 +90,15 @@ No MPC, no scheduled beta(V), no plant-truth feedforward into the controller.
 |   |   |-- run_e4_bench.py             E4: bench full mission
 |   |   |-- run_e5_robustness.py        E5: bench gust + Monte Carlo
 |   |   `-- run_e5_gust.py              E5: bench gust-only
-|   |
+|
 |   |-- tools/
 |   |   |-- closed_loop_bench.py        Closed-loop bench (PlantModel + libthx_core.so)
 |   |   |-- thx_core.py                 Python ctypes wrapper for libthx_core.so
 |   |   |-- test_bench_acceptance.py    Bench acceptance tests
 |   |   `-- README_tools.md             Bench tooling documentation
-|   |
+|
 |   |-- tests/                          pytest suite (30 tests)
-|   |
+|
 |   `-- results/                        experiment outputs
 |       |-- E0/  E1/  E2/  E3/  E4/  E5/
 ```
@@ -168,15 +168,18 @@ python3 experiments/run_sitl_robust_batch.py        # ~70-90 min wall time
 python3 analysis/recompute_sitl_robust.py
 ```
 
-Honest results (real binary): **7/8 fixed scenarios pass** — S4 turn, S5 gust,
-S7 mass +15%, S8 CG 0.025, S9a thrust −10%, S9b surface −20%, S9c inertia +20%;
-the **steady 4 m/s crosswind (S6) fails** (the true steady crosswind envelope is
-≈3.0 m/s stable / 3.5 m/s bounded). The **Monte-Carlo returns 5/20 fully valid
-seeds** (25%); two more seeds hold attitude and altitude but do not finish the
-backward decel within the 100 s window, and the 13 tumbles are concentrated at
-the backward wing-to-hover transition and at high-wind cruise. These failure
-rates and root causes are reported as measured, without substituting companion
-results.
+Honest results (real binary, proposed constrained active-set allocator,
+`alloc_mode=1`): **all 8/8 fixed scenarios pass** — S4 turn, S5 gust, S6 steady
+4 m/s crosswind, S7 mass +15%, S8 CG 0.025, S9a thrust −10%, S9b surface −20%,
+S9c inertia +20%. The active-set allocator **extends the steady crosswind
+envelope beyond 9 m/s** (the weighted pseudo-inverse baseline is ≈3.0 m/s
+stable / 3.5 m/s bounded / 4.0 m/s divergent). The **Monte-Carlo returns 11/20
+fully valid seeds** (55%), up from the pseudo-inverse baseline's 5/20 (25%);
+the remaining 9 tumbles are concentrated at the backward wing-to-hover
+transition, where joint perturbations consume the margin (they occur at winds
+below the pure-crosswind envelope, so crosswind is not the limiting factor).
+These failure rates and root causes are reported as measured, without
+substituting companion results.
 
 ## Quick Start (SITL + FDM Smoke)
 

@@ -3,7 +3,7 @@
 [MAVLink] Waiting for EKF health ...
 [MAVLink] EKF healthy: flags=0x033f
 [MAVLink] Waiting for GPS 3D fix ...
-[MAVLink] GPS OK: lat=--353632621, lon=1491652374
+[MAVLink] GPS OK: lat=-353632621, lon=1491652374
 [MAVLink] Sending arm command ...
 [MAVLink] Vehicle ARMED
  t=  0.0 alt=  0.1 V=  0.4 roll=  0.0 T1=  0.0 ph=1
@@ -18,7 +18,7 @@
  t=  9.0 alt=  9.2 V=  0.7 roll= -0.0 T1= 50.6 ph=1
  t= 10.0 alt= 11.2 V=  1.8 roll=  0.1 T1= 50.5 ph=1
  t= 11.0 alt= 13.2 V=  1.6 roll= -0.0 T1= 50.5 ph=1
- t= 12.0 alt= 15.4 V= 1.9 roll= -0.0 T1= 50.6 ph=1
+ t= 12.0 alt= 15.4 V=  1.9 roll= -0.0 T1= 50.6 ph=1
  t= 13.0 alt= 17.7 V=  2.1 roll= -0.0 T1= 50.5 ph=1
  t= 14.0 alt= 20.1 V=  2.0 roll= -0.1 T1= 50.6 ph=1
  t= 15.0 alt= 22.5 V=  1.5 roll= -0.0 T1= 50.5 ph=1

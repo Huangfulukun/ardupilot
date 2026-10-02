@@ -89,7 +89,7 @@ def gen_mc_perturb(seed):
     )
 
 
-def build_cmd(case_id, instance, truth_dir, work_dir, kw):
+def build_cmd(case_id, instance, truth_dir, work_dir, kw, alloc_mode=1):
     cmd = [
         sys.executable, RUNNER,
         "--name", case_id,
@@ -97,6 +97,7 @@ def build_cmd(case_id, instance, truth_dir, work_dir, kw):
         "--workdir", work_dir,
         "--keep-workdir",
         "--out-dir", truth_dir,
+        "--alloc-mode", str(alloc_mode),
     ]
     if kw.get("traj_type"):
         cmd += ["--traj-type", str(kw["traj_type"])]
@@ -135,7 +136,7 @@ def force_cleanup():
     time.sleep(2)
 
 
-def run_group(group, cases, out_root, timeout=320):
+def run_group(group, cases, out_root, timeout=320, alloc_mode=1):
     """Run a list of (id, label, instance, kw) and checkpoint a summary."""
     truth_dir = os.path.join(out_root, "truth", group)
     work_root = os.path.join(out_root, "work")
@@ -150,7 +151,8 @@ def run_group(group, cases, out_root, timeout=320):
         with open(summary_path) as f:
             summary = json.load(f)
     else:
-        summary = {"group": group, "n": 0, "results": []}
+        summary = {"group": group, "alloc_mode": alloc_mode, "n": 0,
+                   "results": []}
     done_ids = {r["case"] for r in summary["results"]}
 
     for case_id, label, instance, kw in cases:
@@ -159,7 +161,7 @@ def run_group(group, cases, out_root, timeout=320):
             continue
         work_dir = os.path.join(work_root, case_id)
         os.makedirs(work_dir, exist_ok=True)
-        cmd = build_cmd(case_id, instance, truth_dir, work_dir, kw)
+        cmd = build_cmd(case_id, instance, truth_dir, work_dir, kw, alloc_mode)
         run_log = os.path.join(log_dir, f"{case_id}.log")
         print(f"\n===== [{group}] {case_id}: {label} (instance {instance}) "
               f"=====", flush=True)
@@ -216,15 +218,22 @@ def main():
     ap.add_argument("--mc-count", type=int, default=20)
     ap.add_argument("--out-root", default=BATCH_ROOT)
     ap.add_argument("--timeout", type=int, default=320)
+    ap.add_argument("--alloc-mode", type=int, default=1,
+                    help="0=weighted pseudo-inverse (no redistribution), "
+                         "1=constrained active-set QP (proposed)")
     args = ap.parse_args()
 
     if not (args.fixed or args.mc):
         args.fixed = args.mc = True
 
+    # arduplane PANICs if the combined.parm defaults path is relative; the
+    # work dir is built under the output root, so force it to absolute.
+    args.out_root = os.path.abspath(args.out_root)
     os.makedirs(args.out_root, exist_ok=True)
 
     if args.fixed:
-        run_group("fixed", FIXED_CASES, args.out_root, args.timeout)
+        run_group("fixed", FIXED_CASES, args.out_root, args.timeout,
+                  alloc_mode=args.alloc_mode)
 
     if args.mc:
         mc_cases = []
@@ -246,7 +255,8 @@ def main():
             )
             mc_cases.append((f"SMC_{seed}", f"Monte-Carlo seed {seed}",
                              20 + seed, kw))
-        run_group("mc", mc_cases, args.out_root, args.timeout)
+        run_group("mc", mc_cases, args.out_root, args.timeout,
+                  alloc_mode=args.alloc_mode)
 
 
 if __name__ == "__main__":

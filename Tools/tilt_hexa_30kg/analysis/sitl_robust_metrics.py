@@ -25,10 +25,13 @@ def load_truth(path):
     h = (-d.pz).values
     V = d.airspeed.values
     t = d.t.values
+    # Ground speed (the position mission is tracked in the ground frame; this is
+    # the speed used for the hover criterion and the speed-tracking RMSE).
+    Vg = np.hypot(d.vx.values, d.vy.values)
     # FDM truth roll/pitch columns are stored in radians -> report degrees.
     roll = np.degrees(d.roll.values)
     pitch = np.degrees(d.pitch.values)
-    return dict(d=d, t=t, h=h, V=V, roll=roll, pitch=pitch,
+    return dict(d=d, t=t, h=h, V=V, Vg=Vg, roll=roll, pitch=pitch,
                 vx=d.vx.values, vy=d.vy.values, vz=d.vz.values)
 
 
@@ -67,7 +70,7 @@ def compute_metrics(path, traj_type=1, params=None):
         return {"valid": False, "reason": "truth CSV missing", "case": path}
 
     z = load_truth(path)
-    t, h, V, roll, pitch = z["t"], z["h"], z["V"], z["roll"], z["pitch"]
+    t, h, V, Vg, roll, pitch = z["t"], z["h"], z["V"], z["Vg"], z["roll"], z["pitch"]
     vx, vy = z["vx"], z["vy"]
 
     # ---- Liftoff / windows ----
@@ -145,7 +148,7 @@ def compute_metrics(path, traj_type=1, params=None):
             tm = t - off
             m = (V_ref >= 1.0) & (grid >= tm[0]) & (grid <= tm[-1])
             if m.any():
-                Va = np.interp(grid[m], tm, V)
+                Va = np.interp(grid[m], tm, Vg)
                 err = float(np.sum((Va - V_ref[m]) ** 2))
                 if best is None or err < best[0]:
                     best = (err, off)
@@ -177,7 +180,7 @@ def compute_metrics(path, traj_type=1, params=None):
         # Speed window: reference is in the down-track mission (V_ref>=1)
         m_v = (V_ref >= 1.0) & (grid >= tm_v[0]) & (grid <= tm_v[-1])
         if m_v.any():
-            V_act = np.interp(grid[m_v], tm_v, V, left=np.nan, right=np.nan)
+            V_act = np.interp(grid[m_v], tm_v, Vg, left=np.nan, right=np.nan)
             ok = ~np.isnan(V_act)
             if ok.any():
                 V_rmse = float(np.sqrt(np.mean((V_act[ok] - V_ref[m_v][ok]) ** 2)))
@@ -187,7 +190,8 @@ def compute_metrics(path, traj_type=1, params=None):
     if np.isnan(h_rmse) and atalt_idx < len(t) - 1:
         h_rmse = float(np.sqrt(np.mean((h[atalt_idx:] - params["alt"]) ** 2)))
     if np.isnan(V_rmse) and cr_mask.any():
-        V_rmse = float(np.sqrt(np.mean((V[cr_mask] - params["cruise"]) ** 2)))
+        cr_g = Vg >= 15
+        V_rmse = float(np.sqrt(np.mean((Vg[cr_g] - params["cruise"]) ** 2)))
     # Hover-only cases (traj_type=4): no forward mission / cruise, so the above
     # alignment and cruise fallback do not apply.  Report the altitude-hold RMSE
     # and the horizontal drift speed over the sustained at-altitude hover.
@@ -197,7 +201,8 @@ def compute_metrics(path, traj_type=1, params=None):
 
     # ---- Terminal / extremum metrics ----
     h_f = float(np.mean(h[-100:])) if len(h) >= 100 else float(h[-1])
-    V_f = float(np.mean(V[-100:])) if len(V) >= 100 else float(V[-1])
+    # Terminal hover speed is ground speed (the mission is ground-frame).
+    V_f = float(np.mean(Vg[-100:])) if len(Vg) >= 100 else float(Vg[-1])
     # Minimum altitude over the at-altitude portion (after the climb).
     if offset_h is not None:
         tm_act = t - offset_h

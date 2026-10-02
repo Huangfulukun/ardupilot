@@ -113,7 +113,7 @@ $D_p$                & \SI{0.70}{\meter}             & 螺旋桨直径 \\
 $A_d=\pi D_p^2/4$    & \SI{0.385}{\meter\squared}    & 旋翼桨盘面积（每个） \\
 $T_{i,\max}$         & \SI{95}{\newton}              & 单旋翼最大推力（$T/W=1.94$） \\
 $T_{i,\mathrm{hov}}$ & \SI{49.0}{\newton}            & 单旋翼悬停推力（$W/6$） \\
-$P_{\mathrm{ind,hov}}$ & \SI{2.12}{\kilo\watt}        & 理想悬停诱导功率（全部旋翼） \\
+$P_{\mathrm{ind,hov}}$ & \SI{2.12}{\kilo\watt}        & 理想悬停诱导功率（由全部旋翼） \\
 $V_c$                & \SI{20}{\meter\per\second}    & 测试巡航空速（标称 25） \\
 $V_s$                & \SI{16.2}{\meter\per\second}  & 全翼载失速速度（$C_{L,\max}=1.45$） \\
 $V_{\max}$           & \SI{25}{\meter\per\second}    & 标称最大速度 \\
@@ -475,7 +475,7 @@ stock QuadPlane（真实 SITL） & \multicolumn{6}{l}{前向转换发散（$|\ph
 \small
 \begin{tabular}{lcccccc}
 \toprule
-场景 & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m食管) & $\max|\phi|$（度） & $\max|\theta|$（度） \\
+场景 & $h_f$ (m) & $V_f$ (m/s) & $h$ RMSE (m) & $V$ RMSE (m/s) & $\max|\phi|$（度） & $\max|\theta|$（度） \\
 \midrule
 标称            & 59.92 & 0.01 & 0.47 & 0.31 & 0.25 & 15.0 \\
 S4 协调转弯 & 59.90 & 0.16 & 0.73 & 2.96 & 17.0 & 15.1 \\

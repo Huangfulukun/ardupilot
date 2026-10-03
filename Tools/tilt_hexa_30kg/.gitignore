@@ -9,6 +9,8 @@ results/smoke/
 results/E2_invalid_*/
 results/**/*.png
 !results/E1/*.png
+results/**/work/
+results/**/*_batch.log
 __pycache__/
 *.pyc
 .pytest_cache/

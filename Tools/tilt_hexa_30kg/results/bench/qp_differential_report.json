@@ -1,0 +1,21 @@
+{
+  "n_cases": 2500,
+  "ok_and_match": 2499,
+  "ok_fraction": 0.9996,
+  "worst_rel_obj_gap_vs_quadprog": 1.095361684972261e-06,
+  "worst_scaled_violation": 4.446933488326659e-08,
+  "iteration_match_with_reference_fraction": 0.9928,
+  "iters_mean": 17.3544,
+  "iters_p95": 31.0,
+  "iters_max": 49,
+  "mean_solve_us": 200.595120803004,
+  "warm_walk": {
+    "steps": 300,
+    "ok_fraction": 1.0,
+    "iters_mean": 3.0033333333333334,
+    "iters_p95": 7.0,
+    "iters_max": 17,
+    "mean_solve_us": 55.68869997963096
+  },
+  "solver": "/home/user/Doubao/chats/38443086470788354/ardupilot/libraries/AP_TiltHexa/core/build/libthx_core.so"
+}
